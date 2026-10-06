@@ -7,6 +7,8 @@ Ports of Fortran subroutines from TRACER_SOM-TOMAS:
 
 All functions are pure-JAX and JIT-compilable.
 """
+import warnings
+
 import jax.numpy as jnp
 
 from ..core.config import (
@@ -559,8 +561,14 @@ def ricco_dunne_nucleation_rate(
     return (fn_org * enable_organic + fn_inorg * enable_inorganic) * fn_scale
 
 
-# Backward-compatible alias. Prefer ``ricco_dunne_nucleation_rate`` in new code.
-estimate_nucleation_rate = ricco_dunne_nucleation_rate
+def estimate_nucleation_rate(*args, **kwargs):
+    """Deprecated alias for ricco_dunne_nucleation_rate."""
+    warnings.warn(
+        "estimate_nucleation_rate is deprecated, use ricco_dunne_nucleation_rate "
+        "instead. It returns the exact rate, not an estimate.",
+        DeprecationWarning, stacklevel=2,
+    )
+    return ricco_dunne_nucleation_rate(*args, **kwargs)
 
 
 def compute_nucleation_substeps(fn, boxvol, dt, N_total,
