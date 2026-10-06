@@ -704,14 +704,14 @@ class TestComputeIonc:
 # =========================================================================
 
 class TestRiccoDunneNucleationRate:
-    def test_alias_matches_canonical(self, base_state):
+    def test_deprecated_alias_warns_and_matches(self, base_state):
         Nk, Mk, Gc, xk, boxvol = base_state
         args = (Gc, jnp.float64(278.0), jnp.float64(101325.0),
                 jnp.float64(boxvol), 1e7, 1e8, 3.0)
+        with pytest.warns(DeprecationWarning, match="ricco_dunne_nucleation_rate"):
+            old = float(estimate_nucleation_rate(*args))
         np.testing.assert_allclose(
-            float(ricco_dunne_nucleation_rate(*args)),
-            float(estimate_nucleation_rate(*args)),
-            rtol=0.0, atol=0.0,
+            float(ricco_dunne_nucleation_rate(*args)), old, rtol=0.0, atol=0.0,
         )
 
     def test_matches_component_sum(self, base_state):
