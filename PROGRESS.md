@@ -4,6 +4,28 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-10-06 (Tue) — `estimate_nucleation_rate` alias deprecated
+
+**Time**: ~10:30 PDT
+**Branch**: `release/dev-to-main` (review on #17)
+
+### Summary
+Following review on #17, the old name from the #14 rename is no longer used
+anywhere. `CLAUDE.md` and `docs/nucleation.md` now use
+`ricco_dunne_nucleation_rate`. The `estimate_nucleation_rate` alias now
+emits a `DeprecationWarning` (same pattern as `coag_rk4_step`) instead of
+silently aliasing. It is kept because v0.3.0 on `main` exports it as the real
+function name. No library or tomas-api code calls it.
+
+### Changes
+- `tomas_jax/physics/nucleation.py`: the alias is a warning shim.
+- `tests/test_nucleation.py`: the alias test now asserts the warning and an identical result.
+
+### Next steps
+- Remove the alias in a later release once downstream users have moved.
+
+---
+
 ## 2026-10-06 (Tue) — Coagulation on non-doubling bin grids (80/160 bins)
 
 **Time**: ~09:30 PDT
