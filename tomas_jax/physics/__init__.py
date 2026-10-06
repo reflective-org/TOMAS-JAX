@@ -3,6 +3,7 @@
 Coagulation:
     coagulation_kernel  - Brownian coagulation kernel (Fuchs correction)
     coagulation_rates   - TFL mass-conserving coagulation rates
+    coagulation_rates_linear - Linear sub-bin coagulation rates (any bin mass ratio)
     properties          - Particle diameter, diffusivity, thermal speed
     density             - Mixed-salt aerosol density (Tang 1997)
 
