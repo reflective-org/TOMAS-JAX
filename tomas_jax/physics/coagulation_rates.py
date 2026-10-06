@@ -3,6 +3,10 @@
 Port of multicoag.f lines 220-340 (TFL algorithm).
 Refactored for full JAX vectorization (removing lax.scan).
 
+TFL is exact to Fortran only on mass-doubling grids. calc_coagulation_rates
+dispatches: TFL when xk[1]/xk[0] == 2, otherwise the linear sub-bin scheme in
+coagulation_rates_linear.py.
+
 References:
     Tzivion, Feingold, and Levin (1987) "An Efficient Numerical Solution
     to the Stochastic Collection Equation", J. Atmos. Sci., 44, 3139-3149.
@@ -26,6 +30,9 @@ def compute_zeta(xk: jnp.ndarray) -> float:
     For p=2 (standard TOMAS): ξ̄ = 1.0625
     For p=√2 (72 bins):       ξ̄ ≈ 1.0152
     For p=2^{1/4} (144 bins): ξ̄ ≈ 1.0038
+
+    Only p=2 reaches TFL in practice: calc_coagulation_rates sends other
+    ratios to the linear sub-bin scheme (coagulation_rates_linear.py).
     """
     p = xk[1] / xk[0]
     return 0.5 * (1.0 + (p + 1.0) ** 2 / (4.0 * p))
@@ -94,7 +101,7 @@ def calc_xbar_phi_eff(
     return xbar, phi, eff
 
 
-def calc_coagulation_rates(
+def calc_coagulation_rates_tfl(
     Nk: jnp.ndarray,
     Mk: jnp.ndarray,
     kij: jnp.ndarray,
@@ -102,6 +109,10 @@ def calc_coagulation_rates(
     icomp_nodiag: int = ICOMP_NODIAG
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Calculate coagulation rates dNdt and dMdt using TFL algorithm.
+
+    Valid only on mass-doubling grids (xk[k+1] = 2*xk[k]), where it matches
+    Fortran multicoag.f. Use calc_coagulation_rates, which routes other
+    grids to the linear sub-bin scheme.
 
     This implementation is fully vectorized. It replaces the sequential loop
     (lax.scan) with triangular matrix multiplications and array shifting.
@@ -240,3 +251,31 @@ def calc_coagulation_rates(
     dMdt = dMdt.at[:, :icomp_nodiag].set(dMdt_nodiag)
 
     return dNdt, dMdt, dM_overflow
+
+def calc_coagulation_rates(
+    Nk: jnp.ndarray,
+    Mk: jnp.ndarray,
+    kij: jnp.ndarray,
+    xk: jnp.ndarray,
+    icomp_nodiag: int = ICOMP_NODIAG
+) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    """Calculate coagulation rates dNdt and dMdt for any bin grid.
+
+    Mass-doubling grids (p = xk[1]/xk[0] = 2, the 40-bin default) use TFL,
+    matching Fortran multicoag.f. Any other ratio (80 bins: p=√2, 160 bins:
+    p=2^(1/4), coarser grids: p>2) uses the linear sub-bin scheme, because
+    TFL's one-bin transfer assumption only holds at p=2. Selected with
+    lax.cond, so it is JIT-safe with xk traced.
+
+    Args and returns are as for calc_coagulation_rates_tfl.
+    """
+    # Imported here: coagulation_rates_linear imports this module.
+    from .coagulation_rates_linear import calc_coagulation_rates_linear
+
+    is_doubling = jnp.abs(xk[1] / xk[0] - 2.0) < 1e-6
+    return jax.lax.cond(
+        is_doubling,
+        lambda N, M, K, x: calc_coagulation_rates_tfl(N, M, K, x, icomp_nodiag),
+        lambda N, M, K, x: calc_coagulation_rates_linear(N, M, K, x, icomp_nodiag),
+        Nk, Mk, kij, xk,
+    )
