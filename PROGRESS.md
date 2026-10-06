@@ -4,6 +4,67 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-10-06 (Tue) — Coagulation on non-doubling bin grids (80/160 bins)
+
+**Time**: ~09:30 PDT
+**Branch**: `feat/coag-any-bin-ratio`
+
+### Summary
+Coag-only runs on tomas-web showed oscillating size distributions at 80 and
+160 bins (fine at 40). Root cause: TFL (`multicoag.f`) assumes mass-doubling
+bins. It sends self-coagulation products to bin k+1 and lets a collision move a
+particle at most one bin, and its φ/η and `1/(2·xk)` terms take the bin width
+to be x_k. The March generalization (`950d151`) only adjusted ζ and φ/η, so the
+transfer to the next bin was undercounted by (p−1), and the one-bin-hop
+structure was still wrong for p ≠ 2. Against the exact constant-kernel
+solution, TFL error grew with resolution: 4.6% → 18.6% → 28.8% L1 at
+40/80/160 bins.
+
+Added a linear sub-bin two-moment scheme that is valid for any bin ratio, and
+made `calc_coagulation_rates` dispatch to it whenever p ≠ 2. 40-bin results
+are bit-identical to before.
+
+### Changes
+- `tomas_jax/physics/coagulation_rates_linear.py` (new): `calc_coagulation_rates_linear`
+  and `linear_subbin_reconstruction`. Non-negative linear density in the larger
+  bin of each pair (Simmel et al. 2002 LDM), shifted by the partner's mean mass
+  and integrated exactly over at most two destination bins. Exact losses; mass
+  conserved to round-off.
+- `tomas_jax/physics/coagulation_rates.py`: TFL renamed `calc_coagulation_rates_tfl`
+  (body unchanged). New `calc_coagulation_rates` dispatches with `lax.cond`
+  (TFL iff `xk[1]/xk[0] == 2`). No call-site changes.
+- `tests/test_coagulation_bin_ratio.py` (new, 55 tests): reconstruction validity,
+  conservation, constant-kernel convergence, dispatch bit-identity, and a
+  Brownian 80/160-bin regression (fails if TFL is forced).
+- `benchmarks/python/coag_bin_ratio_convergence.py` (new): TFL vs linear at
+  40/80/160/320 bins, exact constant-kernel + Brownian cases, 2 figures.
+- `docs/coagulation_bin_ratio.md` (new), `CLAUDE.md` (dispatch rule, layout, testing).
+
+### Results (coag-only, 24 h)
+- Constant kernel, L1 vs exact. Linear: 0.47% / 0.13% / 0.06% / 0.05% at
+  40/80/160/320 bins. TFL: 4.6% / 18.6% / 28.8% / 27.2%.
+- Brownian, N=1e5, GMD 100 nm, GSD 1.6. Linear keeps a single mode at every
+  resolution (N 1.6580e4 → 1.6553e4, peak 4.03e4 → 4.11e4). TFL had 1/3/23/37
+  local extrema.
+- 40-bin `coag_euler_step` over 24 h is bit-identical to the pre-change TFL.
+- Full suite: 487 passed, 650 skipped. The skips are the Fortran 24 h comparison
+  tests, which need `benchmarks/run_24h.sh` output that wasn't generated locally;
+  they only exercise the unchanged 40-bin path.
+
+### Known limitations
+- The linear scheme takes ~1.4× TFL's wall time (6.9 s vs 4.6 s, 160 bins, 24 h, CPU).
+- Empty-bin NEPS placeholders make `M + overflow` drift upward in proportion
+  to the number of empty bins: up to 5e-8 at 320 bins in the constant-kernel
+  case. This is pre-existing and identical for both schemes.
+- `gpu-fast` branch: `fast/coagulation_pallas.py` hard-codes TFL and a base-2
+  MNFIX, so it stays valid only for 40 bins.
+
+### Next steps
+- After merge into dev: bump the tomas-api `tomas-jax` submodule.
+- Optional: closed-form destination index for geometric grids, to close the speed gap.
+
+---
+
 ## 2026-05-07 (Wed) — Nucleation rate helpers refactored
 
 **Time**: evening PST
