@@ -31,6 +31,7 @@ python -c "from tomas_jax import TomasState, CoagulationSolver"
 - **Coagulation has two solvers:** `diffrax_step` (Tsit5 adaptive ODE, rtol=1e-4, atol=1e-10, for standalone coagulation) and `coag_euler_step` (forward Euler + MNFIX, for scan-fused loops). The forward Euler solver is more stable for high-N scenarios — higher-order methods amplify N^2 coagulation rates. Legacy alias `coag_rk4_step` emits `DeprecationWarning`. The coagulation_rhs returns zero derivatives for Gc, rh, alpha — these are preserved unchanged through the ODE solve. Both solvers support `return_overflow=True` to track mass lost at the top bin boundary.
 - **Coagulation rates dispatch on bin mass ratio:** `calc_coagulation_rates` uses `jax.lax.cond` on `xk[1]/xk[0]`: TFL (`calc_coagulation_rates_tfl`, Fortran `multicoag.f`) only when p == 2 (40-bin default); any other ratio (80/160 bins, or p > 2) uses the linear sub-bin scheme (`calc_coagulation_rates_linear`). TFL assumes mass-doubling bins (self-coag products to k+1, one-bin hops) and oscillates at p != 2. Do not route non-doubling grids back to TFL or retune its ζ/φ/η for p != 2. All solvers call `calc_coagulation_rates`, never a scheme directly. See `docs/coagulation_bin_ratio.md`.
 - **Coagulation top-bin overflow:** `calc_coagulation_rates` returns `(dNdt, dMdt, dM_overflow)` where `dM_overflow` is the mass rate [kg/cell/s] that would enter a hypothetical bin above the grid (the TFL `shift_right` truncation). Top-bin self-coagulation produces particles exceeding the grid boundary — this mass is physically lost. Track it to close mass budgets: `M(0) = M(t) + cumulative_overflow`. Coagulation mass error should remain < 1e-8 relative when accounting for overflow.
+- **Water uptake has two schemes and an every-process option** (`docs/water_uptake.md`): `equilibrate_water(Mk, rh, temp, water_scheme)` with `WATER_SCHEME_BISULFATE` (0.0, default, TOMAS ezwatereqm ISORROPIA NH4HSO4 fit) or `WATER_SCHEME_H2SO4` (1.0, Tabazadeh 1997 binary H2SO4/H2O; organics keep the bisulfate ratio, NH4 takes none). `water_every_process=True` re-equilibrates water after nucleation, coagulation and dilution as well as condensation (TOMAS box.f order). Both are `make_step` factory args and static args of the step/scan functions. Defaults must stay bit-identical to the old behaviour (Fortran-harness parity); tomas-api enables `water_every_process` and equilibrates the initial state. The Tabazadeh table lives in `water_equilibrium.py` and is shared with `radiative_forcing.py`.
 - **Condensation has four methods:** `method='tfl'` (default, sequential Fortran-faithful), `method='tfl_jit'` (fully JIT-compiled TFL, Fortran-matching), `method='ppm'` (PPM with numpy wrapper), or `method='ppm_jit'` (fully JIT-compiled PPM). Both TFL_JIT and PPM_JIT are fast paths. PPM_JIT uses analytical mass-weighted fluxes for exact conservation and is ~1.8x faster than TFL_JIT for condensation-only. TFL matches Fortran output exactly. Use `run_condensation_scan_tfl()` or `run_condensation_scan()` for scan-fused time loops.
 - **Nucleation is JIT-compiled** with two selectable schemes:
   - `ricco_dunne` (default): Riccobono 2014 (organic) + Dunne 2016 (inorganic, 4 mechanisms). Enable/disable via `enable_organic`/`enable_inorganic` float masks (0.0/1.0).
@@ -64,7 +65,7 @@ tomas_jax/
   physics/gas_properties.py   — Gas diffusivity, MFP, Fuchs-Sutugin correction
   physics/condensation_sink.py — Condensation sink CS [s^-1] and per-bin fractions
   physics/nh3_equilibrium.py  — NH3/NH4 stoichiometric equilibrium
-  physics/water_equilibrium.py — Hygroscopic water uptake (ISORROPIA fits)
+  physics/water_equilibrium.py — Hygroscopic water uptake: ISORROPIA NH4HSO4 fits (default) + Tabazadeh H2SO4/H2O, equilibrate_water dispatcher
   physics/bhmie.py            — Bohren-Huffman Mie scattering (numpy, precomputation)
   physics/coagulation_rates.py — Coagulation rates: TFL (multicoag.f port, p=2) + dispatcher calc_coagulation_rates
   physics/coagulation_rates_linear.py — Linear sub-bin coagulation rates for any bin mass ratio (80/160 bins)
@@ -118,6 +119,7 @@ docs/
   zhao2024_nucleation.md      — Zhao 2024 11-mechanism NPF scheme documentation
   so2_chemistry.md            — SO2+OH chemistry (Sun et al. 2022), validation, usage
   dilution.md                 — Dilution/entrainment algorithm, parameters, usage
+  water_uptake.md             — Water uptake schemes (bisulfate fit, Tabazadeh), water_every_process, assumptions
   coagulation_bin_ratio.md    — Why TFL fails on non-doubling grids; linear sub-bin coagulation scheme, dispatch, validation
   missing_physics.md          — Gap analysis of unimplemented physics
   future_features.md          — Planned improvements: AD, GPU, vmap, multi-species, surrogates
