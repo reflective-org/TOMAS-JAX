@@ -4,6 +4,50 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-10-06 (Tue) — Selectable water uptake (Tabazadeh) and water after every process
+
+**Time**: ~14:00 PDT
+**Branch**: `feature/water-uptake`
+
+### Summary
+tomas-web runs ignored RH in coag-only mode: water was only set at the end
+of condensation, so coagulation in coag-only runs used dry sizes. Water
+uptake was also always the TOMAS ammonium-bisulfate fit, which
+underestimates water for pure sulfuric acid by 2–10×. Added a Tabazadeh (1997)
+H2SO4/H2O scheme and an option to re-equilibrate water after every process,
+as the TOMAS box model does. Defaults are unchanged.
+
+### Changes
+- `physics/water_equilibrium.py`: `tabazadeh_h2so4_wt` (JIT-safe, matches
+  the numpy reference exactly in 185–260 K, smooth extrapolation outside),
+  `calc_equilibrium_water_h2so4`, and the `equilibrate_water` dispatcher
+  (`WATER_SCHEME_BISULFATE` / `WATER_SCHEME_H2SO4`). The Tabazadeh table now
+  lives here; `radiative_forcing.py` imports it.
+- `solvers/condensation.py`: `water_scheme` and `water_every_process` on
+  `make_step`, the step functions and all scan loops. Both are static, like
+  `use_tfl`.
+- `tests/test_water_uptake_schemes.py` (44 tests); `docs/water_uptake.md`; `CLAUDE.md`.
+
+### Verification
+- Defaults are bit-identical to origin/dev for `run_condensation_scan`,
+  `run_combined_scan_ppm`, `run_nucleation_condensation_scan`,
+  `run_full_scan` and a 4-process `make_step`.
+- Coag-only, 100 nm mode, 24 h, RH 90%: final N is 1.5676e4 (dry), 1.8655e4
+  (bisulfate, every process) and 1.9451e4 (H2SO4, every process).
+
+### Known limitations
+- No deliquescence hysteresis; organics use the bisulfate ratio under the
+  H2SO4 scheme; NH4 is ignored by the H2SO4 scheme.
+- The bundled Fortran harness still only equilibrates water in
+  condensation modes (by design; the option defaults off).
+
+### Next steps
+- tomas-api: water-uptake option (auto/H2SO4/bisulfate), initial water,
+  `water_every_process=True`, flags in results. tomas-web: selector,
+  flags, and an assumptions/limitations view.
+
+---
+
 ## 2026-10-06 (Tue) — `estimate_nucleation_rate` alias deprecated
 
 **Time**: ~10:30 PDT
