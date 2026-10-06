@@ -39,6 +39,7 @@ import jax.numpy as jnp
 
 from .bhmie import bhmie, bhmie_qsca_jax
 from ..core.config import PI, SRTSO4, SRTH2O
+from .water_equilibrium import TABAZADEH_TABLE1, TABAZADEH_EQ1
 
 
 # =========================================================================
@@ -66,27 +67,9 @@ H2SO4_WEIGHT_FRACTION = 0.75     # H₂SO₄ mass fraction in solution droplet (
 # Table 1: Water vapor pressure over aqueous H₂SO₄
 #   P_H₂O(mb) = exp[a + b/T + c/T²]
 # Columns: (weight_percent, a, b, c)
-_TABAZADEH_TABLE1 = np.array([
-    [10, 19.726, -4364.8, -147620],
-    [15, 19.747, -4390.9, -144690],
-    [20, 19.761, -4414.7, -142940],
-    [25, 19.794, -4451.1, -140870],
-    [30, 19.883, -4519.2, -136500],
-    [35, 20.078, -4644.0, -127240],
-    [40, 20.379, -4828.5, -112550],
-    [45, 20.637, -5011.5, -98811],
-    [50, 20.682, -5121.3, -94033],
-    [55, 20.555, -5177.6, -96984],
-    [60, 20.405, -5252.1, -100840],
-    [65, 20.383, -5422.4, -97966],
-    [70, 20.585, -5743.8, -83701],
-    [75, 21.169, -6310.6, -48396],
-    [80, 21.808, -6985.9, -12170],
-], dtype=np.float64)
-
-# Equation (1): saturation vapor pressure of pure water [mbar]
-#   ln P_H₂O = c0 + c1/T + c2/T² + c3/T³
-_TABAZADEH_EQ1 = (18.452406985, -3505.1578801, -330918.55082, 12725068.262)
+# Shared with the microphysics water scheme (physics/water_equilibrium.py).
+_TABAZADEH_TABLE1 = TABAZADEH_TABLE1
+_TABAZADEH_EQ1 = TABAZADEH_EQ1
 
 # H₂SO₄/H₂O solution density [kg/m³] at 25°C (CRC Handbook)
 # Columns: (weight_percent, density)
