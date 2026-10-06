@@ -171,3 +171,75 @@ class TestConstantKernelAnalytic:
         assert err[160] < err[80] < err[40]
         assert err[80] < 0.01, err
         assert err[160] < 0.005, err
+
+
+# =========================================================================
+# Dispatch in calc_coagulation_rates
+# =========================================================================
+
+class TestDispatch:
+
+    @pytest.mark.parametrize("nbins,expect", [(40, "tfl"), (80, "linear"),
+                                              (160, "linear"), (25, "linear")])
+    def test_routes_by_bin_ratio(self, nbins, expect):
+        """Under jit the dispatcher is bit-identical to the selected scheme."""
+        from tomas_jax.physics.coagulation_rates import (
+            calc_coagulation_rates, calc_coagulation_rates_tfl)
+        ref_fn = {"tfl": calc_coagulation_rates_tfl,
+                  "linear": calc_coagulation_rates_linear}[expect]
+        xk, N, M, kij = _random_state(nbins, seed=7)
+        jit = lambda f: jax.jit(f, static_argnames="icomp_nodiag")
+        out = jit(calc_coagulation_rates)(N, M, kij, xk, icomp_nodiag=ICOMP_NODIAG)
+        ref = jit(ref_fn)(N, M, kij, xk, icomp_nodiag=ICOMP_NODIAG)
+        for o, r in zip(out, ref):
+            assert bool(jnp.array_equal(o, r))
+
+
+# =========================================================================
+# Brownian coag-only through the public solver (tomas-api setup)
+# =========================================================================
+
+def _api_lognormal(xk, n_total=1e5, gmd_nm=100.0, gsd=1.6):
+    """Same initialisation as tomas-api: pure sulfate lognormal."""
+    m_mid = jnp.sqrt(xk[:-1] * xk[1:])
+    dp = jnp.cbrt(m_mid / 1770.0 * 6.0 / np.pi)
+    dndlog = n_total / (np.sqrt(2 * np.pi) * np.log(gsd)) * jnp.exp(
+        -(jnp.log(dp) - np.log(gmd_nm * 1e-9)) ** 2 / (2 * np.log(gsd) ** 2))
+    Nk = dndlog * jnp.log(xk[1:] / xk[:-1]) / 3.0 * BOXVOL
+    Mk = jnp.zeros((xk.shape[0] - 1, ICOMP)).at[:, SRTSO4].set(Nk * m_mid)
+    return Nk, Mk
+
+
+def _run_brownian(nbins, hours=24.0, dt=300.0):
+    from tomas_jax.solvers.diffrax import coag_euler_step
+    xk = grid(nbins)
+    Nk, Mk = _api_lognormal(xk)
+
+    def body(carry, _):
+        N, M = carry
+        return coag_euler_step(N, M, xk, 273.0, 1.0e5, BOXVOL, dt=dt,
+                               icomp_nodiag=ICOMP_NODIAG, n_substeps=3), None
+
+    (N, _M), _ = jax.jit(lambda N, M: jax.lax.scan(
+        body, (N, M), None, length=int(hours * 3600 / dt)))(Nk, Mk)
+    dndlog = np.asarray(N) / BOXVOL / (np.log10(np.asarray(xk[1:] / xk[:-1])) / 3.0)
+    return float(jnp.sum(N)) / BOXVOL, dndlog
+
+
+def _n_local_extrema(y):
+    y = y[y > 1e-3 * y.max()]
+    return int(np.sum(np.diff(np.sign(np.diff(y))) != 0))
+
+
+class TestBrownianFineGrid:
+
+    @pytest.mark.coag_only
+    def test_single_mode_stays_smooth_and_converges(self):
+        """N falls ~6x in 24 h; TFL left 3 (80 bins) and 23 (160 bins) extrema."""
+        runs = {nb: _run_brownian(nb) for nb in (40, 80, 160)}
+        for nb, (_n, dndlog) in runs.items():
+            assert _n_local_extrema(dndlog) == 1, nb
+        n80, n160 = runs[80][0], runs[160][0]
+        peak80, peak160 = runs[80][1].max(), runs[160][1].max()
+        assert abs(n160 - n80) / n80 < 0.005
+        assert abs(peak160 - peak80) / peak80 < 0.02
