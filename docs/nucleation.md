@@ -89,7 +89,7 @@ High nucleation rates (J > 100 cm⁻³s⁻¹) at H2SO4 ≥ 1e8 molec/cm³ can cr
 Before nucleation, estimate the total rate and compute substeps:
 
 ```
-fn = estimate_nucleation_rate(Gc, temp, pres, boxvol, org_conc, nh3_conc, fion, ...)
+fn = ricco_dunne_nucleation_rate(Gc, temp, pres, boxvol, org_conc, nh3_conc, fion, ...)
 dN_full = fn * boxvol * dt
 n_sub = ceil(dN_full / (max_frac * N_total))    # clamped to [1, max_substeps]
 dt_nuc = dt / n_sub
@@ -120,7 +120,7 @@ Then loop `n_sub` times, each calling `nucleation_step(dt_nuc)` + `mnfix_jax()`:
 
 ### Functions
 
-- `estimate_nucleation_rate()`: Computes J without mutating state (calls both ricco + dunne)
+- `ricco_dunne_nucleation_rate()`: Computes J without mutating state (calls both ricco + dunne). `estimate_nucleation_rate` is a deprecated alias.
 - `compute_nucleation_substeps()`: Returns n_sub = ceil(dN / (frac * N_total)), clamped to [1, max]
 
 Both in `tomas_jax/physics/nucleation.py`, used by `_full_step_core()`, `condensation_step_with_nucleation_jax()`, `make_step()`, and all scan-fused loops.
@@ -165,7 +165,7 @@ Multiplicative float masks (0.0/1.0) avoid JIT recompilation:
 
 ## Files
 
-- `tomas_jax/physics/nucleation.py` — 5 functions: `ricco_nucleation_rate`, `dunne_nucleation_rate`, `estimate_nucleation_rate`, `compute_nucleation_substeps`, `nucleation_step`
+- `tomas_jax/physics/nucleation.py` — 5 functions: `ricco_nucleation_rate`, `dunne_nucleation_rate`, `ricco_dunne_nucleation_rate`, `compute_nucleation_substeps`, `nucleation_step`
 - `tomas_jax/solvers/condensation.py` — `condensation_step_with_nucleation_jax`, `run_nucleation_condensation_scan`
 - `tests/test_nucleation.py` — 24 unit tests
 - `run_box_model.py` — nucleation in time loop with `--no-nucleation` flag
