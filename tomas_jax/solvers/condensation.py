@@ -530,7 +530,7 @@ condensation_step_with_nucleation_jit = jax.jit(
     condensation_step_with_nucleation_jax,
     static_argnums=(16,),  # use_tfl must be static for Python-level dispatch
     # max_nucleation_frac (17) and max_nuc_substeps (18) are captured as tracers
-    static_argnames=('water_scheme', 'water_every_process'),
+    static_argnames=('use_tfl', 'water_scheme', 'water_every_process'),
 )
 
 
@@ -608,7 +608,7 @@ def _run_scan(Nk, Mk, Gc, step_fn, nsteps, dt, prod_rate, diag_mode='rich',
 # Layer 3 wrappers: backward-compatible scan-fused loops
 # =========================================================================
 
-@partial(jax.jit, static_argnums=(10,), static_argnames=('water_scheme',))
+@partial(jax.jit, static_argnums=(10,), static_argnames=('nsteps', 'water_scheme'))
 def run_condensation_scan(
     Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
     nsteps: int,
@@ -632,7 +632,7 @@ def run_condensation_scan(
     return Nk_f, Mk_f, Gc_f, history
 
 
-@partial(jax.jit, static_argnums=(10,), static_argnames=('water_scheme',))
+@partial(jax.jit, static_argnums=(10,), static_argnames=('nsteps', 'water_scheme'))
 def run_condensation_scan_tfl(
     Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
     nsteps: int,
@@ -657,7 +657,7 @@ def run_condensation_scan_tfl(
 
 
 @partial(jax.jit, static_argnums=(10,),
-         static_argnames=('water_scheme', 'water_every_process'))
+         static_argnames=('nsteps', 'water_scheme', 'water_every_process'))
 def run_combined_scan_ppm(
     Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
     nsteps: int,
@@ -679,7 +679,7 @@ def run_combined_scan_ppm(
 
 
 @partial(jax.jit, static_argnums=(10,),
-         static_argnames=('water_scheme', 'water_every_process'))
+         static_argnames=('nsteps', 'water_scheme', 'water_every_process'))
 def run_combined_scan_tfl(
     Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
     nsteps: int,
@@ -701,7 +701,7 @@ def run_combined_scan_tfl(
 
 
 @partial(jax.jit, static_argnums=(10, 18),
-         static_argnames=('water_scheme', 'water_every_process'))
+         static_argnames=('nsteps', 'use_tfl', 'water_scheme', 'water_every_process'))
 def run_nucleation_condensation_scan(
     Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
     nsteps: int,
@@ -757,7 +757,7 @@ def run_nucleation_condensation_scan(
 
 
 @partial(jax.jit, static_argnums=(10, 18),
-         static_argnames=('water_scheme', 'water_every_process'))
+         static_argnames=('nsteps', 'use_tfl', 'water_scheme', 'water_every_process'))
 def run_full_scan(
     Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
     nsteps: int,
