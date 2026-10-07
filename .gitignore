@@ -20,6 +20,7 @@ logs/
 benchmarks/fortran/output/
 benchmarks/results/
 tomas_fortran/output/
+/output/
 
 # Pytest cache
 .pytest_cache/
