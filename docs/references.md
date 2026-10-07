@@ -50,6 +50,18 @@ Papers and textbooks referenced in the TOMAS-JAX codebase, organized by topic.
 
 - Nenes, A., Pandis, S. N., and Pilinis, C.: ISORROPIA: A new thermodynamic equilibrium model for multiphase multicomponent inorganic aerosols. *Aquat. Geochem.*, 4, 123–152, 1998.
 
+- Tabazadeh, A., Toon, O. B., Clegg, S. L., and Hamill, P.: A new parameterization of H2SO4/H2O aerosol composition: Atmospheric implications. *Geophys. Res. Lett.*, 24, 1931–1934, https://doi.org/10.1029/97GL01879, 1997.
+
+---
+
+## Numerical Methods — Coagulation
+
+- Tzivion, S., Feingold, G., and Levin, Z.: An efficient numerical solution to the stochastic collection equation. *J. Atmos. Sci.*, 44, 3139–3149, https://doi.org/10.1175/1520-0469(1987)044<3139:AENSTT>2.0.CO;2, 1987.
+
+- Simmel, M., Trautmann, T., and Tetzlaff, G.: Numerical solution of the stochastic collection equation — comparison of the Linear Discrete Method with other methods. *Atmos. Res.*, 61, 135–148, https://doi.org/10.1016/S0169-8095(01)00131-4, 2002.
+
+- Scott, W. T.: Analytic studies of cloud droplet coalescence I. *J. Atmos. Sci.*, 25, 54–65, https://doi.org/10.1175/1520-0469(1968)025<0054:ASOCDC>2.0.CO;2, 1968.
+
 ---
 
 ## Numerical Methods — Condensation
@@ -57,8 +69,6 @@ Papers and textbooks referenced in the TOMAS-JAX codebase, organized by topic.
 - Colella, P. and Woodward, P. R.: The Piecewise Parabolic Method (PPM) for gas-dynamical simulations. *J. Comput. Phys.*, 54, 174–201, https://doi.org/10.1016/0021-9991(84)90143-8, 1984.
 
 - Stevens, B., Feingold, G., Cotton, W. R., and Walko, R. L.: Elements of the microphysical structure of numerically simulated nonprecipitating stratocumulus. *J. Atmos. Sci.*, 53, 980–1006, https://doi.org/10.1175/1520-0469(1996)053<0980:EOTMSO>2.0.CO;2, 1996.
-
-- Tzivion, S., Feingold, G., and Levin, Z.: An efficient numerical solution to the stochastic collection equation. *J. Atmos. Sci.*, 44, 3139–3149, https://doi.org/10.1175/1520-0469(1987)044<3139:AENSTT>2.0.CO;2, 1987.
 
 - Tzivion, S., Feingold, G., and Levin, Z.: The evolution of raindrop spectra. Part II: Collisional collection/breakup and evaporation in a rainshaft. *J. Atmos. Sci.*, 46, 3312–3327, https://doi.org/10.1175/1520-0469(1989)046<3312:TEORSP>2.0.CO;2, 1989.
 
@@ -128,4 +138,4 @@ Papers and textbooks referenced in the TOMAS-JAX codebase, organized by topic.
 
 ---
 
-*37 references. Last updated: 2026-03-12*
+*41 references. Last updated: 2026-10-07*
