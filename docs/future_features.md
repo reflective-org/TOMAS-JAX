@@ -130,6 +130,25 @@ The Zhao 2024 11-mechanism NPF scheme (mechanisms 6–7) uses pure-biogenic nucl
 
 ---
 
+## 9. Project Wiki
+
+**Status:** To do. Do not publish until the content has been reviewed and we have decided where and when it goes public.
+
+**What:** One place that explains TOMAS-JAX and the web app to users and collaborators:
+- Model overview and the order processes run in each step
+- Numerical schemes and why they were chosen: TFL coagulation at 40 bins vs the linear sub-bin scheme (Simmel et al. 2002) at 80/160 bins; PPM vs TFL condensation
+- Water uptake: the ammonium bisulfate and Tabazadeh schemes, the Auto rule, and water after every process
+- Validation: the constant-kernel exact solution (Scott 1968), Brownian convergence at 40/80/160/320 bins, Fortran comparisons, with their figures
+- The interactive coagulation explainer (how added mass is distributed between bins)
+- Assumptions, limitations and planned work (shared with the app's Assumptions view, `tomas-web/src/content/assumptions.ts`)
+- References (`docs/references.md`)
+
+**Sources:** `docs/coagulation_bin_ratio.md`, `docs/water_uptake.md` and the other docs in `docs/`; figures from `benchmarks/python/coag_bin_ratio_convergence.py`.
+
+**Effort:** About a week for a first version, mostly assembling and editing existing docs and figures.
+
+---
+
 ## Priority Guide
 
 | Priority | Feature | Reason |
@@ -141,3 +160,4 @@ The Zhao 2024 11-mechanism NPF scheme (mechanisms 6–7) uses pure-biogenic nucl
 | Medium | #6 Emissions & deposition | Required for full atmospheric simulations |
 | Medium | #7 Adaptive timestepping | Accuracy/efficiency improvement |
 | Exploratory | #5 Learned surrogate | Research project; depends on #1 and #3 |
+| When ready | #9 Project wiki | Collects docs, validation and assumptions; publish only after review |
