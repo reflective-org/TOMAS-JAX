@@ -33,6 +33,39 @@ from ..core.config import PI, MW_H2SO4, SV_H2SO4, ICOMP_NODIAG
 NEPS_CONDSINK = 1.0e10
 
 
+def calc_wet_diameters(
+    Nk: jnp.ndarray,
+    Mk: jnp.ndarray,
+    xk: jnp.ndarray,
+) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    """Wet particle diameter and density per bin (getCondSink.f lines 89-113).
+
+    For bins with Nk > NEPS_CONDSINK [#/cell]: actual wet mass per particle
+    and calc_density. Otherwise: mp = 1.4*xk[k] at density 1500 kg/m3.
+
+    Returns:
+        Dpk: Wet diameter [m], shape (ibins,)
+        density: Wet density [kg/m3], shape (ibins,)
+    """
+    has_particles = Nk > NEPS_CONDSINK
+
+    # Actual properties (for populated bins)
+    Mktot = jnp.sum(Mk, axis=1)  # total wet mass per bin
+    mp_actual = Mktot / jnp.maximum(Nk, 1e-30)
+    density_actual = calc_density(Mk)
+
+    # Default properties (for sparse bins)
+    mp_default = 1.4 * xk[:-1]
+    density_default = 1500.0
+
+    mp = jnp.where(has_particles, mp_actual, mp_default)
+    density = jnp.where(has_particles, density_actual, density_default)
+
+    # Dpk = ((mp/density) * (6/pi))^(1/3)
+    Dpk = jnp.cbrt(mp / density * (6.0 / PI))
+    return Dpk, density
+
+
 def calc_condensation_sink(
     Nk: jnp.ndarray,
     Mk: jnp.ndarray,
@@ -75,24 +108,7 @@ def calc_condensation_sink(
     mfp = calc_mean_free_path(temp, pres, molecular_weight, diffusion_volume)
 
     # --- Compute Dpk following Fortran getCondSink.f lines 89-113 ---
-    # For bins with Nk > Neps: actual density and mp
-    # For bins with Nk <= Neps: default density=1500, mp=1.4*xk[k]
-    has_particles = Nk > NEPS_CONDSINK
-
-    # Actual properties (for populated bins)
-    Mktot = jnp.sum(Mk, axis=1)  # total wet mass per bin
-    mp_actual = Mktot / jnp.maximum(Nk, 1e-30)
-    density_actual = calc_density(Mk)
-
-    # Default properties (for sparse bins)
-    mp_default = 1.4 * xk[:-1]
-    density_default = 1500.0
-
-    mp = jnp.where(has_particles, mp_actual, mp_default)
-    density = jnp.where(has_particles, density_actual, density_default)
-
-    # Dpk = ((mp/density) * (6/pi))^(1/3)
-    Dpk = jnp.cbrt(mp / density * (6.0 / PI))
+    Dpk, _ = calc_wet_diameters(Nk, Mk, xk)
 
     # Kn = 2*mfp/Dpk (getCondSink.f line 111)
     Kn = 2.0 * mfp / jnp.maximum(Dpk, 1e-30)
