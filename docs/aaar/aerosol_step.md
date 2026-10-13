@@ -10,7 +10,7 @@ over that step.
 ```python
 from tomas_jax.box.aerosol_step import (
     AerosolState, AerosolForcing, SOAParams, aerosol_outer_step,
-    soa_params_from_cstar, AEROSOL_PROCESSES)
+    AEROSOL_PROCESSES)
 from tomas_jax.box.config import AerosolStepConfig
 
 state, diag = aerosol_outer_step(
@@ -45,8 +45,14 @@ state, diag = aerosol_outer_step(
 Unit conversions: kg/cell = µg/m³ × 1e-9 × boxvol·1e-6;
 molec/cm³/s of H₂SO₄ → kg/cell/s: × boxvol × MW·1e-3 / N_A.
 
-**Levels.** Level 1: `soa_params_from_cstar([c_star])` (K = 1, surrogate in
-slot 1), `org_rate = [P_org]`. Either source can be zero. K ≥ 1 always:
+**SOAParams arrays** come from the caller. For the tutorial,
+`tomas_jax/gaschem/volatility.py` (gas-chemistry stream) defines the 15
+half-decade classes (log10 c\*(298 K) = −3, −2.5, …, 4) and their ΔH_vap.
+This module applies no c\* or ΔH_vap rule of its own. ΔH_vap is in
+**kJ/mol** (vbs-jax `delta_hvap_kj`).
+
+**Levels.** Level 1: K = 1 (the surrogate in slot 1, `cstar_ref = [c_star]`),
+`org_rate = [P_org]`. Either source can be zero. K ≥ 1 always:
 for an H₂SO₄-only run, pass `org_rate = [0.0]` or leave
 `'soa_partitioning'` out of `processes`. Level 2: K ≤ 15
 lumped classes from the gas mechanism. Level 3: Level 2 plus
@@ -89,8 +95,6 @@ of this step; the driver owns them.
 | `water_scheme` | bisulfate | `equilibrate_water` scheme |
 | `water_every_process` | False | `make_step` option |
 | `soa_n_substeps` | 10 | vbs-jax sub-step budget (raise if `soa_time_integrated` is False) |
-| `soa_mw`, `soa_alpha` | 200 g/mol, 1.0 | used by `soa_params_from_cstar` |
-| `dhvap_intercept_kj`, `dhvap_slope_kj` | 129, −11 | ΔH_vap = 129 − 11·log10 C\* (Epstein et al. 2010) |
 
 The driver stream may add its own classes to `box/config.py`.
 

@@ -33,8 +33,10 @@ adapter. The coupling driver (another stream) calls one jitted
 - `physics/heterogeneous.py` (new): `n2o5_uptake` gives k_het and per-bin
   weights (condensation sink with α = γ).
 - `box/` (new): `aerosol_step.py` (`aerosol_outer_step`, `AerosolState`,
-  `AerosolForcing`, `SOAParams`, `AerosolDiag`, `soa_params_from_cstar`)
-  and `config.py` (`AerosolStepConfig`).
+  `AerosolForcing`, `SOAParams`, `AerosolDiag`) and `config.py`
+  (`AerosolStepConfig`). SOA class arrays (c\*, ΔHvap in kJ/mol, MW)
+  come from the caller (`gaschem/volatility.py`). The aerosol side has no
+  c\*/ΔHvap rule.
 - `tests/test_aaar_aerosol.py` (15 tests, ~13 s).
 - Docs: `docs/aaar/{aerosol_step,soa_partitioning,heterogeneous}.md`,
   `ASSUMPTIONS.md` (A5, A6, A9, AC1, AC2), `docs/references.md`,

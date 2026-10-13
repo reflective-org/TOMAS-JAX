@@ -72,7 +72,11 @@ class AerosolForcing(NamedTuple):
 
 
 class SOAParams(NamedTuple):
-    """Volatility classes (vbs-jax VBSConfig fields that vary by level)."""
+    """Volatility classes (vbs-jax VBSConfig fields that vary by level).
+
+    The class arrays are defined by the caller (gaschem/volatility.py for
+    the tutorial); this module applies no c*/dHvap rule of its own.
+    """
     cstar_ref: jnp.ndarray  # (K,) c* at 298 K [ug/m^3]
     dhvap: jnp.ndarray      # (K,) enthalpy of vaporisation [kJ/mol]
     mw: jnp.ndarray         # (K,) molecular weight [g/mol]
@@ -86,17 +90,6 @@ class AerosolDiag(NamedTuple):
     soa_cs: jnp.ndarray         # (K,) SOA sink, last vbs sub-step [s^-1]
     soa_time_integrated: jnp.ndarray  # bool: every micro-step fully advanced
     nitrate_added: jnp.ndarray  # particle NO3 actually added [kg/cell]
-
-
-def soa_params_from_cstar(cstar_ref, cfg=_DEFAULT_CFG):
-    """SOAParams for given c* [ug/m^3]: Epstein dHvap rule, cfg MW/alpha."""
-    cstar_ref = jnp.atleast_1d(jnp.asarray(cstar_ref, dtype=jnp.float64))
-    return SOAParams(
-        cstar_ref=cstar_ref,
-        dhvap=cfg.dhvap_intercept_kj + cfg.dhvap_slope_kj * jnp.log10(cstar_ref),
-        mw=jnp.full(cstar_ref.shape, cfg.soa_mw),
-        alpha=jnp.asarray(cfg.soa_alpha, dtype=jnp.float64),
-    )
 
 
 def _aerosol_outer_step(state, forcing, soa_params, dt_outer, *,

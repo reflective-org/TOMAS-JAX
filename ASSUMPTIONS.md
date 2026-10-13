@@ -24,18 +24,20 @@ is assumed, why, where it is implemented and how to change it.
 ### A6 — SOA volatility classes
 
 - Condensable organics are lumped into up to 15 c\* classes (slots 1–15) at
-  half-decade spacing; each class spans ±0.25 decade around its c\*.
-  Level 1 uses a single class (K = 1, slot 1) for the user's surrogate.
+  half-decade spacing, log10 c\*(298 K) = −3, −2.5, …, 4. Each class spans
+  ±0.25 decade around its c\*. Level 1 uses a single class (K = 1, slot 1)
+  for the user's surrogate.
 - Partitioning uses vbs-jax (Zaveri et al. 2014 kinetics, soacond.f
   driving force). Raoult's law uses the **organic-phase mass fraction**
   (soacond convention), not mole fraction. Only organics absorb; SO₄,
   NH₄, nitrate and water do not.
-- ΔH_vap = 129 − 11·log10 C\* kJ/mol (Epstein et al. 2010; fitted at 300 K,
-  applied with T_ref = 298 K) in `box/aerosol_step.py::soa_params_from_cstar`;
-  constants in `AerosolStepConfig`.
-- Class properties are the vbs-jax defaults: MW 200 g/mol, σ = 0.025 N/m
-  (Kelvin), ρ_org = 1200 kg/m³, D_b = 1e-10 m²/s, no particle-phase
-  reaction (k_c = 0), α = 1.
+- ΔH_vap = 131 − 11·log10 c\*(298 K) kJ/mol (Epstein et al. 2010, as used
+  in SOM-TOMAS). The classes and this rule are defined in
+  `tomas_jax/gaschem/volatility.py` (gas-chemistry stream). The aerosol
+  side only takes the arrays (`SOAParams`).
+- Other class properties are the vbs-jax defaults: σ = 0.025 N/m
+  (Kelvin), ρ_org = 1200 kg/m³, Fuller volume 120, D_b = 1e-10 m²/s, no
+  particle-phase reaction (k_c = 0). MW and α come with the arrays.
 - Docs: `docs/aaar/soa_partitioning.md`.
 
 ### A9 — Organic water uptake

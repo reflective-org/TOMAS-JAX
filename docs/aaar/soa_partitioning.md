@@ -104,9 +104,11 @@ Nk, Mk, Gc, diag = soa_partition_step(
 assert diag.time_integrated >= dt            # else raise n_substeps
 ```
 
-c\*, ΔH_vap, MW and α are traced, so the step compiles once per
-(nbins, K). `box.aerosol_step.soa_params_from_cstar(cstar)` builds the
-arrays, with ΔH_vap = 129 − 11·log10 C\* kJ mol⁻¹ (Epstein et al. 2010) and
+c\*, ΔH_vap (kJ mol⁻¹), MW and α are traced, so the step compiles once
+per (nbins, K). The adapter applies no c\* or ΔH_vap rule. The tutorial
+class arrays come from `tomas_jax/gaschem/volatility.py`: log10 c\*(298 K) =
+−3 … 4 in half-decades and ΔH_vap = 131 − 11·log10 c\* (Epstein et al.
+2010, SOM-TOMAS form). The tests build their own arrays the same way, with
 MW = 200 g mol⁻¹.
 
 ## Validation (`tests/test_aaar_aerosol.py`)

@@ -25,9 +25,3 @@ class AerosolStepConfig:
     water_scheme: float = WATER_SCHEME_BISULFATE   # see equilibrate_water
     water_every_process: bool = False  # make_step option (TOMAS box.f order)
     soa_n_substeps: int = SOA_N_SUBSTEPS  # vbs-jax adaptive sub-step budget
-    soa_mw: float = 200.0              # [g/mol] SOA class molecular weight
-    soa_alpha: float = 1.0             # [-] SOA mass accommodation
-    # dHvap [kJ/mol] = intercept + slope * log10(c* [ug/m3]); Epstein et al.
-    # (2010), ES&T 44, 743-748 (fitted at 300 K, applied at T_ref = 298 K)
-    dhvap_intercept_kj: float = 129.0
-    dhvap_slope_kj: float = -11.0

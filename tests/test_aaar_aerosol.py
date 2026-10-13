@@ -16,7 +16,7 @@ from tomas_jax.physics.density import calc_density
 from tomas_jax.physics.heterogeneous import n2o5_uptake
 from tomas_jax.physics.soa_partitioning import soa_partition_step
 from tomas_jax.box.aerosol_step import (
-    AerosolForcing, AerosolState, aerosol_outer_step, soa_params_from_cstar,
+    AerosolForcing, AerosolState, SOAParams, aerosol_outer_step,
 )
 from vbs_jax import vbs_equilibrium
 
@@ -52,6 +52,15 @@ def sulfate_seed(n_cm3, gmd, gsd):
     return Nk, jnp.zeros((NBINS, ICOMP)).at[:, SRTSO4].set(Nk * XMID)
 
 
+def soa_params(cstar):
+    """Test classes: dHvap = 131 - 11 log10 c* [kJ/mol] (Epstein et al.
+    2010, SOM-TOMAS form), MW 200 g/mol, alpha 1."""
+    cstar = jnp.atleast_1d(jnp.asarray(cstar, dtype=jnp.float64))
+    return SOAParams(cstar_ref=cstar, dhvap=131.0 - 11.0 * jnp.log10(cstar),
+                     mw=jnp.full(cstar.shape, 200.0),
+                     alpha=jnp.float64(1.0))
+
+
 def make_state(Nk, Mk, Gc=None, temp=298.0, rh=0.5):
     Gc = jnp.zeros(N_GAS_SPECIES) if Gc is None else Gc
     f = jnp.float64
@@ -79,7 +88,7 @@ def soa_gas(Gc, K):
 
 
 def run_soa(Nk, Mk, Gc, cstar, dt, nsteps):
-    p = soa_params_from_cstar(cstar)
+    p = soa_params(cstar)
     for _ in range(nsteps):
         Nk, Mk, Gc, diag = soa_step(Nk, Mk, Gc, XK, 298.0, 101325.0, BOXVOL,
                                     dt, p.cstar_ref, p.dhvap, p.mw, p.alpha)
@@ -105,7 +114,7 @@ def test_zero_vapour_stability_12h():
           .at[:, SRTORG_NUC].set(0.3 * Nk * XMID)
           .at[:, SRTNIT].set(0.1 * Nk * XMID))
     st0 = make_state(Nk, Mk)
-    p = soa_params_from_cstar([1.0, 100.0])
+    p = soa_params([1.0, 100.0])
     f = make_forcing(2)
 
     def dry_total(st):
@@ -185,7 +194,7 @@ def test_zero_oa_bootstrap():
     Nk, Mk = sulfate_seed(1000.0, 100e-9, 1.6)
     Gc = jnp.zeros(N_GAS_SPECIES).at[SRTSOA1:SRTSOA1 + 2].set(kg(2.0))
     st = make_state(Nk, Mk, Gc)
-    p = soa_params_from_cstar([0.01, 1000.0])
+    p = soa_params([0.01, 1000.0])
     f = make_forcing(2)
     for _ in range(6):
         st, diag = aerosol_outer_step(st, f, p, 300.0,
@@ -201,7 +210,7 @@ def test_zero_oa_high_cstar_never_spikes():
     """Alone on a pure seed, c* = 1000 vapour never transiently condenses."""
     Nk, Mk = sulfate_seed(1000.0, 100e-9, 1.6)
     st = make_state(Nk, Mk, jnp.zeros(N_GAS_SPECIES).at[SRTSOA1].set(kg(2.0)))
-    p = soa_params_from_cstar([1000.0])
+    p = soa_params([1000.0])
     f = make_forcing(1)
     for _ in range(30):
         st, _ = aerosol_outer_step(st, f, p, 60.0,
@@ -224,7 +233,7 @@ def test_class_mass_conservation_all_processes():
     org_rate = kg(jnp.array([0.3, 0.5, 1.0])) / 3600.0
     f = make_forcing(K, h2so4_rate=kg(0.2) / 3600.0, org_rate=org_rate,
                      nh3_conc=2.5e9, fion=3.0)
-    p = soa_params_from_cstar([0.1, 10.0, 1000.0])
+    p = soa_params([0.1, 10.0, 1000.0])
     dt = 600.0
 
     st, diag = aerosol_outer_step(st0, f, p, dt)
@@ -276,7 +285,7 @@ def test_nitrate_injection_mass_and_slot():
     assert float(Nk[-1]) < 1e10               # top bin is empty
     w_empty = w.at[-1].set(0.5)               # weight on the empty bin
     rate, dt = kg(1.0) / 3600.0, 300.0
-    p = soa_params_from_cstar([1.0])
+    p = soa_params([1.0])
 
     out = {}
     for name, weights in (('w', w), ('w_empty', w_empty)):
@@ -308,7 +317,7 @@ def _level1_run(cstar, hours=12):
     f = make_forcing(1, h2so4_rate=h2so4_rate,
                      org_rate=jnp.array([kg(1.0) / 3600.0]),
                      nh3_conc=2.5e9, fion=3.0)
-    p = soa_params_from_cstar([cstar])
+    p = soa_params([cstar])
     for _ in range(hours * 12):
         st, diag = aerosol_outer_step(st, f, p, 300.0)
     return st, diag
@@ -333,17 +342,17 @@ def test_cstar_change_does_not_recompile():
     Nk, Mk = sulfate_seed(1000.0, 100e-9, 1.6)
     st = make_state(Nk, Mk)
     f = make_forcing(1, org_rate=jnp.array([kg(1.0) / 3600.0]))
-    aerosol_outer_step(st, f, soa_params_from_cstar([1.0]), 120.0)
+    aerosol_outer_step(st, f, soa_params([1.0]), 120.0)
     n_compiled = aerosol_outer_step._cache_size()
     for cstar in (0.1, 1000.0):
-        aerosol_outer_step(st, f, soa_params_from_cstar([cstar]), 120.0)
+        aerosol_outer_step(st, f, soa_params([cstar]), 120.0)
     assert aerosol_outer_step._cache_size() == n_compiled
 
 
 def test_too_many_classes_rejected():
     Nk, Mk = sulfate_seed(1000.0, 100e-9, 1.6)
     K = N_SOA_CLASSES + 1
-    p = soa_params_from_cstar(np.logspace(-2, 3, K))
+    p = soa_params(np.logspace(-2, 3, K))
     with pytest.raises(ValueError, match="N_SOA_CLASSES"):
         soa_partition_step(Nk, Mk, jnp.zeros(N_GAS_SPECIES), XK, 298.0,
                            101325.0, BOXVOL, 60.0, p.cstar_ref, p.dhvap,
