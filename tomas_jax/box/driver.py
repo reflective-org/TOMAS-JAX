@@ -27,7 +27,7 @@ import numpy as np
 
 from .. import __version__
 from ..core.config import (MW_H2SO4, MW_NO3, N_GAS_SPECIES, N_SOA_CLASSES, SRTH2O, SRTNH4,
-                           SRTNIT, SRTORG_NUC, SRTSO4, SRTSOA1)
+                           SRTNIT, SRTORG_NUC, SRTSO4, SRTSOA1, SV_H2SO4)
 from ..gaschem.config import DHVAP_A_KJ, DHVAP_B_KJ, MECHANISM_DIR, TUVX_CONFIG
 from ..gaschem.environment import air_environment
 from ..gaschem.mechanism import EnvRates, Mechanism, RateModel
@@ -35,6 +35,7 @@ from ..gaschem.photolysis import SOURCES as J_SOURCES
 from ..gaschem.photolysis import JProvider, PhotolysisSettings, tuvx_root
 from ..gaschem.solver import integrate_interval
 from ..gaschem.volatility import assign_classes, load_cstar_table
+from ..physics.condensation_sink import calc_condensation_sink
 from ..physics.heterogeneous import n2o5_uptake
 from ..physics.water_equilibrium import equilibrate_water
 from .aerosol_step import AerosolForcing, AerosolState, SOAParams, aerosol_outer_step
@@ -205,7 +206,9 @@ def run(scenario: Scenario, progress_cb: Callable[[float], None] | None = None,
         rec["sza"].append(None if jp is None else jp.sza_deg(t_s))
 
     j_now = None if jp is None else jp.at(0.0)
-    record(0.0, state, np.nan, 0.0, y if chem else None, j_now)
+    cs0, _ = calc_condensation_sink(state.Nk, state.Mk, state.temp, state.pres, state.boxvol,
+                                    MW_H2SO4, SV_H2SO4, cfg.alpha_h2so4, xk=state.xk)
+    record(0.0, state, cs0, 0.0, y if chem else None, j_now)
     for i in range(n_int):
         if cancel is not None and cancel():
             raise RuntimeError("run cancelled")

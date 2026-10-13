@@ -139,4 +139,6 @@ def test_cstar_table_must_be_a_plain_file_name():
 def test_json_has_no_nan():
     assert _jsonable({"a": np.float64("nan"), "b": [np.float32(1.5)]}) == {"a": None, "b": [1.5]}
     r = run(load_preset("level1_volatility").replace(duration_h=0.5))
-    json.dumps(r.to_dict(), allow_nan=False)
+    d = r.to_dict()
+    json.dumps(d, allow_nan=False)
+    assert d["diagnostics"]["cs_per_s"][0] > 0          # initial sink computed, not NaN/null
