@@ -4,6 +4,48 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-10-13 (Tue) — AAAR tutorial: MCM gas chemistry, TUV-x photolysis, coupled driver
+
+**Time**: ~17:30 PDT
+**Branch**: `feat/aaar-tutorial` (merges `feat/aaar-tutorial-gaschem` and `-aerosol`)
+
+### Summary
+Three-level teaching box model for the AAAR photochemical box-modelling tutorial
+(S. Jathar): (1) volatility of one surrogate organic, (2) MCM limonene chemistry →
+SOA by c*-class absorptive partitioning, (3) TUV-x diurnal photolysis + N2O5 uptake
+→ particle nitrate. Entry point `tomas_jax.box.driver.run(Scenario) -> RunResult`.
+
+### Changes
+- `gaschem/` (new): KPP/MCM parser, MCM v3.3.1 complex rates and J(χ) (from KPP
+  `constants_mcm.f90`; 31/33 identical to F0AM), exact k decomposition with frozen
+  rates per interval, gather/segment_sum RHS, diffrax Kvaerno3 solver, TUV-x J
+  provider (J(SZA) table, MCM branching/parameterization fallbacks), Li et al. (2016)
+  c* + 15 volatility classes. Mechanism file byte-identical to the one supplied.
+- `box/`: `scenario.py` (contract + TOML presets), `result.py`, `coupling.py`
+  (units, seed, tutorial mechanism edits, class gather/scatter + particle tracker),
+  `driver.py` (`run`, `warmup`, `code_version`).
+- Tests: `tests/test_gaschem.py` (16), `tests/test_aaar_driver.py` (9).
+- Docs: `docs/aaar/gaschem.md`, `docs/aaar/coupling.md`; `ASSUMPTIONS.md` A1–A4,
+  A7, A8, A10–A14 + questions for Shantanu.
+- Dependencies: tuvx-jax `feat/aaar-tutorial` (all photolysis recipes the mechanism
+  needs ported and validated against the Fortran TUV-x; extra `[photolysis]`).
+
+### Findings
+- Solver: Kvaerno5/atol 1 took 53 s per 24 h chemistry-only; Kvaerno3, rtol 1e-3,
+  atol 1e4 molec/cm³ and 900 s coupling take ~9 s (O3 within 0.6 %).
+- TUV-x scales the radiation field by r, not 1/r² (Fortran `apply_scale_factor`);
+  reproduced, logged as A11.
+- Li et al. (2016) gives PAN-type nitrates very low c*; they dominate "top
+  contributors" until a curated c* table replaces the placeholder (A8).
+- Level 3 needs a NOx source for nighttime N2O5; the preset holds NO2 at 1 ppb (A14).
+- Runtime (warm): Level 1 ~1.7 s, Level 2 ~6 s, Level 3 ~14 s.
+
+### Next steps
+- Shantanu's c* table, confirmation of A1–A4/A10/A14.
+- tomas-api tutorial endpoints + workers, tomas-web guided levels, Render/Vercel.
+
+---
+
 ## 2026-10-13 (Tue) — AAAR tutorial aerosol step: SOA partitioning, N2O5 uptake, outer step
 
 **Time**: ~00:30 PDT

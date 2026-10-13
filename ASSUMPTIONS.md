@@ -5,6 +5,40 @@ is assumed, why, where it is implemented and how to change it.
 
 ## AAAR tutorial assumptions — confirm with Shantanu
 
+### A1 — N2O5 heterogeneous loss is γ-based uptake (replaces `<34>`)
+
+- The supplied file's `<34> N2O5 = NA + NA : 4.0E-4` is a fixed first-order chamber
+  sink. In the tutorial its rate is set every coupling interval to
+  k_het = condensation sink with α = γ on the current TOMAS aerosol (A5), and its
+  product is renamed to the counter `NA_HET`, so **only** this channel becomes
+  particle nitrate. γ = 0 means no N2O5 heterogeneous loss at all.
+- Where: `box/coupling.py::tutorial_mechanism` (`N2O5_HET_LABEL`, `NA_HET`),
+  `box/driver.py`. The .eqn file itself is unchanged (byte-identical copy).
+
+### A2 — `<33> HNO3 = NA : 6.0E-6` stays a gas-phase sink
+
+- Kept as supplied (an HNO3 loss with a ~46 h lifetime, chamber wall/deposition-like).
+  Its `NA` product is not tracked as particle nitrate.
+
+### A3 — D9 (chamber OH tracer) is inert
+
+- `D9` and `<900001> D9 + OH = D9PROD` are kept but D9 is initialised to 0, so it
+  has no effect unless a user sets it (it can then serve as an OH-exposure tracer).
+
+### A4 — Mechanism kept as supplied otherwise
+
+- Limonene + OH branches stay scaled to the chamber k_OH = 1.47e-10 cm³/s, as in the
+  file header. `CL` is never produced and starts at 0 (inert). `PROD` (an undeclared
+  product name) is dropped at parse time. `H2O`, `BR`, `HCL` are declared but unused;
+  H2O enters only through rate expressions (from RH).
+- Mechanism observations from the parser checks (`tests/test_gaschem.py`), left
+  as supplied: `<13917> CO2N3PAN + OH = CO2N3CO3` does not conserve N (no NO2
+  product); `<14551>`, `<13369>`, `<7727>`, `<7729>` gain one carbon; 346
+  reactions lose carbon (MCM omits CO2).
+- Rate constants: MCM v3.3.1 `constants_mcm` (KPP distribution). KNO3AL there is
+  1.44e-12·exp(−1862/T); F0AM uses 1.4e-12·exp(−1860/T) (2 % lower). We follow the
+  KPP/MCM export the .eqn was generated with.
+
 ### A5 — Particle nitrate from N2O5 uptake
 
 - N₂O₅(g) → 2 NO₃⁻(p) with the full yield (no ClNO₂ channel), at the rate
@@ -40,6 +74,28 @@ is assumed, why, where it is implemented and how to change it.
   particle-phase reaction (k_c = 0). MW and α come with the arrays.
 - Docs: `docs/aaar/soa_partitioning.md`.
 
+### A7 — Photolysis sources
+
+- 25 of the 28 MCM J values come from TUV-x at the surface (`gaschem/photolysis.py`,
+  `SOURCES`), with MACR (J18/J19) and MVK (J24) totals split by the MCM branching
+  ratios at the same SZA. J_C3H7CHO_HCO (J15), J_IPRCHO (J17) and J_C5HPALD1 (J20) have
+  no TUV-x recipe and use the MCM clear-sky parameterization (Saunders et al. 2003)
+  at the same SZA.
+- TUV-x uses its standard-atmosphere O3/T profiles, surface albedo 0.1, clear sky,
+  no aerosol radiative effects; cross sections use profile, not box, temperature.
+  The surface J(SZA) table is interpolated on a 1° grid (≤ 0.4 % vs direct calls).
+
+### A8 — c* placeholder until a curated table arrives
+
+- c* (298 K) of every closed-shell organic comes from Li et al. (2016) using its
+  C/H/O/N/S counts (`gaschem/volatility.py`). This is a composition-only estimate
+  (±1–2 decades typical). It assigns very low c* to multifunctional PAN-type
+  nitrates, which then dominate "top contributors" — a known artefact; PANs are
+  thermally labile gases. A per-species table (`cstar_table`, CSV `species,cstar_ugm3`)
+  overrides the estimate species by species; the result reports its provenance.
+- Radicals (odd H + N + Cl + Br) never partition. Species more volatile than
+  10^4.25 µg/m³ stay gas-only; less volatile than 10^−3.25 join the lowest class.
+
 ### A9 — Organic water uptake
 
 - All organic slots (1–41, including SOA and nitrate) take the TOMAS
@@ -48,6 +104,42 @@ is assumed, why, where it is implemented and how to change it.
   too hygroscopic (κ_SOA ≈ 0.1 vs. ≈ 0.5–0.6 for ammonium bisulfate), so
   wet sizes, condensation sinks and N₂O₅ uptake are overestimated for
   organic-rich particles.
+
+### A10 — Level 2 light is constant
+
+- Level 2 uses constant light: the TUV-x spectrum at SZA 30° rescaled so J_NO2
+  equals the user's value (default 5e-3 s⁻¹). Level 3 uses the real diurnal cycle.
+  Open question: constant "chamber-like" light vs. noon sun at a chosen site.
+
+### A11 — Earth–Sun distance as in TUV-x
+
+- TUV-x (Fortran and the port) multiplies the radiation field by the Earth–Sun
+  distance r [AU] (`apply_scale_factor(earth_sun_distance)`), not by 1/r². We
+  reproduce TUV-x exactly; physically the flux scales as 1/r², a seasonal
+  difference of ≤ ~5 %. Worth reporting upstream.
+
+### A12 — Rate constants frozen per coupling interval (KPP semantics)
+
+- All k (MCM complex rates, J at the interval midpoint, RO2 sum, k_het) are held
+  fixed while the stiff solver integrates one coupling interval (300 s Level 1–2,
+  900 s Level 3; ≤ 3 % difference vs 600 s in the Level 3 benchmark). Gas and
+  aerosol are operator-split at the same interval; H2SO4 (from the SA counter) and
+  nitrate (from NA_HET) are passed to TOMAS as constant rates over the interval.
+- Small negative concentrations from the implicit solver are clipped to zero.
+
+### A13 — Nucleation uses H2SO4 only
+
+- When nucleation is on, the Riccobono/Dunne scheme gets NH3 = 0, ions = 0 and
+  organic vapour = 0, so it is pure binary/neutral H2SO4–H2O nucleation; organic
+  (HOM) nucleation is not represented. Off by default in all presets.
+
+### A14 — Seed and box conventions
+
+- The seed's organic fraction is non-volatile, absorbing OA in slot 41 (with
+  nucleated organic; reported as "POA"); the rest is sulfate. No dilution,
+  deposition or wall loss. Level 3 holds NO2 constant as a stand-in for continuous
+  NOx emissions (otherwise NOx is titrated in a few hours and no N2O5 forms at
+  night); O3 accumulates without deposition.
 
 ### AC1 — SOA absorbing floor (stream C)
 
@@ -68,3 +160,13 @@ is assumed, why, where it is implemented and how to change it.
   counts as non-volatile absorbing OA for SOA partitioning. New particles
   therefore have an absorbing phase from birth. All other organic slots
   outside the active classes (except nitrate) are treated the same way.
+
+## Questions for Shantanu
+
+1. c* table for the mechanism species (CSV `species,cstar_ugm3` at 298 K) — replaces
+   the Li et al. (2016) placeholder (A8), including how to treat PAN-type species.
+2. A1–A4: confirm the chamber-to-ambient edits.
+3. A10: constant light in Level 2, or noon sun at a site?
+4. Level 3 preset: NO2 held at 1 ppb as a NOx source (A14) — acceptable, or
+   prefer explicit emissions?
+5. γ(N2O5) default 0.02 and the slider values {0, 0.002, 0.02, 0.1}.

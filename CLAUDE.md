@@ -50,6 +50,8 @@ python -c "from tomas_jax import TomasState, CoagulationSolver"
 - **dilution_step requires explicit background arrays** (no `None` defaults). Pass `jnp.zeros_like(Nk)` etc. for clean-air dilution. This ensures JIT safety.
 - **AAAR tutorial aerosol step** (`docs/aaar/`): the organic block is carved in `config.py` — `SRTSOA1=1`…15 (`N_SOA_CLASSES`) SOA c*-class slots (Gc vapour, Mk particle), `SRTNIT=40` particle nitrate (as NO3), `SRTORG_NUC=41` nucleated organic; module asserts keep them disjoint. `soa_partition_step` (vbs-jax adapter) takes K classes from `len(cstar_ref)` with c*/ΔHvap/MW traced (compile once per (nbins, K)); MNFIX is its redistribute hook and `calc_wet_diameters` its geometry hook; a 1e-4 absorbing floor (Raoult denominator only) prevents the zero-OA psat=0 sawtooth. `n2o5_uptake` is the condensation sink with α=γ. `box/aerosol_step.py::aerosol_outer_step` (jitted; dt_outer, micro_dt, processes, cfg static) composes sources → MNFIX → make_step(nucleation, coagulation, condensation) → SOA → water per micro-step; its settings live in `box/config.py::AerosolStepConfig`. Tutorial boxvol is 1e10 cm³ so per-cell thresholds (NEPS_CONDSINK=1e10 #/cell) mean 1 #/cm³. Assumptions: `ASSUMPTIONS.md` (A5, A6, A9, AC1, AC2).
 
+- **AAAR tutorial gas chemistry** (`docs/aaar/gaschem.md`, `docs/aaar/coupling.md`): `gaschem/` must not import TOMAS. Rate constants follow KPP semantics — evaluated once per coupling interval (RO2 at start, J at midpoint) via `RateModel.at_env` decomposition `k = k_thermal*(RO2|1) + J_coef@J`, then frozen for `integrate_interval` (diffrax Kvaerno3, rtol 1e-3, atol 1e4 molec/cm³ — chosen by benchmark; keep the chemistry in JAX). Never edit `gaschem/mechanisms/*.eqn`; tutorial edits live in `box/coupling.py` and are logged in `ASSUMPTIONS.md`. `coupling_dt_s` is static for the jitted aerosol step (each value compiles). TUV-x data is found via `TUVX_JAX_ROOT`.
+
 ## File Layout
 
 ```
@@ -78,6 +80,12 @@ tomas_jax/
   physics/heterogeneous.py    — N2O5 heterogeneous uptake k_het and per-bin weights (JIT)
   box/aerosol_step.py         — AAAR tutorial aerosol outer step (sources, nucl, coag, H2SO4 cond, SOA, water; JIT)
   box/config.py               — Box-model configuration (AerosolStepConfig)
+  box/scenario.py             — Scenario input contract + TOML presets (box/presets/level{1,2,3}_*.toml)
+  box/result.py               — RunResult output contract (JSON-ready)
+  box/coupling.py             — Units, seed, tutorial mechanism edits (<34> -> NA_HET), c*-class gather/scatter
+  box/driver.py               — run(scenario) / warmup() / code_version(): coupled gas-chemistry + aerosol driver
+  gaschem/                    — MCM gas chemistry (no TOMAS imports): kpp_parser, mcm_rates, mechanism, solver,
+                                photolysis (TUV-x/MCM J), volatility (Li 2016 c*, classes), environment, config
   solvers/diffrax.py          — Coagulation solvers: Tsit5 adaptive (diffrax_step), forward Euler (coag_euler_step)
   solvers/condensation.py     — Process orchestrator: core helpers + thin wrappers + make_step() composable API + scan-fused loops
 
@@ -127,7 +135,7 @@ docs/
   water_uptake.md             — Water uptake schemes (bisulfate fit, Tabazadeh), water_every_process, assumptions
   coagulation_bin_ratio.md    — Why TFL fails on non-doubling grids; linear sub-bin coagulation scheme, dispatch, validation
   missing_physics.md          — Gap analysis of unimplemented physics
-  aaar/                       — AAAR tutorial: aerosol_step.md, soa_partitioning.md, heterogeneous.md
+  aaar/                       — AAAR tutorial: gaschem.md, coupling.md, aerosol_step.md, soa_partitioning.md, heterogeneous.md
   future_features.md          — Planned improvements: AD, GPU, vmap, multi-species, surrogates
 ```
 

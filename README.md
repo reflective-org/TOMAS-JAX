@@ -478,6 +478,8 @@ python -m pytest tests/test_nucleation.py tests/test_ppm_condensation.py -q
 | [SO2 Chemistry](docs/so2_chemistry.md) | Sun et al. 2022 Troe formalism, diurnal OH, validation |
 | [Missing Physics](docs/missing_physics.md) | Gap analysis: VBS, Kelvin effect, deposition, chemistry, etc. |
 | [Future Features](docs/future_features.md) | GPU acceleration, autodiff, vmap, learned surrogates |
+| [AAAR gas chemistry & photolysis](docs/aaar/gaschem.md) | MCM/KPP parser, rate constants, JAX solver benchmark, TUV-x J provider, c* classes |
+| [AAAR coupled driver](docs/aaar/coupling.md) | `box.driver.run(Scenario)`, operator split, presets, runtimes |
 | [AAAR aerosol step](docs/aaar/aerosol_step.md) | Tutorial outer step: call contract, units, process order, config |
 | [SOA partitioning](docs/aaar/soa_partitioning.md) | vbs-jax adapter, slot map, absorbing floor, equilibrium validation |
 | [N2O5 uptake](docs/aaar/heterogeneous.md) | k_het = condensation sink with α = γ, nitrate placement |

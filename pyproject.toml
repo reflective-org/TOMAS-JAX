@@ -29,7 +29,7 @@ web = [
 ]
 # AAAR tutorial: TUV-x photolysis (needs the tuvx-jax data/ dir; set TUVX_JAX_ROOT)
 photolysis = [
-    "tuvx-jax @ git+https://github.com/reflective-org/tuvx-jax@feat/aaar-tutorial",
+    "tuvx-jax @ git+https://github.com/reflective-org/tuvx-jax@e5d9032d22e740d930c578676d726aaa5ba2473a",
 ]
 notebook = [
     "jupyterlab>=4.0",
