@@ -93,6 +93,12 @@ is assumed, why, where it is implemented and how to change it.
   nitrates, which then dominate "top contributors" — a known artefact; PANs are
   thermally labile gases. A per-species table (`cstar_table`, CSV `species,cstar_ugm3`)
   overrides the estimate species by species; the result reports its provenance.
+- Measured consequence (Level 2 preset, 2026-10-13): 99 % of the particle SOA is
+  nitrogen-containing; limononic acid, limonaldehyde and most hydroperoxides get
+  c* > 10^4.25 µg/m³ and never condense. NOx = 0 gives ~0 SOA (0.01 µg/m³), and SOA
+  saturates near 16 µg/m³ for limonene 5 → 20 ppb (NOx-limited). These are artefacts
+  of the placeholder, not limonene chemistry; Level 2 conclusions about yields or
+  low-NOx SOA need the curated table.
 - Radicals (odd H + N + Cl + Br) never partition. Species more volatile than
   10^4.25 µg/m³ stay gas-only; less volatile than 10^−3.25 join the lowest class.
 
@@ -163,8 +169,9 @@ is assumed, why, where it is implemented and how to change it.
 
 ## Questions for Shantanu
 
-1. c* table for the mechanism species (CSV `species,cstar_ugm3` at 298 K) — replaces
-   the Li et al. (2016) placeholder (A8), including how to treat PAN-type species.
+1. **Blocking for Level 2:** c* table for the mechanism species (CSV
+   `species,cstar_ugm3` at 298 K) — replaces the Li et al. (2016) placeholder, which
+   makes SOA almost entirely organic nitrates (A8). Also: how to treat PAN-type species.
 2. A1–A4: confirm the chamber-to-ambient edits.
 3. A10: constant light in Level 2, or noon sun at a site?
 4. Level 3 preset: NO2 held at 1 ppb as a NOx source (A14) — acceptable, or
