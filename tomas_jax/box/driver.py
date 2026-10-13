@@ -28,11 +28,11 @@ import numpy as np
 from .. import __version__
 from ..core.config import (MW_H2SO4, MW_NO3, N_GAS_SPECIES, N_SOA_CLASSES, SRTH2O, SRTNH4,
                            SRTNIT, SRTORG_NUC, SRTSO4, SRTSOA1)
-from ..gaschem.config import AVOGADRO, DHVAP_A_KJ, DHVAP_B_KJ, MECHANISM_DIR
+from ..gaschem.config import DHVAP_A_KJ, DHVAP_B_KJ, MECHANISM_DIR, TUVX_CONFIG
 from ..gaschem.environment import air_environment
 from ..gaschem.mechanism import EnvRates, Mechanism, RateModel
 from ..gaschem.photolysis import SOURCES as J_SOURCES
-from ..gaschem.photolysis import JProvider, PhotolysisSettings
+from ..gaschem.photolysis import JProvider, PhotolysisSettings, tuvx_root
 from ..gaschem.solver import integrate_interval
 from ..gaschem.volatility import assign_classes, load_cstar_table
 from ..physics.heterogeneous import n2o5_uptake
@@ -47,6 +47,7 @@ from .result import (N_TOP_CONTRIBUTORS, REPORTED_GASES_PPB, REPORTED_J, REPORTE
 from .scenario import Scenario, load_preset, list_presets
 
 ACCOMMODATION_ORGANIC = 1.0     # SOA mass accommodation coefficient [-] (vbs-jax default)
+COUNTER_SPECIES = ("SA", NA_HET)   # read and reset by the driver; not user inputs
 
 
 @functools.lru_cache(maxsize=1)
@@ -58,22 +59,37 @@ def _chemistry():
 @functools.lru_cache(maxsize=4)
 def _class_map(cstar_table: str | None):
     parsed = _chemistry()[0]
+    if cstar_table and Path(cstar_table).name != cstar_table:
+        raise ValueError(f"cstar_table must be a file name in {MECHANISM_DIR.name}/: {cstar_table!r}")
     table = load_cstar_table(MECHANISM_DIR / cstar_table) if cstar_table else None
     return assign_classes(parsed, table)
 
 
+@functools.lru_cache(maxsize=1)
 def code_version() -> str:
-    """Hash of the model sources, mechanism files and pinned dependencies (cache key)."""
-    pkg = Path(__file__).resolve().parents[1]
+    """Hash of model sources, mechanism files, pinned dependencies and TUV-x inputs (cache key)."""
+    def add_tree(h, root, suffixes=None):
+        for path in sorted(p for p in root.rglob("*") if p.is_file()
+                           and (suffixes is None or p.suffix in suffixes)):
+            h.update(path.relative_to(root).as_posix().encode())
+            h.update(path.read_bytes())
+
     h = hashlib.sha256(__version__.encode())
-    for path in sorted(p for p in pkg.rglob("*") if p.suffix in (".py", ".eqn", ".csv", ".toml")):
-        h.update(path.relative_to(pkg).as_posix().encode())
-        h.update(path.read_bytes())
+    add_tree(h, Path(__file__).resolve().parents[1], (".py", ".eqn", ".csv", ".toml"))
     for dist in ("vbs-jax", "tuvx-jax", "jax", "diffrax"):
         try:
-            h.update(f"{dist}={metadata.version(dist)}".encode())
+            d = metadata.distribution(dist)
         except metadata.PackageNotFoundError:
-            pass
+            continue
+        # git-pinned packages keep version 0.1.0; direct_url.json holds the commit
+        h.update(f"{dist}={d.version}{d.read_text('direct_url.json') or ''}".encode())
+    try:
+        root = tuvx_root()
+        h.update((root / TUVX_CONFIG).read_bytes())
+        add_tree(h, root / "data")
+        add_tree(h, root / "tuvx_photolysis", (".py",))
+    except (ImportError, RuntimeError):
+        pass
     return h.hexdigest()[:16]
 
 
@@ -100,6 +116,9 @@ def run(scenario: Scenario, progress_cb: Callable[[float], None] | None = None,
     env = s.environment
     dt_c = float(s.numerics.coupling_dt_s)
     n_int = int(round(s.duration_h * 3600.0 / dt_c))
+    if n_int < 1 or abs(n_int * dt_c - s.duration_h * 3600.0) > 1e-6:
+        raise ValueError(f"duration ({s.duration_h} h) must be a positive multiple of the "
+                         f"coupling interval ({dt_c:.0f} s)")
     out_every = max(1, int(round(s.numerics.output_dt_s / dt_c)))
     warnings: list[str] = []
     if s.processes.chemistry and s.surrogate is not None:
@@ -128,6 +147,7 @@ def run(scenario: Scenario, progress_cb: Callable[[float], None] | None = None,
         cstar, dhvap, mw_cls = np.array([1.0]), np.array([DHVAP_A_KJ]), np.array([200.0])
         cstar_source = "no organic vapor"
     k_cls = cstar.size
+    assert k_cls <= N_SOA_CLASSES
     soa = SOAParams(jnp.asarray(cstar, dtype=jnp.float64), jnp.asarray(dhvap, dtype=jnp.float64),
                     jnp.asarray(mw_cls, dtype=jnp.float64), jnp.float64(ACCOMMODATION_ORGANIC))
     processes = _processes(s, chem or s.surrogate is not None)
@@ -146,6 +166,9 @@ def run(scenario: Scenario, progress_cb: Callable[[float], None] | None = None,
         unknown = sorted((set(s.gases_ppb) | set(s.hold_constant)) - set(index))
         if unknown:
             raise ValueError(f"unknown mechanism species: {unknown}")
+        counters = sorted((set(s.gases_ppb) | set(s.hold_constant)) & set(COUNTER_SPECIES))
+        if counters:
+            raise ValueError(f"{counters} are internal counter species and cannot be set or held")
         y = np.zeros(mech.n_species)
         for sp, ppb in s.gases_ppb.items():
             y[index[sp]] = ppb * 1e-9 * air["M"]
@@ -168,6 +191,7 @@ def run(scenario: Scenario, progress_cb: Callable[[float], None] | None = None,
     rec = {key: [] for key in ("t", "nk", "mk", "gc", "y", "cs", "jnuc", "j", "sza")}
     gas_steps = 0
     soa_bad = 0
+    nitrate_expected = nitrate_added = 0.0
 
     def record(t_s, st, diag_cs, diag_jnuc, y_now, j_now):
         rec["t"].append(t_s / 3600.0)
@@ -210,6 +234,8 @@ def run(scenario: Scenario, progress_cb: Callable[[float], None] | None = None,
                                  jnp.float64(nitrate_rate), jnp.asarray(weights, dtype=jnp.float64))
         state, diag = aerosol_outer_step(state, forcing, soa, dt_c, processes=processes, cfg=cfg)
         soa_bad += int(not bool(diag.soa_time_integrated))
+        nitrate_expected += nitrate_rate * dt_c
+        nitrate_added += float(diag.nitrate_added)
         if chem:
             mk_now = np.asarray(state.Mk)
             class_particle = mk_now[:, SRTSOA1:SRTSOA1 + k_cls].sum(axis=0)
@@ -223,6 +249,9 @@ def run(scenario: Scenario, progress_cb: Callable[[float], None] | None = None,
             progress_cb((i + 1) / n_int)
     if soa_bad:
         warnings.append(f"SOA partitioning hit its sub-step budget in {soa_bad} of {n_int} intervals")
+    if nitrate_added < nitrate_expected * (1.0 - 1e-6):
+        lost = kg_cell_to_ugm3(nitrate_expected - nitrate_added, boxvol)
+        warnings.append(f"{lost:.3g} ug/m3 of N2O5-uptake nitrate had no populated bin to go to")
 
     return _assemble(s, rec, xk, boxvol, air, chem, k_cls, cstar, cstar_source,
                      bridge if chem else None, j_names, warnings,
@@ -273,7 +302,6 @@ def _assemble(s, rec, xk, boxvol, air, chem, k_cls, cstar, cstar_source, bridge,
                 "particle_ugm3": float(kg_cell_to_ugm3(bridge.particle[o], boxvol)),
                 "log10_cstar": float(class_map.log10_cstar[o])})
         result.diagnostics["j_sources"] = {n: J_SOURCES[n] for n in j_names}
-    if chem:
         js = np.array(rec["j"])
         result.photolysis = {n: js[:, j_names.index(n)] for n in REPORTED_J}
         result.photolysis["sza_deg"] = rec["sza"]

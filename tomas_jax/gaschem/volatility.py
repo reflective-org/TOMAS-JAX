@@ -59,7 +59,10 @@ def load_cstar_table(path: str | Path) -> dict[str, float]:
     out = {}
     with open(path, newline="") as f:
         for row in csv.DictReader(f):
-            out[row["species"].strip()] = float(np.log10(float(row["cstar_ugm3"])))
+            value = float(row["cstar_ugm3"])
+            if not np.isfinite(value) or value <= 0.0:
+                raise ValueError(f"c* must be positive and finite: {row}")
+            out[row["species"].strip()] = float(np.log10(value))
     return out
 
 
@@ -103,7 +106,9 @@ def assign_classes(parsed: ParsedMechanism, log10_cstar: dict[str, float] | None
                          for k in range(centers.size)])
     if table:
         n_table = sum(1 for n in names if n in table)
-        source = f"table ({n_table} of {len(names)} condensable species; rest Li et al. 2016)"
+        unmatched = len(set(table) - set(names))
+        source = (f"table ({n_table} of {len(names)} condensable species; rest Li et al. 2016; "
+                  f"{unmatched} table rows not condensable or not in the mechanism)")
     else:
         source = "Li et al. (2016) composition-based estimate"
     return ClassMap(

@@ -96,3 +96,47 @@ def test_surrogate_and_chemistry_exclusive():
     assert isinstance(s, Scenario)
     with pytest.raises(ValueError, match="either the surrogate"):
         run(s)
+
+
+# --- regressions from the code review --------------------------------------------------
+from datetime import datetime, timedelta, timezone  # noqa: E402
+
+from tomas_jax.box.result import _jsonable  # noqa: E402
+from tomas_jax.box.scenario import from_dict  # noqa: E402
+
+
+def test_start_utc_normalised():
+    naive = from_dict({"start_utc": "2026-07-01T16:00:00"})
+    assert naive.start_utc == datetime(2026, 7, 1, 16, tzinfo=timezone.utc)      # naive = UTC
+    ny = timezone(timedelta(hours=-4))
+    aware = Scenario(start_utc=datetime(2026, 7, 1, 12, tzinfo=ny))
+    assert aware.start_utc == datetime(2026, 7, 1, 16, tzinfo=timezone.utc)
+    assert aware.start_utc.utcoffset() == timedelta(0)
+    replaced = Scenario().replace(start_utc="2026-01-01T00:00:00+01:00")
+    assert replaced.start_utc == datetime(2025, 12, 31, 23, tzinfo=timezone.utc)
+
+
+def test_partial_seed_override_keeps_modes_and_rejects_typos():
+    s = from_dict({"seed": {"organic_mass_fraction": 0.5}})
+    assert len(s.seed.modes) == 1 and s.seed.organic_mass_fraction == 0.5
+    with pytest.raises(TypeError):
+        from_dict({"seed": {"organic_fraction": 0.5}})
+
+
+def test_counter_species_and_bad_duration_rejected():
+    s = load_preset("level2_limonene_soa")
+    with pytest.raises(ValueError, match="counter"):
+        run(s.replace(hold_constant=("SA",)))
+    with pytest.raises(ValueError, match="multiple of the coupling"):
+        run(s.replace(duration_h=0.1))
+
+
+def test_cstar_table_must_be_a_plain_file_name():
+    with pytest.raises(ValueError, match="file name"):
+        run(load_preset("level2_limonene_soa").replace(cstar_table="../../../etc/passwd"))
+
+
+def test_json_has_no_nan():
+    assert _jsonable({"a": np.float64("nan"), "b": [np.float32(1.5)]}) == {"a": None, "b": [1.5]}
+    r = run(load_preset("level1_volatility").replace(duration_h=0.5))
+    json.dumps(r.to_dict(), allow_nan=False)

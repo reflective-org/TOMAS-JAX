@@ -246,3 +246,26 @@ def test_assign_classes(parsed):
     cm2 = assign_classes(parsed, {name: 2.0})
     assert cm2.log10_cstar[cm2.species.index(name)] == 2.0
     assert cm2.source.startswith("table (1 of")
+
+
+def test_photolysis_constant_mode_validates_and_utc_time_base(j_names):
+    pytest.importorskip("tuvx_photolysis")
+    with pytest.raises(ValueError, match="constant light"):
+        JProvider(j_names, PhotolysisSettings("constant", constant_sza_deg=95.0))
+    from datetime import timedelta
+    ny = timezone(timedelta(hours=-4))
+    utc = JProvider(j_names, BUFFALO_JULY)
+    local = JProvider(j_names, PhotolysisSettings(
+        "tuvx", 42.9, -78.9, BUFFALO_JULY.start_utc.astimezone(ny)))
+    assert local.sza_deg(3600.0) == pytest.approx(utc.sza_deg(3600.0))
+    np.testing.assert_allclose(local.at(3600.0), utc.at(3600.0))
+
+
+def test_cstar_table_validation(parsed, tmp_path):
+    from tomas_jax.gaschem.volatility import load_cstar_table
+    bad = tmp_path / "bad.csv"
+    bad.write_text("species,cstar_ugm3\nLIMONENE,0\n")
+    with pytest.raises(ValueError, match="positive"):
+        load_cstar_table(bad)
+    cm = assign_classes(parsed, {"NOT_A_SPECIES": 1.0, "LIMAO2": 1.0})   # unknown + radical
+    assert "2 table rows not condensable or not in the mechanism" in cm.source

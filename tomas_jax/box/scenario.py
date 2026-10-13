@@ -75,7 +75,7 @@ class Scenario:
     name: str = "custom"
     level: int = 1                         # tutorial level (1, 2, 3); informational
     duration_h: float = 12.0
-    start_utc: datetime = datetime(2026, 7, 1, 16, 0, tzinfo=timezone.utc)
+    start_utc: datetime = datetime(2026, 7, 1, 16, 0, tzinfo=timezone.utc)  # naive = UTC
     environment: Environment = field(default_factory=Environment)
     seed: Seed = field(default_factory=Seed)
     photolysis: Photolysis = field(default_factory=Photolysis)
@@ -87,6 +87,10 @@ class Scenario:
     cstar_table: str | None = None         # CSV in gaschem/mechanisms (None = Li et al. 2016)
     processes: Processes = field(default_factory=Processes)
     numerics: Numerics = field(default_factory=Numerics)
+
+    def __post_init__(self):
+        object.__setattr__(self, "start_utc", _to_utc(self.start_utc))
+        object.__setattr__(self, "hold_constant", tuple(self.hold_constant))
 
     def replace(self, **changes) -> "Scenario":
         """Copy with top-level or nested changes, e.g. ``environment={"rh": 0.8}``."""
@@ -100,11 +104,24 @@ class Scenario:
         return dataclasses.replace(self, **updated)
 
 
+def _to_utc(value: datetime | str) -> datetime:
+    """ISO string or datetime -> aware UTC datetime; naive values are taken as UTC."""
+    if isinstance(value, str):
+        value = datetime.fromisoformat(value)
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 def _build(cls, data: dict):
     """Construct a (nested) scenario dataclass from plain dicts/lists."""
     if cls is Seed:
-        modes = tuple(m if isinstance(m, SeedMode) else SeedMode(**m) for m in data.get("modes", ()))
-        return Seed(modes=modes, organic_mass_fraction=data.get("organic_mass_fraction", 0.3))
+        unknown = set(data) - {f.name for f in dataclasses.fields(Seed)}
+        if unknown:
+            raise TypeError(f"Seed got unexpected keys {sorted(unknown)}")
+        data = {**{"modes": Seed().modes, "organic_mass_fraction": Seed().organic_mass_fraction}, **data}
+        modes = tuple(m if isinstance(m, SeedMode) else SeedMode(**m) for m in data["modes"])
+        return Seed(modes=modes, organic_mass_fraction=data["organic_mass_fraction"])
     return cls(**data)
 
 
@@ -117,10 +134,6 @@ def from_dict(data: dict) -> Scenario:
     for key, cls in _NESTED.items():
         if isinstance(kwargs.get(key), dict):
             kwargs[key] = _build(cls, kwargs[key])
-    if "start_utc" in kwargs and isinstance(kwargs["start_utc"], str):
-        kwargs["start_utc"] = datetime.fromisoformat(kwargs["start_utc"]).astimezone(timezone.utc)
-    if "hold_constant" in kwargs:
-        kwargs["hold_constant"] = tuple(kwargs["hold_constant"])
     return Scenario(**kwargs)
 
 

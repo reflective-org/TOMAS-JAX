@@ -127,7 +127,11 @@ class JProvider:
             raise ValueError(f"unknown photolysis mode {settings.mode!r}")
         self.j_names = list(j_names)
         self.settings = settings
+        start = settings.start_utc
+        self._start = start.replace(tzinfo=timezone.utc) if start.tzinfo is None else start.astimezone(timezone.utc)
         if settings.mode == "constant":
+            if not (0.0 <= settings.constant_sza_deg < 90.0) or settings.jno2 < 0.0:
+                raise ValueError("constant light needs 0 <= constant_sza_deg < 90 and jno2 >= 0")
             j = self._tuvx_at_sza(settings.constant_sza_deg, 1.0)
             self._constant = j * (settings.jno2 / j[self.j_names.index("J_NO2")])
 
@@ -137,7 +141,7 @@ class JProvider:
         s = self.settings
         if s.mode == "constant":
             return s.constant_sza_deg
-        now = s.start_utc + timedelta(seconds=float(t))
+        now = self._start + timedelta(seconds=float(t))
         hour = now.hour + now.minute / 60 + (now.second + now.microsecond * 1e-6) / 3600
         return solar_zenith_angle(now.year, now.month, now.day, hour, s.latitude, s.longitude)
 
@@ -171,6 +175,7 @@ class JProvider:
             return np.array([float(j[n]) for n in self.j_names])
         from tuvx_photolysis.geometry import earth_sun_distance
 
-        now = self.settings.start_utc + timedelta(seconds=float(t))
-        esd = earth_sun_distance(now.year, now.month, now.day, now.hour + now.minute / 60)
+        now = self._start + timedelta(seconds=float(t))
+        esd = earth_sun_distance(now.year, now.month, now.day,
+                                 now.hour + now.minute / 60 + now.second / 3600)
         return self._tuvx_at_sza(sza, esd)
