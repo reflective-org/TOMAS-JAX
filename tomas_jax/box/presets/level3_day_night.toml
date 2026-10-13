@@ -1,0 +1,45 @@
+# Level 3 — Day & Night: TUV-x sunlight for a site and date over 24 h, limonene held
+# constant, N2O5 uptake on the aerosol forms particle nitrate at night.
+name = "Level 3 - Day and Night"
+level = 3
+duration_h = 24.0
+start_utc = "2026-07-01T16:00:00+00:00"   # 12:00 local (EDT) in Buffalo, NY
+hold_constant = ["LIMONENE"]
+gamma_n2o5 = 0.02
+
+[gases_ppb]
+LIMONENE = 1.0
+O3 = 40.0
+NO = 1.0
+NO2 = 5.0
+SO2 = 2.0
+CO = 120.0
+CH4 = 1900.0
+H2 = 500.0
+
+[environment]
+temp_k = 293.15
+pres_pa = 101325.0
+rh = 0.6
+
+[seed]
+organic_mass_fraction = 0.3
+modes = [{ number_cm3 = 3000.0, gmd_nm = 80.0, gsd = 1.6 }]
+
+[photolysis]
+mode = "tuvx"
+latitude_deg = 42.89
+longitude_deg = -78.88
+
+[processes]
+chemistry = true
+nucleation = false
+coagulation = true
+h2so4_condensation = true
+soa_partitioning = true
+n2o5_uptake = true
+
+[numerics]
+coupling_dt_s = 600.0
+output_dt_s = 1800.0
+nbins = 40
