@@ -161,3 +161,88 @@ def test_integrate_daytime_hour(parsed, mech):
     assert 1e5 < y[index["OH"]] < 1e8                   # daytime OH
     assert y[index["LIMONENE"]] < 0.5 * 10e-9 * ENV["M"]
     assert y[index["SA"]] > 0                           # SO2 -> H2SO4 counter
+
+
+# --- photolysis ------------------------------------------------------------------
+from datetime import datetime, timezone  # noqa: E402
+
+from tomas_jax.gaschem.photolysis import (  # noqa: E402
+    MCM_ONLY, SOURCES, TUVX_DIRECT, JProvider, PhotolysisSettings, tuvx_root)
+
+BUFFALO_JULY = PhotolysisSettings("tuvx", 42.9, -78.9, datetime(2026, 7, 1, 5, 0, tzinfo=timezone.utc))
+
+
+@pytest.fixture(scope="module")
+def j_names(parsed):
+    return RateModel(parsed).j_names
+
+
+def test_every_mechanism_j_has_a_source(j_names):
+    assert set(j_names) == set(SOURCES)
+    assert set(MCM_ONLY) == {"J_C3H7CHO_HCO", "J_IPRCHO", "J_C5HPALD1"}
+
+
+def test_photolysis_off_and_constant(j_names):
+    assert not JProvider(j_names, PhotolysisSettings("off")).at(0.0).any()
+    pytest.importorskip("tuvx_photolysis")
+    jp = JProvider(j_names, PhotolysisSettings("constant", jno2=5e-3))
+    j = dict(zip(j_names, jp.at(0.0)))
+    assert j["J_NO2"] == pytest.approx(5e-3)
+    assert np.all(jp.at(0.0) == jp.at(43200.0))
+
+
+def test_photolysis_mcm_mode_matches_parameterization(j_names):
+    pytest.importorskip("tuvx_photolysis")
+    jp = JProvider(j_names, PhotolysisSettings("mcm", 42.9, -78.9, BUFFALO_JULY.start_utc))
+    t = 7 * 3600.0
+    ref = mcm_photolysis(np.deg2rad(jp.sza_deg(t)), j_names)
+    np.testing.assert_allclose(jp.at(t), [ref[n] for n in j_names], rtol=1e-12)
+
+
+def test_photolysis_tuvx_matches_direct_tuvx(j_names):
+    pytest.importorskip("tuvx_photolysis")
+    from tuvx_photolysis import PhotolysisCalculator
+    from tomas_jax.gaschem.config import TUVX_CONFIG
+    root = tuvx_root()
+    calc = PhotolysisCalculator.from_tuvx_json(root / TUVX_CONFIG, data_root=root)
+    jp = JProvider(j_names, BUFFALO_JULY)
+    for local_hour in (7.0, 12.0, 17.5):                # Buffalo local = UTC - 5 h
+        assert jp.sza_deg(local_hour * 3600) < 80
+        ref = calc.rate_constants(42.9, -78.9, 2026, 7, 1, 5 + local_hour, altitude_km=0.0)
+        got = dict(zip(j_names, jp.at(local_hour * 3600)))
+        for name, key in TUVX_DIRECT.items():
+            assert got[name] == pytest.approx(ref[key], rel=1e-2), name
+    assert not jp.at(-4 * 3600.0).any()                 # 01 local: night
+
+
+# --- volatility ------------------------------------------------------------------
+from tomas_jax.gaschem.volatility import (  # noqa: E402
+    assign_classes, is_closed_shell, log10_cstar_li2016)
+
+
+def test_li2016_examples():
+    # CH class: (23.80 - 10) * 0.4861 for C10H16
+    assert log10_cstar_li2016({"C": 10, "H": 16}) == pytest.approx(13.8 * 0.4861)
+    # CHO: (22.66-10)*0.4481 - 3*1.656 - 2*30/13*(-0.7790)
+    assert log10_cstar_li2016({"C": 10, "H": 16, "O": 3}) == pytest.approx(
+        12.66 * 0.4481 - 3 * 1.656 + 2 * 30 / 13 * 0.7790)
+    with pytest.raises(ValueError):
+        log10_cstar_li2016({"H": 2, "O": 2})
+
+
+def test_closed_shell_rule():
+    assert is_closed_shell({"C": 10, "H": 16, "O": 3})        # pinonic acid
+    assert not is_closed_shell({"C": 10, "H": 17, "O": 3})    # a C10 RO2
+    assert is_closed_shell({"C": 10, "H": 17, "N": 1, "O": 5})  # an organic nitrate
+
+
+def test_assign_classes(parsed):
+    cm = assign_classes(parsed)
+    assert len(cm.species) == 245 and "LIMONENE" not in cm.species
+    assert all(is_closed_shell(parsed.atoms[s]) for s in cm.species)
+    assert cm.class_cstar.size == 15 and np.all(np.diff(cm.class_dhvap) < 0)
+    # a table entry overrides the estimate and is reflected in the provenance string
+    name = cm.species[0]
+    cm2 = assign_classes(parsed, {name: 2.0})
+    assert cm2.log10_cstar[cm2.species.index(name)] == 2.0
+    assert cm2.source.startswith("table (1 of")

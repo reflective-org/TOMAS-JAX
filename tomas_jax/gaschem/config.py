@@ -50,3 +50,23 @@ SOLVER = "kvaerno3"
 SOLVER_RTOL = 1e-3
 SOLVER_ATOL = 1e4               # [molec/cm3]
 SOLVER_MAX_STEPS = 20_000       # per coupling interval
+
+# --- Photolysis (TUV-x) --------------------------------------------------------------
+# TUV-x configuration (relative to the tuvx-jax checkout, see photolysis.tuvx_root()).
+TUVX_CONFIG = "examples/tuv_5_4_no_aerosol.json"
+# Surface J is tabulated once per process on this SZA grid [deg] and interpolated;
+# J = 0 at and beyond 90 deg (same convention as PhotolysisCalculator.rate_constants).
+TUVX_SZA_GRID_DEG = tuple(float(a) for a in range(0, 91))
+
+# --- Volatility classes (SOA partitioning) --------------------------------------------
+# Condensable organics are lumped into half-decade c* classes (log10 c* at 298 K, ug/m3)
+# that map onto TOMAS organic slots 1..N (ASSUMPTIONS A6). Species more volatile than the
+# top class edge stay gas-only; less volatile than the bottom edge join the bottom class.
+VOLATILITY_LOG10_CSTAR_CENTERS = tuple(-3.0 + 0.5 * i for i in range(15))   # -3 ... 4
+VOLATILITY_CLASS_HALF_WIDTH = 0.25
+# Enthalpy of vaporization [kJ/mol] = A - B*log10(c*_298) (Epstein et al., 2010, as used
+# in SOM-TOMAS soacond; c* in ug/m3).
+DHVAP_A_KJ = 131.0
+DHVAP_B_KJ = 11.0
+# Molecular weight assigned to a class with no member species [g/mol].
+DEFAULT_CLASS_MW = 200.0
