@@ -44,6 +44,17 @@ SRTH2O = 43         # Water [H2O]
 SRTSO2 = 43         # SO2 in gas array Gc (index 43, the new 44th element)
 # SRTNACL = 41        # Sea Salt (Assuming slot 41 based on previous context)
 
+# AAAR tutorial carve of the organic block 1-41 (docs/aaar/). Gc and Mk
+# share these indices: Gc holds the vapour, Mk the particle phase.
+SRTSOA1 = 1         # First SOA volatility (c*) class slot
+N_SOA_CLASSES = 15  # SOA c*-class slots SRTSOA1 .. SRTSOA1+14 (1-15)
+SRTNIT = 40         # Particle nitrate, stored as NO3 mass (MW_NO3)
+SRTORG_NUC = 41     # Organic mass of nucleated clusters (nucleation.py)
+
+assert SRTORG1 <= SRTSOA1
+assert SRTSOA1 + N_SOA_CLASSES - 1 < SRTNIT < SRTORG_NUC
+assert SRTORG_NUC == SRTORGLAST   # nucleation.py writes SRTORGLAST
+
 # =========================================================================
 # 4. Physical Constants
 # =========================================================================
@@ -68,10 +79,16 @@ MW_OH = 17.007
 MW_NH3 = 17.0
 MW_NH4 = 18.0
 MW_SO4 = 96.0
+MW_N2O5 = 108.01
+MW_NO3 = 62.0
 
 # Diffusion volumes (Fuller-Schettler-Giddings method)
 SV_H2SO4 = 42.88               # Sum of atomic diffusion volumes for H2SO4
 SV_SO2 = 41.73                  # Sum of atomic diffusion volumes for SO2
+# N2O5 from the Fuller, Schettler & Giddings (1966, Ind. Eng. Chem. 58(5),
+# 18-27) atomic volumes N = 5.69, O = 5.48 -- the table SV_H2SO4 uses
+# (2*1.98 H + 17.0 S + 4*5.48 O = 42.88).
+SV_N2O5 = 2 * 5.69 + 5 * 5.48   # = 38.78
 
 # Condensation numerical thresholds
 NEPS_COND = 1.0e-5             # Minimum number for condensation

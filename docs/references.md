@@ -82,6 +82,26 @@ Papers and textbooks referenced in the TOMAS-JAX codebase, organized by topic.
 
 ---
 
+## Organic Aerosol and Heterogeneous Chemistry (AAAR tutorial)
+
+- Pankow, J. F.: An absorption model of gas/particle partitioning of organic compounds in the atmosphere. *Atmos. Environ.*, 28, 185–188, 1994.
+
+- Donahue, N. M., Robinson, A. L., Stanier, C. O., and Pandis, S. N.: Coupled partitioning, dilution, and chemical aging of semivolatile organics. *Environ. Sci. Technol.*, 40, 2635–2643, 2006.
+
+- Epstein, S. A., Riipinen, I., and Donahue, N. M.: A semiempirical correlation between enthalpy of vaporization and saturation concentration for organic aerosol. *Environ. Sci. Technol.*, 44, 743–748, 2010.
+
+- Zaveri, R. A., Easter, R. C., Shilling, J. E., and Seinfeld, J. H.: Modeling kinetic partitioning of secondary organic aerosol and size distribution dynamics: representing effects of volatility, phase state, and particle-phase reaction. *Atmos. Chem. Phys.*, 14, 5153–5181, 2014.
+
+- Fuchs, N. A. and Sutugin, A. G.: High-dispersed aerosols. In *Topics in Current Aerosol Research*, Pergamon, Oxford, 1971.
+
+- Bertram, T. H. and Thornton, J. A.: Toward a general parameterization of N2O5 reactivity on aqueous particles: the competing effects of particle liquid water, nitrate and chloride. *Atmos. Chem. Phys.*, 9, 8351–8363, 2009.
+
+- Chang, W. L., Bhave, P. V., Brown, S. S., Riemer, N., Stutz, J., and Dabdub, D.: Heterogeneous atmospheric chemistry, ambient measurements, and model calculations of N2O5: a review. *Aerosol Sci. Technol.*, 45, 665–695, 2011.
+
+- Burkholder, J. B., et al.: Chemical Kinetics and Photochemical Data for Use in Atmospheric Studies, Evaluation No. 19. JPL Publication 19-5, Jet Propulsion Laboratory, Pasadena, 2019.
+
+---
+
 ## Numerical Methods — Gas-Phase Transport
 
 - Fuller, E. N., Schettler, P. D., and Giddings, J. C.: A new method for prediction of binary gas-phase diffusion coefficients. *Ind. Eng. Chem.*, 58(5), 18–27, 1966. *(Used via Perry's Chemical Engineers' Handbook)*
@@ -138,4 +158,4 @@ Papers and textbooks referenced in the TOMAS-JAX codebase, organized by topic.
 
 ---
 
-*41 references. Last updated: 2026-10-07*
+*49 references. Last updated: 2026-10-13*

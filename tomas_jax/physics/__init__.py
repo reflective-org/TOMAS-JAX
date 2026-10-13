@@ -20,6 +20,10 @@ Equilibrium:
     nh3_equilibrium     - NH3/NH4 stoichiometric partitioning
     water_equilibrium   - Hygroscopic water uptake (ISORROPIA fits)
 
+AAAR tutorial (docs/aaar/):
+    soa_partitioning    - SOA c*-class partitioning via vbs-jax (JIT)
+    heterogeneous       - N2O5 uptake rate and per-bin weights (JIT)
+
 Radiative:
     bhmie               - Bohren-Huffman Mie scattering (Bohren & Huffman 1983)
     radiative_forcing   - Direct SW radiative forcing (Chylek & Wong 1995, Pierce et al. 2010)

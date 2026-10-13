@@ -4,6 +4,75 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-10-13 (Tue) — AAAR tutorial aerosol step: SOA partitioning, N2O5 uptake, outer step
+
+**Time**: ~00:30 PDT
+**Branch**: `feat/aaar-tutorial-aerosol` (stream C of the AAAR tutorial build)
+
+### Summary
+This is the aerosol side shared by the three AAAR photochemical box-model
+tutorial levels. The levels are (1) H2SO4 plus one surrogate organic
+vapour of user-chosen c\*, (2) MCM limonene products lumped into c\*
+classes, and (3) Level 2 plus nitrate from N2O5 uptake. SOA partitioning
+uses the vbs-jax kinetic solver (pinned dependency) through a TOMAS
+adapter. The coupling driver (another stream) calls one jitted
+`aerosol_outer_step`. Defaults of all existing code paths are unchanged.
+
+### Changes
+- `core/config.py`: organic slot carve. `SRTSOA1=1`, `N_SOA_CLASSES=15`,
+  `SRTNIT=40` (nitrate as NO3), `SRTORG_NUC=41` (== `SRTORGLAST`), with
+  disjointness asserts. `MW_N2O5`, `MW_NO3`, and `SV_N2O5=38.78` (Fuller
+  1966 atomic volumes, as for `SV_H2SO4`).
+- `physics/condensation_sink.py`: `calc_wet_diameters` extracted from
+  `calc_condensation_sink` (results unchanged) so SOA geometry matches the
+  H2SO4 sink.
+- `physics/soa_partitioning.py` (new): `soa_partition_step` adapter over
+  `vbs_jax.vbs_partition_step`. Per-cell ↔ per-m³; MNFIX redistribute
+  hook; TOMAS geometry hook; per-cell (Nk, Mk) carried as aux. Absorbing
+  floor of 1e-4 × non-SOA dry mass in the Raoult denominator.
+- `physics/heterogeneous.py` (new): `n2o5_uptake` gives k_het and per-bin
+  weights (condensation sink with α = γ).
+- `box/` (new): `aerosol_step.py` (`aerosol_outer_step`, `AerosolState`,
+  `AerosolForcing`, `SOAParams`, `AerosolDiag`) and `config.py`
+  (`AerosolStepConfig`). SOA class arrays (c\*, ΔHvap in kJ/mol, MW)
+  come from the caller (`gaschem/volatility.py`). The aerosol side has no
+  c\*/ΔHvap rule.
+- `tests/test_aaar_aerosol.py` (15 tests, ~13 s).
+- Docs: `docs/aaar/{aerosol_step,soa_partitioning,heterogeneous}.md`,
+  `ASSUMPTIONS.md` (A5, A6, A9, AC1, AC2), `docs/references.md`,
+  `CLAUDE.md`, `README.md`.
+
+### Verification
+- Full suite: 496 passed (481 before + 15 new).
+- Single c\*-class equilibrium within 0.35% of Pankow from either side.
+  Six Donahue classes within 0.5% per class of `vbs_jax.vbs_equilibrium`.
+  The residual is the Kelvin term at 1.5 µm.
+- Per-class gas + particle SOA conserved to 1e-10 over a 600 s step with
+  all processes and sources on. 12 h with no sources conserves dry mass to
+  ~5e-12, and N(t) is identical to a coagulation-only run.
+- Free-molecular N2O5 limit within 0.04% of γ c̄ A/4. γ = 0 gives k_het = 0
+  and finite weights.
+- Changing c\* does not recompile (jit cache size unchanged). A Level-1-like
+  12 h run takes ~2–3 s after a ~1 s compile.
+
+### Known issues / limitations
+- Without the absorbing floor, zero-OA bins have psat = 0 in vbs-jax and
+  even c\* = 1000 vapour condenses, then re-evaporates in a sawtooth. The
+  floor delays the start of supersaturated condensation by a few minutes
+  (ASSUMPTIONS.md AC1).
+- Nitrate is irreversible and non-volatile, with no NH4NO3 thermodynamics.
+  It takes the bisulfate water ratio and sulfate-like density, as all slots
+  1–41 do. SOA is too hygroscopic for the same reason (A5, A9).
+- The nitrate weights are computed once per outer step by the driver.
+
+### Next steps
+- Driver stream: call `aerosol_outer_step` from `box/driver.py`. Map gas
+  products to `org_rate`/class vapour, N2O5 to `nitrate_rate` with
+  `n2o5_uptake`, and compute H2SO4 production.
+- Confirm A5/A6/A9/AC1/AC2 with Shantanu.
+
+---
+
 ## 2026-10-06 (Tue) — Selectable water uptake (Tabazadeh) and water after every process
 
 **Time**: ~14:00 PDT
