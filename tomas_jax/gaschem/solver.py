@@ -13,7 +13,6 @@ from .mechanism import Mechanism
 _SOLVERS = {"kvaerno5": dfx.Kvaerno5, "kvaerno3": dfx.Kvaerno3}
 
 
-@eqx.filter_jit
 def integrate_interval(
     mech: Mechanism,
     y0: jax.Array,
@@ -31,11 +30,24 @@ def integrate_interval(
         y0: concentrations [molec/cm3], shape (n_species,).
         k: rate constants for this interval, shape (n_reactions,).
         dt: interval length [s].
+        max_steps: budget of accepted + rejected steps for this interval.
 
     Returns:
-        (y [molec/cm3] clipped at zero, number of accepted steps). Fails loudly
-        (diffrax raises) if the step budget is exhausted.
+        (y [molec/cm3] clipped at zero, number of accepted steps).
+
+    Raises:
+        RuntimeError: the solve did not reach dt, e.g. ``max_steps`` ran out. The
+            message leads with diffrax's reason (not a JIT stack trace).
     """
+    y, nsteps, result = _integrate(mech, y0, k, dt, rtol, atol, solver, max_steps)
+    if result != dfx.RESULTS.successful:
+        raise RuntimeError(f"gas-phase chemistry solver failed on a {float(dt):g} s coupling "
+                           f"interval (max_steps={max_steps}): {dfx.RESULTS[result]}")
+    return y, nsteps
+
+
+@eqx.filter_jit
+def _integrate(mech, y0, k, dt, rtol, atol, solver, max_steps):
     term = dfx.ODETerm(lambda t, y, args: mech.rhs(y, args))
     sol = dfx.diffeqsolve(
         term,
@@ -48,6 +60,7 @@ def integrate_interval(
         stepsize_controller=dfx.PIDController(rtol=rtol, atol=atol),
         saveat=dfx.SaveAt(t1=True),
         max_steps=max_steps,
+        throw=False,                    # checked by integrate_interval
     )
     # KPP-style: tiny negative overshoots from the implicit solver are clipped.
-    return jnp.maximum(sol.ys[-1], 0.0), sol.stats["num_accepted_steps"]
+    return jnp.maximum(sol.ys[-1], 0.0), sol.stats["num_accepted_steps"], sol.result

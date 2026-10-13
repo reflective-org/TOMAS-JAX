@@ -163,6 +163,18 @@ def test_integrate_daytime_hour(parsed, mech):
     assert y[index["SA"]] > 0                           # SO2 -> H2SO4 counter
 
 
+def test_integrate_exhausted_step_budget_raises_clear_error(parsed, mech):
+    """Running out of max_steps raises with the reason first, not a JIT stack trace."""
+    rm = RateModel(parsed, external=("34",))
+    rates = EnvRates(*(jnp.asarray(a) for a in rm.at_env(ENV)))
+    y, _ = _initial_state(parsed, {"LIMONENE": 10, "O3": 40, "NO": 0.5, "NO2": 2})
+    jd = mcm_photolysis(np.deg2rad(30.0), rm.j_names)
+    k = rates.k(mech.ro2(y), jnp.asarray([jd[n] for n in rm.j_names]))
+    with pytest.raises(RuntimeError, match=r"^gas-phase chemistry solver failed on a 300 s "
+                       r"coupling interval \(max_steps=2\): The maximum number of solver steps"):
+        integrate_interval(mech, y, k, 300.0, max_steps=2)
+
+
 # --- photolysis ------------------------------------------------------------------
 from datetime import datetime, timezone  # noqa: E402
 

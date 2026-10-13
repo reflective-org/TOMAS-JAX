@@ -49,7 +49,12 @@ DROPPED_PRODUCTS = frozenset({"PROD"})
 SOLVER = "kvaerno3"
 SOLVER_RTOL = 1e-3
 SOLVER_ATOL = 1e4               # [molec/cm3]
-SOLVER_MAX_STEPS = 20_000       # per coupling interval
+# Step budget (accepted + rejected) per coupling interval; when it runs out,
+# integrate_interval raises and the run fails. One step costs ~9 ms (725 species,
+# laptop CPU) and cannot be interrupted, so this caps one interval at ~20 s. Measured
+# need: <= 23 steps per interval for the presets and 161 for the most extreme
+# tomas-api input tried (Level 3 gases x1000, capped at 1e5 ppb, 900 s intervals).
+SOLVER_MAX_STEPS = 2_000
 
 # --- Photolysis (TUV-x) --------------------------------------------------------------
 # TUV-x configuration (relative to the tuvx-jax checkout, see photolysis.tuvx_root()).
