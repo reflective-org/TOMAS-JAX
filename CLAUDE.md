@@ -48,6 +48,7 @@ python -c "from tomas_jax import TomasState, CoagulationSolver"
 - **GPU deployment:** See `docs/gpu_deployment.md`. Use only `*_jit` methods and `make_step()`. Legacy numpy paths (`method='tfl'`, `method='ppm'`) emit `DeprecationWarning` and are not GPU-compatible. `make_step()` returns a JIT-compiled function by default (`jit=True`). For batch/ensemble runs, use `jax.vmap(step_fn)`.
 - **Centralized float64 config:** Only `core/config.py` calls `jax.config.update("jax_enable_x64", True)`. All other library modules reference it via comment. Do not add redundant x64 config calls.
 - **dilution_step requires explicit background arrays** (no `None` defaults). Pass `jnp.zeros_like(Nk)` etc. for clean-air dilution. This ensures JIT safety.
+- **AAAR tutorial aerosol step** (`docs/aaar/`): the organic block is carved in `config.py` — `SRTSOA1=1`…15 (`N_SOA_CLASSES`) SOA c*-class slots (Gc vapour, Mk particle), `SRTNIT=40` particle nitrate (as NO3), `SRTORG_NUC=41` nucleated organic; module asserts keep them disjoint. `soa_partition_step` (vbs-jax adapter) takes K classes from `len(cstar_ref)` with c*/ΔHvap/MW traced (compile once per (nbins, K)); MNFIX is its redistribute hook and `calc_wet_diameters` its geometry hook; a 1e-4 absorbing floor (Raoult denominator only) prevents the zero-OA psat=0 sawtooth. `n2o5_uptake` is the condensation sink with α=γ. `box/aerosol_step.py::aerosol_outer_step` (jitted; dt_outer, micro_dt, processes, cfg static) composes sources → MNFIX → make_step(nucleation, coagulation, condensation) → SOA → water per micro-step; its settings live in `box/config.py::AerosolStepConfig`. Tutorial boxvol is 1e10 cm³ so per-cell thresholds (NEPS_CONDSINK=1e10 #/cell) mean 1 #/cm³. Assumptions: `ASSUMPTIONS.md` (A5, A6, A9, AC1, AC2).
 
 ## File Layout
 
@@ -73,6 +74,10 @@ tomas_jax/
   physics/nucleation.py       — Nucleation: ricco_dunne (Riccobono+Dunne) + zhao2024 (11-mechanism) schemes (JIT-compilable)
   physics/so2_chemistry.py    — SO2+OH chemistry: Sun et al. (2022) Troe formalism, SZA, diurnal OH (JIT-compilable)
   physics/dilution.py         — Dilution/entrainment: first-order relaxation toward background (JIT-compilable)
+  physics/soa_partitioning.py — SOA c*-class gas-particle partitioning: TOMAS adapter over vbs-jax (JIT)
+  physics/heterogeneous.py    — N2O5 heterogeneous uptake k_het and per-bin weights (JIT)
+  box/aerosol_step.py         — AAAR tutorial aerosol outer step (sources, nucl, coag, H2SO4 cond, SOA, water; JIT)
+  box/config.py               — Box-model configuration (AerosolStepConfig)
   solvers/diffrax.py          — Coagulation solvers: Tsit5 adaptive (diffrax_step), forward Euler (coag_euler_step)
   solvers/condensation.py     — Process orchestrator: core helpers + thin wrappers + make_step() composable API + scan-fused loops
 
@@ -122,12 +127,14 @@ docs/
   water_uptake.md             — Water uptake schemes (bisulfate fit, Tabazadeh), water_every_process, assumptions
   coagulation_bin_ratio.md    — Why TFL fails on non-doubling grids; linear sub-bin coagulation scheme, dispatch, validation
   missing_physics.md          — Gap analysis of unimplemented physics
+  aaar/                       — AAAR tutorial: aerosol_step.md, soa_partitioning.md, heterogeneous.md
   future_features.md          — Planned improvements: AD, GPU, vmap, multi-species, surrogates
 ```
 
 ## Species Indices (0-based)
 
 - 0 = SO4, 1-41 = Organics, 42 = NH4, 43 = H2O
+- AAAR carve of the organics: 1-15 = SOA c* classes (`SRTSOA1`, `N_SOA_CLASSES`), 40 = particle nitrate as NO3 (`SRTNIT`), 41 = nucleated organic (`SRTORG_NUC`)
 - Gas array Gc has 44 elements (N_GAS_SPECIES=44): indices 0-42 (aerosol species except water) + index 43 (SO2, SRTSO2=43)
 
 ## Fortran Source Mapping
@@ -165,6 +172,7 @@ When modifying condensation code, verify:
 5. Convergence benchmark: `python -m benchmarks.python.convergence_test --constant-gc --h2so4 1e7 --n-total 1e4 --gmd 0.02 --gsd 1.6 --temp 298 --pres 101325 --mode cond_only` (PPM should be smooth and resolution-stable at 40/80 bins)
 6. Coagulation mass budget: `M(0) = M(24h) + overflow` should close to < 1e-8 relative (use `return_overflow=True`)
 7. Coagulation at multiple resolutions: `python -m benchmarks.python.coag_bin_ratio_convergence` — the linear scheme's L1 error vs the exact constant-kernel solution must fall from 40→80→160 bins and every run must keep a single mode; `tests/test_coagulation_bin_ratio.py` must pass
+8. AAAR aerosol step: `tests/test_aaar_aerosol.py` must pass (per-class SOA mass conservation 1e-10, Pankow/vbs-jax equilibrium within 1%, no recompilation on a c* change)
 
 ## Benchmark & Testing Rules
 
