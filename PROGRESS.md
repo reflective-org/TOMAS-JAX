@@ -4,6 +4,113 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-10-14 (Wed) — PyCHAM comparison: cases G3, S1, S2, audit fixes, run_all, write-up
+
+**Time**: ~23:30 PDT 2026-10-13 (06:30 UTC 2026-10-14)
+**Branch**: `feat/aaar-tutorial`
+
+### Summary
+The TOMAS-JAX vs PyCHAM benchmark now covers four cases: G2 (gas, Level 2), G3 (gas,
+Level 3 day/night), S1 (Level 1 surrogate condensation/evaporation) and S2 (Level 2
+limonene SOA). An audit of the case results was addressed, the harness was
+consolidated, one command regenerates everything, and the write-up for scientists is
+`docs/aaar/pycham_comparison.md`. Nothing in `tomas_jax/` was changed in this step and
+nothing was tuned to PyCHAM.
+
+### Changes
+- `benchmarks/pycham/run_all.py` (new): runs every case's `run.py` and `analyse.py` in
+  turn, each in its own process group with a wall-clock limit (`config.RUN_ALL_TIMEOUTS_S`),
+  logs and a JSON report in `pycham-bench/logs/run_all/`, non-zero exit on any failure.
+- `config.py`: the G3/S1/S2 settings moved in (single source of truth); semantic colour
+  keys (one colour = one meaning in every figure, validated per figure with the dataviz
+  palette checker); one display density for dry diameters (`RHO_REPORT`, 1400 kg m⁻³).
+- `particles.py` (new): TOMAS-JAX water per unit mass of sulfate/organics, the matching
+  PyCHAM water dissociation constant, the effective dry density, display diameters.
+- `load_pycham.py`: per-bin number is now `N_bin` (the wet file, which lines up with the
+  composition); the dry re-binned file is `N_dry_rebinned`; `mv_cm3_mol` exposes MV.npy;
+  the t = 0 dry radius is documented.
+- `pycham_inputs.py`: `hold_constant` → PyCHAM `const_comp`; `ensure_pycham_root(case,
+  kelvin_off=True)` makes the surface-tension-0 attribution copy (was S1-local).
+- S2: PyCHAM water constants per component (SA 0.347, organics 0.289 kg/kg) instead of
+  one seed-average ratio, which had made SOA too hygroscopic and hid PyCHAM's Kelvin
+  term on water; seed sulfate identity (H2SO4 vs SO4) recorded; Kelvin-off attribution
+  pair (PyCHAM `massfrac_nokelvin`, TOMAS-JAX σ = 0); PyCHAM volatility sensitivity with
+  its own vapour pressures (`native`); generated mismatch list with measured effects;
+  gas species below 1e-7 ppb in every run are not stored (results 2.4 MB).
+- S1: mismatch list generated from `pycham_setup()` and the measured results (the
+  density entry now states the 2.170 g/cm³ effective dry density actually used; water
+  reported as totals and at the mode); dry diameters at 1400 kg m⁻³.
+- G3: the held species (NO2) is excluded from the all-species statistics (361 species).
+- READMEs: shared harness README rewritten (run_all, layout, conventions); per-case
+  READMEs for g2 (moved), G3, S1 (new), S2 (rewritten).
+- `docs/aaar/pycham_comparison.md` (new), linked from README.md; ASSUMPTIONS A6, A8,
+  A9, A12, A14 and question 6 updated with the measured caveats.
+
+### Findings
+- Gas chemistry: same ODE system (rate constants to 4e-16; median |NMB| 5e-7 with
+  matched numerics). Preset couplings cost 1.7e-3 (Level 2, 300 s) and 0.10 (Level 3,
+  900 s) median |NMB|; at 60 s 3e-4 and 6e-3.
+- Level 3: the NO2 hold is a reset per interval (8.4 % less NOx than a continuous hold,
+  HNO3 −9 %); J step at sunset/sunrise and RO2 = 0 in the first 900 s add to it.
+- S1: SOA within 0.4 % at 12 h (max 3.7 % at 1–3 h); vbs-jax transfer coefficient up
+  to 1.5× PyCHAM's and above the kinetic limit; 40-bin MNFIX spreading (mean dry
+  diameter −12.6 %, converges at 160 bins).
+- S2: total SOA +12 % at 30 min, +3.9 % at 1 h, +1.0 % at 6 h. With coupling, transfer
+  and Raoult matched: within 0.5 % from 10 min on; with Kelvin off as well: 0.5–2.2 %
+  below PyCHAM (offsetting terms). The water fix changed PyCHAM SOA by ≤ 0.3 %. Per-species tracker
+  off by up to 4× within a class. The NOx-sink feedback (NO2 −79 %) is reproduced by
+  PyCHAM with the same c* and disappears with PyCHAM's own vapour pressures (SOA 0.51×).
+- `driver.run` never passes `AerosolStepConfig.micro_dt` to `aerosol_outer_step`.
+
+### Known limitations
+- Coagulation, nucleation, N2O5 uptake and the Level 3 aerosol are not tested by any
+  case (switched off). S2 does not test the volatility estimate (identical c* given).
+
+### Next steps
+- Decisions for Ali (ASSUMPTIONS question 6): NO2 hold inside the solver / shorter
+  Level 3 coupling; vbs-jax transfer coefficient; reporting SOA by class.
+- A coagulation-only seed case (PyCHAM `coag_on = 1`).
+
+## 2026-10-13 (Tue) — PyCHAM benchmark harness + case G2 (gas phase, Level 2)
+
+**Time**: ~19:30 PDT
+**Branch**: `feat/aaar-tutorial`
+
+### Summary
+Independent check of the AAAR box model against PyCHAM v5.8.0 (pinned, headless) with
+the same limonene mechanism and identical prescribed J. Case G2 is gas only, Level 2
+conditions, 6 h. Differences are reported and attributed. Nothing is tuned.
+
+### Changes
+- `box/driver.py`: opt-in `run(..., observer=fn)` hook. It hands every gas species, the
+  aerosol state, the J used and the SA/NA_HET counters to the caller after each
+  coupling interval. Defaults and RunResult are unchanged. Test:
+  `test_observer_is_opt_in_and_sees_every_interval`.
+- `benchmarks/pycham/` (new): config, `ours.py`, `jvalues.py` (our J → PyCHAM
+  J.xlsx), `pycham_inputs.py`, `metrics.py`, `plotting.py`, `check_rates_pycham.py`,
+  copies of `run_pycham.py`/`load_pycham.py`/patches/lock, README with the install
+  recipe and the per-case list of model differences. Case `cases/g2/`
+  (`run.py`, `analyse.py`, results < 2 MB, 6 figures → `docs/aaar/figures/pycham/`).
+- `.gitignore` negations in `benchmarks/pycham/` and `docs/aaar/` so the small
+  results and figures can be committed (the root ignores figures/, *.png, *.npz, *.csv).
+
+### Findings (G2)
+- All 2135 rate coefficients match PyCHAM's generated `rate_coeffs.py` to 4e-16
+  (same T, M, H2O, RO2, J), and the RO2 pools are identical (146).
+- 391 species above 1e-5 ppb. At the preset 300 s coupling the median |NMB| is
+  1.7e-3 and the max |NMB| is 3 % (LIMAOH). 87 % of species stay within 10 % at all
+  times; the rest deviate only in the first 20 min, because RO2 is frozen at its
+  t = 0 value (0) for the first 300 s, so RO2+RO2 alcohols are 0 at 5 min. At 60 s
+  coupling the median |NMB| is 3e-4 and the max deviation 1.5 %.
+- The 60 s residual is PyCHAM's own BDF error at its default rtol 1e-4 (PyCHAM vs
+  PyCHAM at rtol 1e-6 reproduces it). With tight tolerances in both and PyCHAM's
+  water vapour (Hyland–Wexler, +2.2e-4 vs our Buck) the models agree to a median
+  |NMB| of 5e-7.
+
+### Next steps
+- Cases with particles (SOA partitioning, seed, N2O5 uptake) and the Level 3 diurnal
+  case. These need J files written for the coupling interval of each compared run.
+
 ## 2026-10-13 (Tue) — AAAR tutorial: MCM gas chemistry, TUV-x photolysis, coupled driver
 
 **Time**: ~17:30 PDT

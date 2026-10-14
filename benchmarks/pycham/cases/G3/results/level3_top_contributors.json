@@ -1,0 +1,98 @@
+{
+  "scenario": "level3_day_night (unmodified preset, aerosol on, 24 h)",
+  "soa_ugm3_end": 7.855169176753912,
+  "nit_ugm3_end": 4.961883238143825,
+  "wall_s": 14.120231959008379,
+  "top_contributors": [
+    {
+      "species": "C817PAN",
+      "formula": "C9H13NO7",
+      "particle_ugm3": 3.0332846914151,
+      "log10_cstar": -0.3647665
+    },
+    {
+      "species": "C923PAN",
+      "formula": "C10H15NO6",
+      "particle_ugm3": 1.0743887285124585,
+      "log10_cstar": 0.012521000000000226
+    },
+    {
+      "species": "C517PAN",
+      "formula": "C6H9NO7",
+      "particle_ugm3": 0.6609534288684925,
+      "log10_cstar": 0.6252248461538465
+    },
+    {
+      "species": "C727PAN",
+      "formula": "C8H11NO7",
+      "particle_ugm3": 0.6288542658834754,
+      "log10_cstar": -0.029875666666666856
+    },
+    {
+      "species": "LIMALNO3",
+      "formula": "C10H17NO6",
+      "particle_ugm3": 0.3016294328083805,
+      "log10_cstar": 0.012521000000000226
+    },
+    {
+      "species": "C627PAN",
+      "formula": "C7H9NO7",
+      "particle_ugm3": 0.29168908961693424,
+      "log10_cstar": 0.3004710000000006
+    },
+    {
+      "species": "C823PAN",
+      "formula": "C9H13NO7",
+      "particle_ugm3": 0.2718987345115586,
+      "log10_cstar": -0.3647665
+    },
+    {
+      "species": "C822PAN",
+      "formula": "C9H13NO6",
+      "particle_ugm3": 0.20739705881203135,
+      "log10_cstar": 0.35585100000000014
+    },
+    {
+      "species": "C626PAN",
+      "formula": "C7H9NO7",
+      "particle_ugm3": 0.1896892890437701,
+      "log10_cstar": 0.3004710000000006
+    },
+    {
+      "species": "LMKANO3",
+      "formula": "C9H15NO5",
+      "particle_ugm3": 0.17491503886853538,
+      "log10_cstar": 1.068956714285714
+    },
+    {
+      "species": "HMVKBPAN",
+      "formula": "C5H7NO7",
+      "particle_ugm3": 0.16741586953400384,
+      "log10_cstar": 0.9429876666666666
+    },
+    {
+      "species": "C731PAN",
+      "formula": "C8H11NO7",
+      "particle_ugm3": 0.14913721729834425,
+      "log10_cstar": -0.029875666666666856
+    },
+    {
+      "species": "C622PAN",
+      "formula": "C7H11NO6",
+      "particle_ugm3": 0.10423206716807058,
+      "log10_cstar": 1.0317248461538469
+    },
+    {
+      "species": "LMKBNO3",
+      "formula": "C9H15NO5",
+      "particle_ugm3": 0.0969148038049665,
+      "log10_cstar": 1.068956714285714
+    },
+    {
+      "species": "C729PAN",
+      "formula": "C8H11NO6",
+      "particle_ugm3": 0.0938963334380263,
+      "log10_cstar": 0.6958424285714284
+    }
+  ]
+}

@@ -142,3 +142,23 @@ def test_json_has_no_nan():
     d = r.to_dict()
     json.dumps(d, allow_nan=False)
     assert d["diagnostics"]["cs_per_s"][0] > 0          # initial sink computed, not NaN/null
+
+
+def test_observer_is_opt_in_and_sees_every_interval():
+    """The benchmark hook sees every interval and does not change the run."""
+    from tomas_jax.box.driver import _chemistry
+    s = load_preset("level2_limonene_soa").replace(duration_h=1.0, numerics={"output_dt_s": 600.0})
+    seen = []
+    r_obs = run(s, observer=lambda t, snap: seen.append((t, snap)))
+    r_ref = run(s)
+    assert [t for t, _ in seen] == [300.0 * i for i in range(13)]
+    for key in ("LIMONENE", "O3", "NO2"):
+        np.testing.assert_array_equal(r_obs.gases_ppb[key], r_ref.gases_ppb[key])
+    parsed, rate_model, _ = _chemistry()
+    i_o3 = parsed.species.index("O3")
+    m_air = seen[0][1]["y"][i_o3] / (r_ref.gases_ppb["O3"][0] * 1e-9)
+    assert seen[-1][1]["y"][i_o3] / m_air * 1e9 == pytest.approx(r_ref.gases_ppb["O3"][-1], rel=1e-12)
+    assert seen[0][1]["j"] is None
+    j_no2 = seen[1][1]["j"][rate_model.j_names.index("J_NO2")]
+    assert j_no2 == pytest.approx(5e-3, rel=1e-12)
+    assert all(snap["counters"]["SA"] > 0 for _, snap in seen[1:])   # SO2 + OH -> SA each interval

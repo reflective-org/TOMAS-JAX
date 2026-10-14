@@ -109,7 +109,20 @@ def _processes(s: Scenario, has_organics: bool) -> tuple[str, ...]:
 
 
 def run(scenario: Scenario, progress_cb: Callable[[float], None] | None = None,
-        cancel: Callable[[], bool] | None = None) -> RunResult:
+        cancel: Callable[[], bool] | None = None,
+        observer: Callable[[float, dict], None] | None = None) -> RunResult:
+    """Run one scenario.
+
+    ``observer`` (optional, for benchmarks/diagnostics; it does not change the run) is
+    called as ``observer(t_s, snapshot)`` at t = 0 and after every coupling interval.
+    ``snapshot`` holds numpy copies: ``y`` (every gas species [molec/cm3], order of the
+    tutorial mechanism; None without chemistry), ``Nk`` [#/cell], ``Mk`` [kg/cell],
+    ``Gc`` [kg/cell], ``j`` (J [1/s] used for the interval, order of
+    ``RateModel.j_names``; None at t = 0 or without chemistry), ``counters`` (SA and
+    NA_HET formed in the interval [molec/cm3], before the driver resets them) and
+    ``particle_tracker`` (per condensable species particle mass [kg/cell]; None
+    without chemistry).
+    """
     t_wall = time.perf_counter()
     s = scenario
     cfg = AerosolStepConfig()
@@ -209,6 +222,9 @@ def run(scenario: Scenario, progress_cb: Callable[[float], None] | None = None,
     cs0, _ = calc_condensation_sink(state.Nk, state.Mk, state.temp, state.pres, state.boxvol,
                                     MW_H2SO4, SV_H2SO4, cfg.alpha_h2so4, xk=state.xk)
     record(0.0, state, cs0, 0.0, y if chem else None, j_now)
+    if observer is not None:
+        _observe(observer, 0.0, state, y if chem else None, None, (0.0, 0.0),
+                 bridge if chem else None)
     for i in range(n_int):
         if cancel is not None and cancel():
             raise RuntimeError("run cancelled")
@@ -226,6 +242,7 @@ def run(scenario: Scenario, progress_cb: Callable[[float], None] | None = None,
             y_new, nsteps = integrate_interval(mech, jnp.asarray(y), k, dt_c)
             gas_steps += int(nsteps)
             y = np.asarray(y_new).copy()
+            counts = (float(y[i_sa]), float(y[i_na_het]))
             h2so4_rate = cm3_to_kg_cell(y[i_sa], MW_H2SO4, boxvol) / dt_c
             nitrate_rate = cm3_to_kg_cell(y[i_na_het], MW_NO3, boxvol) / dt_c
             y[i_sa] = y[i_na_het] = 0.0
@@ -245,6 +262,9 @@ def run(scenario: Scenario, progress_cb: Callable[[float], None] | None = None,
             class_gas = np.asarray(state.Gc)[SRTSOA1:SRTSOA1 + k_cls]
             y = bridge.scatter(y, gas_before, class_gas, class_particle)
             y[held] = held_values
+        if observer is not None:
+            _observe(observer, t0 + dt_c, state, y if chem else None, j_now if chem else None,
+                     counts if chem else (0.0, 0.0), bridge if chem else None)
         if (i + 1) % out_every == 0 or i + 1 == n_int:
             record(t0 + dt_c, state, diag.cs_h2so4, diag.j_nuc, y if chem else None,
                    None if jp is None else jp.at(t0 + dt_c))
@@ -261,6 +281,17 @@ def run(scenario: Scenario, progress_cb: Callable[[float], None] | None = None,
                      {"gas_solver_steps": gas_steps, "runtime_s": time.perf_counter() - t_wall,
                       "code_version": code_version(), "coupling_dt_s": dt_c,
                       "processes": list(processes)})
+
+
+def _observe(observer, t_s, state, y, j, counts, bridge) -> None:
+    """Hand a snapshot (numpy copies) to the optional ``run`` observer."""
+    observer(t_s, {
+        "y": None if y is None else y.copy(),
+        "Nk": np.array(state.Nk), "Mk": np.array(state.Mk), "Gc": np.array(state.Gc),
+        "j": None if j is None else np.array(j),
+        "counters": {"SA": counts[0], NA_HET: counts[1]},
+        "particle_tracker": None if bridge is None else bridge.particle.copy(),
+    })
 
 
 def _assemble(s, rec, xk, boxvol, air, chem, k_cls, cstar, cstar_source, bridge, j_names,

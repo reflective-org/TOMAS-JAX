@@ -1,0 +1,31 @@
+diff --git a/PyCHAM/photolysisRates.py b/PyCHAM/photolysisRates.py
+index 1a93e782..d2e5f7c6 100755
+--- a/PyCHAM/photolysisRates.py
++++ b/PyCHAM/photolysisRates.py
+@@ -99,12 +99,13 @@ def PhotolysisCalculation(TEMP, Jlen, sumt, self):
+ 		J[15] = 2.792E-05*cosx**(0.805)*np.exp(-1.0*0.338*secx)
+ 		J[16] = 1.675E-05*cosx**(0.805)*np.exp(-1.0*0.338*secx)
+ 		J[17] = 7.914E-05*cosx**(0.764)*np.exp(-1.0*0.364*secx)
+-		J[18] = 1.140E-05*cosx**(0.396)*np.exp(-1.0*0.298*secx)
+-		J[19] = 1.140E-05*cosx**(0.396)*np.exp(-1.0*0.298*secx)
++		J[18] = 1.482E-06*cosx**(0.396)*np.exp(-1.0*0.298*secx)
++		J[19] = 1.482E-06*cosx**(0.396)*np.exp(-1.0*0.298*secx)
++		J[20] = 7.600E-04*cosx**(0.396)*np.exp(-1.0*0.298*secx)
+ 		J[21] = 7.992E-07*cosx**(1.578)*np.exp(-1.0*0.271*secx)
+ 		J[22] = 5.804E-06*cosx**(1.092)*np.exp(-1.0*0.377*secx)
+-		J[23] = 1.836E-05*cosx**(0.395)*np.exp(-1.0*0.296*secx)
+-		J[24] = 1.836E-05*cosx**(0.395)*np.exp(-1.0*0.296*secx)
++		J[23] = 2.4246E-06*cosx**(0.395)*np.exp(-1.0*0.296*secx)
++		J[24] = 2.424E-06*cosx**(0.395)*np.exp(-1.0*0.296*secx)
+ 		J[31] = 6.845E-05*cosx**(0.130)*np.exp(-1.0*0.201*secx)
+ 		J[32] = 1.032E-05*cosx**(0.130)*np.exp(-1.0*0.201*secx)
+ 		J[33] = 3.802E-05*cosx**(0.644)*np.exp(-1.0*0.312*secx)
+@@ -116,7 +117,7 @@ def PhotolysisCalculation(TEMP, Jlen, sumt, self):
+ 		J[53] = 2.485E-06*cosx**(1.196)*np.exp(-1.0*0.328*secx)
+ 		J[54] = 4.095E-06*cosx**(1.111)*np.exp(-1.0*0.316*secx)
+ 		J[55] = 1.135E-05*cosx**(0.974)*np.exp(-1.0*0.309*secx)
+-		J[56] = 7.549E-06*cosx**(1.015)*np.exp(-1.0*0.324*secx)
++		J[56] = 4.365E-05*cosx**(1.089)*np.exp(-1.0*0.323*secx)
+ 		J[57] = 3.363E-06*cosx**(1.296)*np.exp(-1.0*0.322*secx)
+ 		J[61] = 7.537E-04*cosx**(0.499)*np.exp(-1.0*0.266*secx)
+ 		

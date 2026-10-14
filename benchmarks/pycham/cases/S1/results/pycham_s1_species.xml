@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mechanism xmlns="http://mcm.leeds.ac.uk/MCM/mechanism.xsd">
+<species_defs>
+<species species_number="s1" species_name="SURR">
+<smiles>OOC(=O)CC(CCC(=O)C)C(=C)C</smiles>
+</species>
+<species species_number="s2" species_name="POA">
+<smiles>OOC(=O)CC(CCC(=O)C)C(=C)C</smiles>
+</species>
+<species species_number="s3" species_name="H2O">
+<smiles>O</smiles>
+</species>
+</species_defs>
+</mechanism>

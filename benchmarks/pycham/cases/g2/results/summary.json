@@ -1,0 +1,563 @@
+{
+  "threshold_ppb": 1e-05,
+  "strict_threshold_ppb": 0.001,
+  "runs": {
+    "TOMAS-JAX (coupling 300 s)": {
+      "n_species_compared": 391,
+      "frac_max_rel_dev_within_band": 0.8746803069053708,
+      "frac_abs_nmb_within_band": 1.0,
+      "median_abs_nmb": 0.001670861783376504,
+      "p95_abs_nmb": 0.0067993162111459155,
+      "n_species_1h": 301,
+      "frac_within_band_1h": 1.0,
+      "median_abs_log10_ratio_1h": 0.0025181469586089693,
+      "n_ours_only_1h": 0,
+      "n_species_3h": 354,
+      "frac_within_band_3h": 1.0,
+      "median_abs_log10_ratio_3h": 0.0010706894538002948,
+      "n_ours_only_3h": 0,
+      "n_species_6h": 389,
+      "frac_within_band_6h": 1.0,
+      "median_abs_log10_ratio_6h": 0.00048687079481255424,
+      "n_ours_only_6h": 0,
+      "strict_threshold": {
+        "n_species_compared": 250,
+        "frac_max_rel_dev_within_band": 0.928,
+        "frac_abs_nmb_within_band": 1.0,
+        "median_abs_nmb": 0.0014749567368649726,
+        "p95_abs_nmb": 0.007330803480870082,
+        "n_species_1h": 152,
+        "frac_within_band_1h": 1.0,
+        "median_abs_log10_ratio_1h": 0.001599863125902738,
+        "n_ours_only_1h": 0,
+        "n_species_3h": 192,
+        "frac_within_band_3h": 1.0,
+        "median_abs_log10_ratio_3h": 0.0007245096449724284,
+        "n_ours_only_3h": 0,
+        "n_species_6h": 232,
+        "frac_within_band_6h": 1.0,
+        "median_abs_log10_ratio_6h": 0.0004639585359313651,
+        "n_ours_only_6h": 0
+      },
+      "worst_nmb_species": [
+        {
+          "species": "LIMAOH",
+          "nmb": -0.03052101271634693,
+          "pycham_max_ppb": 0.01812024973332882
+        },
+        {
+          "species": "LIMCOH",
+          "nmb": -0.018823905951031214,
+          "pycham_max_ppb": 0.004331131000071764
+        },
+        {
+          "species": "C625OOH",
+          "nmb": -0.012524776663287164,
+          "pycham_max_ppb": 0.001277281786315143
+        },
+        {
+          "species": "C824OH",
+          "nmb": -0.010870732232653123,
+          "pycham_max_ppb": 0.0078034247271716595
+        },
+        {
+          "species": "C826OH",
+          "nmb": 0.010388002368658267,
+          "pycham_max_ppb": 0.0013411425752565265
+        },
+        {
+          "species": "C735OH",
+          "nmb": 0.010289466974069158,
+          "pycham_max_ppb": 0.0002850665769074112
+        },
+        {
+          "species": "LIMALBOH",
+          "nmb": -0.009012746776689964,
+          "pycham_max_ppb": 0.007986953482031822
+        },
+        {
+          "species": "LIMALAOH",
+          "nmb": -0.008924323808226586,
+          "pycham_max_ppb": 0.03171240910887718
+        },
+        {
+          "species": "C730OH",
+          "nmb": 0.00885473762860425,
+          "pycham_max_ppb": 6.988277164055035e-05
+        },
+        {
+          "species": "C823OH",
+          "nmb": 0.008169460932882181,
+          "pycham_max_ppb": 0.012753837741911411
+        },
+        {
+          "species": "C629OH",
+          "nmb": 0.008076620413563516,
+          "pycham_max_ppb": 1.4597234439861495e-05
+        },
+        {
+          "species": "C728OH",
+          "nmb": 0.008024317419938556,
+          "pycham_max_ppb": 0.0007014976581558585
+        },
+        {
+          "species": "C624CO3",
+          "nmb": -0.007862000282517472,
+          "pycham_max_ppb": 3.908014332409948e-05
+        },
+        {
+          "species": "C624CO3H",
+          "nmb": -0.007719345673332267,
+          "pycham_max_ppb": 0.0008574704988859594
+        },
+        {
+          "species": "C628OH",
+          "nmb": 0.007708938572917224,
+          "pycham_max_ppb": 0.0001450448326067999
+        }
+      ]
+    },
+    "TOMAS-JAX (coupling 60 s)": {
+      "n_species_compared": 391,
+      "frac_max_rel_dev_within_band": 1.0,
+      "frac_abs_nmb_within_band": 1.0,
+      "median_abs_nmb": 0.00031277983476925725,
+      "p95_abs_nmb": 0.0021874340759217136,
+      "n_species_1h": 301,
+      "frac_within_band_1h": 1.0,
+      "median_abs_log10_ratio_1h": 0.00022736696185232826,
+      "n_ours_only_1h": 0,
+      "n_species_3h": 354,
+      "frac_within_band_3h": 1.0,
+      "median_abs_log10_ratio_3h": 0.00017265127205594457,
+      "n_ours_only_3h": 0,
+      "n_species_6h": 389,
+      "frac_within_band_6h": 1.0,
+      "median_abs_log10_ratio_6h": 0.00012142729133790823,
+      "n_ours_only_6h": 0,
+      "strict_threshold": {
+        "n_species_compared": 250,
+        "frac_max_rel_dev_within_band": 1.0,
+        "frac_abs_nmb_within_band": 1.0,
+        "median_abs_nmb": 0.00025361746728698426,
+        "p95_abs_nmb": 0.0015160097087953237,
+        "n_species_1h": 152,
+        "frac_within_band_1h": 1.0,
+        "median_abs_log10_ratio_1h": 0.00011161976207950356,
+        "n_ours_only_1h": 0,
+        "n_species_3h": 192,
+        "frac_within_band_3h": 1.0,
+        "median_abs_log10_ratio_3h": 0.0001099127134021341,
+        "n_ours_only_3h": 0,
+        "n_species_6h": 232,
+        "frac_within_band_6h": 1.0,
+        "median_abs_log10_ratio_6h": 0.00010074789497588387,
+        "n_ours_only_6h": 0
+      },
+      "worst_nmb_species": [
+        {
+          "species": "C59OOH",
+          "nmb": -0.0034991763695788433,
+          "pycham_max_ppb": 0.00022739343694411218
+        },
+        {
+          "species": "HMVKBCO2H",
+          "nmb": -0.0031963845341125077,
+          "pycham_max_ppb": 0.0011935604270547628
+        },
+        {
+          "species": "HO12CO3C4",
+          "nmb": -0.0031635355832272814,
+          "pycham_max_ppb": 0.00021274288883432746
+        },
+        {
+          "species": "HMML",
+          "nmb": -0.0029902759249843683,
+          "pycham_max_ppb": 7.742519665043801e-05
+        },
+        {
+          "species": "CO235C5CHO",
+          "nmb": -0.0029421122515932334,
+          "pycham_max_ppb": 2.0287778170313686e-05
+        },
+        {
+          "species": "MACROH",
+          "nmb": -0.002937785809249506,
+          "pycham_max_ppb": 5.186589260119945e-05
+        },
+        {
+          "species": "MAE",
+          "nmb": -0.0028797988064007754,
+          "pycham_max_ppb": 2.8598360586329363e-05
+        },
+        {
+          "species": "HOCH2CO2H",
+          "nmb": -0.0028167830566979556,
+          "pycham_max_ppb": 0.00066167808836326
+        },
+        {
+          "species": "HMVKBCO3H",
+          "nmb": -0.0027435511546020975,
+          "pycham_max_ppb": 0.0006774805951863527
+        },
+        {
+          "species": "CO2C3CO3H",
+          "nmb": -0.0027106807476708445,
+          "pycham_max_ppb": 6.552870763698593e-05
+        },
+        {
+          "species": "MACO2H",
+          "nmb": -0.0026649076106346464,
+          "pycham_max_ppb": 0.00014214793918654323
+        },
+        {
+          "species": "CHOMOHPAN",
+          "nmb": -0.0025724380218610666,
+          "pycham_max_ppb": 1.5705012629041448e-05
+        },
+        {
+          "species": "C727CO",
+          "nmb": -0.0025364469790780143,
+          "pycham_max_ppb": 0.00025333662051707506
+        },
+        {
+          "species": "INDOOH",
+          "nmb": -0.002526744882146001,
+          "pycham_max_ppb": 8.991834329208359e-05
+        },
+        {
+          "species": "HMVKBOOH",
+          "nmb": -0.0024673015078826104,
+          "pycham_max_ppb": 0.0050873965956270695
+        }
+      ]
+    }
+  },
+  "attribution": {
+    "TOMAS-JAX 300 s vs PyCHAM": {
+      "n_species": 391,
+      "median_abs_nmb": 0.0016380895520937005,
+      "p95_abs_nmb": 0.0067200336163226355,
+      "max_abs_nmb": 0.029581204647609317,
+      "median_max_rel_dev": 0.011718000467795631,
+      "max_max_rel_dev": 0.26366898823415014
+    },
+    "TOMAS-JAX 60 s vs PyCHAM": {
+      "n_species": 391,
+      "median_abs_nmb": 0.0003105591291401624,
+      "p95_abs_nmb": 0.0021743943904586234,
+      "max_abs_nmb": 0.0034630685232513022,
+      "median_max_rel_dev": 0.0009414305002433835,
+      "max_max_rel_dev": 0.014555054274553421
+    },
+    "TOMAS-JAX 60 s, rtol 1e-05 vs PyCHAM, rtol 1e-06": {
+      "n_species": 391,
+      "median_abs_nmb": 2.89015290955226e-05,
+      "p95_abs_nmb": 0.00013266046247827258,
+      "max_abs_nmb": 0.0002217740172962561,
+      "median_max_rel_dev": 4.065372496944598e-05,
+      "max_max_rel_dev": 0.00022883482212178916
+    },
+    "same + PyCHAM water vapour in TOMAS-JAX (all known differences removed)": {
+      "n_species": 391,
+      "median_abs_nmb": 5.486922494264869e-07,
+      "p95_abs_nmb": 8.983572969096697e-06,
+      "max_abs_nmb": 2.346573220906403e-05,
+      "median_max_rel_dev": 3.2323407699874388e-06,
+      "max_max_rel_dev": 0.0002027905081124771
+    },
+    "PyCHAM default vs PyCHAM rtol 1e-06 (PyCHAM solver error)": {
+      "n_species": 391,
+      "median_abs_nmb": 0.000285740310896068,
+      "p95_abs_nmb": 0.0020896137031682586,
+      "max_abs_nmb": 0.0032899819538791154,
+      "median_max_rel_dev": 0.0009358218758349776,
+      "max_max_rel_dev": 0.014670183020245966
+    },
+    "TOMAS-JAX 60 s default vs rtol 1e-05 (TOMAS-JAX solver error)": {
+      "n_species": 391,
+      "median_abs_nmb": 1.4156330914310584e-06,
+      "p95_abs_nmb": 8.685817504656969e-06,
+      "max_abs_nmb": 2.4652516422062347e-05,
+      "median_max_rel_dev": 7.298997095224898e-06,
+      "max_max_rel_dev": 0.00015490672292378814
+    }
+  },
+  "key_species": [
+    {
+      "species": "LIMONENE",
+      "nmb_dt300": 0.0006571670196898819,
+      "max_rel_dev_dt300": 0.014429328088152126,
+      "ours_dt300_6h_ppb": 0.0029965098947286606,
+      "nmb_dt60": -0.00066861905241989,
+      "max_rel_dev_dt60": 0.0144767307623828,
+      "ours_dt60_6h_ppb": 0.002996365772560239,
+      "pycham_6h_ppb": 0.0030403805430978537,
+      "pycham_max_ppb": 10.0
+    },
+    {
+      "species": "O3",
+      "nmb_dt300": -0.0001797512058023559,
+      "max_rel_dev_dt300": 0.0005946352627012083,
+      "ours_dt300_6h_ppb": 52.47657775878906,
+      "nmb_dt60": -2.2878289796290894e-06,
+      "max_rel_dev_dt60": 1.4623114333990697e-05,
+      "ours_dt60_6h_ppb": 52.47599792480469,
+      "pycham_6h_ppb": 52.47560501098633,
+      "pycham_max_ppb": 52.47560501098633
+    },
+    {
+      "species": "NO",
+      "nmb_dt300": 3.307090687153095e-06,
+      "max_rel_dev_dt300": 0.025322828827362066,
+      "ours_dt300_6h_ppb": 0.06102766469120979,
+      "nmb_dt60": 9.001158634054915e-05,
+      "max_rel_dev_dt60": 0.0017256314537785374,
+      "ours_dt60_6h_ppb": 0.06100333854556084,
+      "pycham_6h_ppb": 0.06099437549710274,
+      "pycham_max_ppb": 0.5
+    },
+    {
+      "species": "NO2",
+      "nmb_dt300": 0.00015009479724344734,
+      "max_rel_dev_dt300": 0.014083795107606756,
+      "ours_dt300_6h_ppb": 0.4206550717353821,
+      "nmb_dt60": -2.7977712224278554e-05,
+      "max_rel_dev_dt60": 0.0012224918426199966,
+      "ours_dt60_6h_ppb": 0.42048972845077515,
+      "pycham_6h_ppb": 0.4204452633857727,
+      "pycham_max_ppb": 2.0
+    },
+    {
+      "species": "OH",
+      "nmb_dt300": -1.778263887047904e-05,
+      "max_rel_dev_dt300": 0.009011405056615683,
+      "ours_dt300_6h_ppb": 3.2170250051422045e-05,
+      "nmb_dt60": -0.00017123151859977476,
+      "max_rel_dev_dt60": 0.0005024774191131245,
+      "ours_dt60_6h_ppb": 3.2165484299184754e-05,
+      "pycham_6h_ppb": 3.2166546588996425e-05,
+      "pycham_max_ppb": 7.81595372245647e-05
+    },
+    {
+      "species": "HO2",
+      "nmb_dt300": 0.0004966381255525651,
+      "max_rel_dev_dt300": 0.020596394369096417,
+      "ours_dt300_6h_ppb": 0.015199966728687286,
+      "nmb_dt60": 2.6552679741592555e-05,
+      "max_rel_dev_dt60": 0.0007990406292803806,
+      "ours_dt60_6h_ppb": 0.015195438638329506,
+      "pycham_6h_ppb": 0.015195260755717754,
+      "pycham_max_ppb": 0.021059276536107063
+    },
+    {
+      "species": "NO3",
+      "nmb_dt300": 0.0016291175797518492,
+      "max_rel_dev_dt300": 0.014983265193356446,
+      "ours_dt300_6h_ppb": 0.00010528435814194381,
+      "nmb_dt60": 0.0005904655215845375,
+      "max_rel_dev_dt60": 0.0010752778657502355,
+      "ours_dt60_6h_ppb": 0.00010525404650252312,
+      "pycham_6h_ppb": 0.00010523134551476687,
+      "pycham_max_ppb": 0.00010523134551476687
+    },
+    {
+      "species": "N2O5",
+      "nmb_dt300": 0.0019413175581640496,
+      "max_rel_dev_dt300": 0.013468027320332712,
+      "ours_dt300_6h_ppb": 2.9768059903290123e-05,
+      "nmb_dt60": 0.0007033283669880784,
+      "max_rel_dev_dt60": 0.0012187727632826163,
+      "ours_dt60_6h_ppb": 2.9747818189207464e-05,
+      "pycham_6h_ppb": 2.9738210287177935e-05,
+      "pycham_max_ppb": 2.9738210287177935e-05
+    },
+    {
+      "species": "HNO3",
+      "nmb_dt300": -0.003865246212814478,
+      "max_rel_dev_dt300": 0.00803306956221286,
+      "ours_dt300_6h_ppb": 0.081746906042099,
+      "nmb_dt60": -7.770723152296776e-06,
+      "max_rel_dev_dt60": 0.00018038458652964287,
+      "ours_dt60_6h_ppb": 0.08188832551240921,
+      "pycham_6h_ppb": 0.08189184218645096,
+      "pycham_max_ppb": 0.08189184218645096
+    },
+    {
+      "species": "HCHO",
+      "nmb_dt300": 7.676428141820691e-06,
+      "max_rel_dev_dt300": 0.00812945264091223,
+      "ours_dt300_6h_ppb": 3.9599807262420654,
+      "nmb_dt60": 8.533799439215995e-05,
+      "max_rel_dev_dt60": 0.00022443906925810744,
+      "ours_dt60_6h_ppb": 3.9578464031219482,
+      "pycham_6h_ppb": 3.957761287689209,
+      "pycham_max_ppb": 3.957761287689209
+    },
+    {
+      "species": "H2O2",
+      "nmb_dt300": 0.00011674381909811943,
+      "max_rel_dev_dt300": 0.0034936726829709374,
+      "ours_dt300_6h_ppb": 1.2158082723617554,
+      "nmb_dt60": 1.651625130886561e-05,
+      "max_rel_dev_dt60": 0.0001983016063289026,
+      "ours_dt60_6h_ppb": 1.2151678800582886,
+      "pycham_6h_ppb": 1.2152268886566162,
+      "pycham_max_ppb": 1.2152268886566162
+    },
+    {
+      "species": "SA",
+      "nmb_dt300": -0.00033815193822933756,
+      "max_rel_dev_dt300": 0.004596660645154368,
+      "ours_dt300_6h_ppb": 0.015379366464912891,
+      "nmb_dt60": -8.986437453088418e-05,
+      "max_rel_dev_dt60": 0.0001318757704717813,
+      "ours_dt60_6h_ppb": 0.015376310795545578,
+      "pycham_6h_ppb": 0.015378328040242195,
+      "pycham_max_ppb": 0.015378328040242195
+    },
+    {
+      "species": "PAN",
+      "nmb_dt300": 0.0015314676377677818,
+      "max_rel_dev_dt300": 0.03341948640352856,
+      "ours_dt300_6h_ppb": 0.3855094015598297,
+      "nmb_dt60": -0.00011278051834203543,
+      "max_rel_dev_dt60": 0.00027772130754474583,
+      "ours_dt60_6h_ppb": 0.3855057954788208,
+      "pycham_6h_ppb": 0.385590523481369,
+      "pycham_max_ppb": 0.6882235407829285
+    },
+    {
+      "species": "C622PAN",
+      "nmb_dt300": 0.0003592459071667422,
+      "max_rel_dev_dt300": 0.0063589602800973085,
+      "ours_dt300_6h_ppb": 0.17220909893512726,
+      "nmb_dt60": 0.0002650296882210094,
+      "max_rel_dev_dt60": 0.00038250283838691144,
+      "ours_dt60_6h_ppb": 0.17206843197345734,
+      "pycham_6h_ppb": 0.17201276123523712,
+      "pycham_max_ppb": 0.17201276123523712
+    },
+    {
+      "species": "C626PAN",
+      "nmb_dt300": 0.0001095273975736089,
+      "max_rel_dev_dt300": 0.024678715689574828,
+      "ours_dt300_6h_ppb": 0.06536435335874557,
+      "nmb_dt60": 0.00012617640562410115,
+      "max_rel_dev_dt60": 0.0006946887771144268,
+      "ours_dt60_6h_ppb": 0.0653138980269432,
+      "pycham_6h_ppb": 0.06529301404953003,
+      "pycham_max_ppb": 0.06529301404953003
+    },
+    {
+      "species": "C517PAN",
+      "nmb_dt300": -0.0003071951604449363,
+      "max_rel_dev_dt300": 0.012519685057634972,
+      "ours_dt300_6h_ppb": 0.03503986448049545,
+      "nmb_dt60": -0.0004080983807026707,
+      "max_rel_dev_dt60": 0.0009096801577229207,
+      "ours_dt60_6h_ppb": 0.03500763326883316,
+      "pycham_6h_ppb": 0.035014860332012177,
+      "pycham_max_ppb": 0.035014860332012177
+    },
+    {
+      "species": "C822PAN",
+      "nmb_dt300": 0.0021188864578426734,
+      "max_rel_dev_dt300": 0.026589574046876143,
+      "ours_dt300_6h_ppb": 0.08193446695804596,
+      "nmb_dt60": -0.0003129545389579828,
+      "max_rel_dev_dt60": 0.0010631010041488756,
+      "ours_dt60_6h_ppb": 0.0818692073225975,
+      "pycham_6h_ppb": 0.0819326862692833,
+      "pycham_max_ppb": 0.4440864622592926
+    },
+    {
+      "species": "C823PAN",
+      "nmb_dt300": -0.0013882092207658367,
+      "max_rel_dev_dt300": 0.02603238758931972,
+      "ours_dt300_6h_ppb": 0.08555198460817337,
+      "nmb_dt60": -3.29613798241208e-06,
+      "max_rel_dev_dt60": 0.0004092151775297334,
+      "ours_dt60_6h_ppb": 0.0855378806591034,
+      "pycham_6h_ppb": 0.08557289838790894,
+      "pycham_max_ppb": 0.1699589490890503
+    },
+    {
+      "species": "C923PAN",
+      "nmb_dt300": -0.002641447773933513,
+      "max_rel_dev_dt300": 0.023312177156348778,
+      "ours_dt300_6h_ppb": 0.08455584198236465,
+      "nmb_dt60": 0.00017322591955989277,
+      "max_rel_dev_dt60": 0.00024228691633227062,
+      "ours_dt60_6h_ppb": 0.08465250581502914,
+      "pycham_6h_ppb": 0.0846424549818039,
+      "pycham_max_ppb": 0.08979467302560806
+    },
+    {
+      "species": "C731PAN",
+      "nmb_dt300": -0.0031204144742739423,
+      "max_rel_dev_dt300": 0.027300026495478927,
+      "ours_dt300_6h_ppb": 0.026011014357209206,
+      "nmb_dt60": 0.00015028245249445706,
+      "max_rel_dev_dt60": 0.0003588116981026517,
+      "ours_dt60_6h_ppb": 0.026048170402646065,
+      "pycham_6h_ppb": 0.026052948087453842,
+      "pycham_max_ppb": 0.03616504743695259
+    },
+    {
+      "species": "C817PAN",
+      "nmb_dt300": -0.0023367401402508642,
+      "max_rel_dev_dt300": 0.02233463003272138,
+      "ours_dt300_6h_ppb": 0.062181904911994934,
+      "nmb_dt60": 6.02538765817378e-05,
+      "max_rel_dev_dt60": 0.0004640290565219703,
+      "ours_dt60_6h_ppb": 0.06223742663860321,
+      "pycham_6h_ppb": 0.06222318485379219,
+      "pycham_max_ppb": 0.06222318485379219
+    },
+    {
+      "species": "C729PAN",
+      "nmb_dt300": 9.81123002190324e-05,
+      "max_rel_dev_dt300": 0.02533696654974878,
+      "ours_dt300_6h_ppb": 0.09991814196109772,
+      "nmb_dt60": 0.0002717752342426813,
+      "max_rel_dev_dt60": 0.0004093959841167948,
+      "ours_dt60_6h_ppb": 0.09984179586172104,
+      "pycham_6h_ppb": 0.09982896596193314,
+      "pycham_max_ppb": 0.11403467506170273
+    },
+    {
+      "species": "CO",
+      "nmb_dt300": 4.371461942073407e-06,
+      "max_rel_dev_dt300": 1.800823810419905e-05,
+      "ours_dt300_6h_ppb": 126.25335693359375,
+      "nmb_dt60": -1.1466270698118559e-06,
+      "max_rel_dev_dt60": 2.2374677766845095e-06,
+      "ours_dt60_6h_ppb": 126.25080108642578,
+      "pycham_6h_ppb": 126.25108337402344,
+      "pycham_max_ppb": 126.25108337402344
+    }
+  ],
+  "pan_species": [
+    "PAN",
+    "C622PAN",
+    "C626PAN",
+    "C517PAN"
+  ],
+  "particle_relevant_species": [
+    "C822PAN",
+    "C823PAN",
+    "C923PAN",
+    "C731PAN",
+    "C817PAN",
+    "C729PAN"
+  ],
+  "figures": [
+    "<tomas-jax>/benchmarks/pycham/cases/g2/figures/g2_key_species.png",
+    "<tomas-jax>/benchmarks/pycham/cases/g2/figures/g2_pan_species.png",
+    "<tomas-jax>/benchmarks/pycham/cases/g2/figures/g2_particle_relevant.png",
+    "<tomas-jax>/benchmarks/pycham/cases/g2/figures/g2_scatter_all_species.png",
+    "<tomas-jax>/benchmarks/pycham/cases/g2/figures/g2_ratio_cdf.png",
+    "<tomas-jax>/benchmarks/pycham/cases/g2/figures/g2_attribution.png"
+  ]
+}

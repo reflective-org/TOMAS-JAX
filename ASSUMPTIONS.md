@@ -73,6 +73,21 @@ is assumed, why, where it is implemented and how to change it.
   (Kelvin), ρ_org = 1200 kg/m³, Fuller volume 120, D_b = 1e-10 m²/s, no
   particle-phase reaction (k_c = 0). MW and α come with the arrays.
 - Docs: `docs/aaar/soa_partitioning.md`.
+- **Measured against PyCHAM (2026-10-14, `docs/aaar/pycham_comparison.md`, S1/S2) —
+  for Shantanu:**
+  - Transfer rate: vbs-jax pairs TOMAS's mean free path 2D/c̄ with a Fuchs–Sutugin
+    form written for 3D/c̄, so its per-particle coefficient is up to 1.5× PyCHAM's and
+    1.5× the gas-kinetic limit for small particles; the single Fuller volume of 120
+    gives D 29 % above Fuller's value for C10H16O4. Effect: SOA forms faster early
+    (+3–4 % at 1–3 h in Level 1 with c* = 1; part of +12 % at 30 min in Level 2);
+    equilibrium SOA is unaffected.
+  - Size distribution: SOA growth moves particles between the 40 fixed bins only
+    through MNFIX, which spreads the distribution numerically (number-mean dry diameter
+    −13 % after a ×9 mass growth; converges at 160 bins) and puts ~2 % of the particles
+    below the seed size in Level 2. Mass is unaffected.
+  - Per-species tracker: members of one class should keep one particle fraction (same
+    c*); the tracker gives 0.29–0.94 where PyCHAM gives 0.81–0.83, so individual "top
+    contributors" can be off by up to 4×. Class totals agree within ~11 %.
 
 ### A7 — Photolysis sources
 
@@ -101,6 +116,13 @@ is assumed, why, where it is implemented and how to change it.
   low-NOx SOA need the curated table.
 - Radicals (odd H + N + Cl + Br) never partition. Species more volatile than
   10^4.25 µg/m³ stay gas-only; less volatile than 10^−3.25 join the lowest class.
+- **Measured consequence, confirmed with PyCHAM (2026-10-14, S2) — for Shantanu:**
+  partitioning of the PAN-type nitrates is a strong NOx sink. At 6 h of Level 2, NO
+  −78 %, NO2 −79 %, OH −35 %, O3 −15 % and limonene +167 % relative to the same run
+  without particles; PyCHAM given the same c* agrees within 1 point. With PyCHAM's own
+  SMILES-based vapour pressures (Nannoolal) for the same species, SOA is 0.51× at 6 h,
+  5 % N-containing instead of 98 %, and the gas-phase feedback disappears. The NOx sink
+  is a consequence of the placeholder c*, not of the partitioning code.
 
 ### A9 — Organic water uptake
 
@@ -110,6 +132,9 @@ is assumed, why, where it is implemented and how to change it.
   too hygroscopic (κ_SOA ≈ 0.1 vs. ≈ 0.5–0.6 for ammonium bisulfate), so
   wet sizes, condensation sinks and N₂O₅ uptake are overestimated for
   organic-rich particles.
+- There is no Kelvin term on particle water. PyCHAM (ideal solution with Kelvin,
+  72 mN/m) holds 22 % less water in 50 nm particles and 9–13 % less in total for the
+  Level 1 seed (2026-10-14, S1).
 
 ### A10 — Level 2 light is constant
 
@@ -132,6 +157,18 @@ is assumed, why, where it is implemented and how to change it.
   aerosol are operator-split at the same interval; H2SO4 (from the SA counter) and
   nitrate (from NA_HET) are passed to TOMAS as constant rates over the interval.
 - Small negative concentrations from the implicit solver are clipped to zero.
+- Measured against PyCHAM (benchmark case G2, Level 2 gas phase,
+  `benchmarks/pycham/README.md`): at 300 s coupling the RO2 sum is frozen at its t = 0
+  value (0) for the first interval, so RO2+RO2 products (e.g. LIMAOH) are 0 at 5 min.
+  Deviations are ≤ 6 % after 1 h and |NMB| ≤ 3 % over 6 h (median 1.7e-3). At 60 s
+  coupling the median |NMB| is 3e-4.
+- **Level 3 against PyCHAM (G3, 2026-10-14) — for Shantanu:** at the preset 900 s the
+  median |NMB| over 361 species is 10 % (60 s: 0.6 %). Most of it is the NO2 reset
+  convention (A14). The rest: the interval that contains sunset or sunrise uses the J
+  of its midpoint (light 2 min early at 05:45–06:00; N2O5 +120 % at 06:00), and RO2 is
+  0 for the first 900 s while half of the limonene reacts, so RO2+RO2 products are
+  50–60 % low early on. The "≤ 3 % vs 600 s" figure above understates the effect of
+  900 s against a continuous solution.
 
 ### A13 — Nucleation uses H2SO4 only
 
@@ -146,6 +183,13 @@ is assumed, why, where it is implemented and how to change it.
   deposition or wall loss. Level 3 holds NO2 constant as a stand-in for continuous
   NOx emissions (otherwise NOx is titrated in a few hours and no N2O5 forms at
   night); O3 accumulates without deposition.
+- How the hold works matters (G3 against PyCHAM, 2026-10-14) — for Shantanu: the
+  driver resets NO2 to 1 ppb after each coupling interval and lets it evolve inside
+  the interval (it falls to 0.78–0.91 ppb in daylight at 900 s). The time-mean NO2 is
+  0.969 ppb, so 8.4 % less NOx is supplied over 24 h than with NO2 fixed inside the
+  solver (PyCHAM `const_comp`), giving HNO3 −9 %, NO −11 % by day and night-time
+  nitrates up to +28 %. Holding NO2 inside the gas solver removes this (prototype:
+  `benchmarks/pycham/cases/G3/hold.py`); at 60 s coupling the effect is 0.5 %.
 
 ### AC1 — SOA absorbing floor (stream C)
 
@@ -177,3 +221,8 @@ is assumed, why, where it is implemented and how to change it.
 4. Level 3 preset: NO2 held at 1 ppb as a NOx source (A14) — acceptable, or
    prefer explicit emissions?
 5. γ(N2O5) default 0.02 and the slider values {0, 0.002, 0.02, 0.1}.
+6. From the PyCHAM comparison (2026-10-14, `docs/aaar/pycham_comparison.md`): hold NO2
+   inside the gas solver instead of resetting it per interval (A14), and/or a shorter
+   Level 3 coupling (A12)? Use mfp = 3D/c̄ (or a matching Fuchs–Sutugin form) and a
+   per-class diffusion volume in vbs-jax (A6)? Report SOA by class rather than by
+   species (A6 tracker)?

@@ -17,6 +17,13 @@ c*-class SOA partitioning and N2O5 uptake (`aerosol_step.md`, `soa_partitioning.
   species, diagnostics (condensation sink, nucleation rate, c* source, J sources,
   warnings, solver steps, runtime, `code_version()`).
 
+`run(scenario, progress_cb=None, cancel=None, observer=None)`: the optional
+`observer(t_s, snapshot)` is called at t = 0 and after every coupling interval with
+numpy copies of every gas species (`y`, molec/cm³), `Nk`, `Mk`, `Gc`, the J used for
+the interval, the SA/NA_HET counters before reset and the per-species particle
+tracker. It is used by the PyCHAM benchmark (`benchmarks/pycham/`) and does not change
+the run.
+
 ## Operator split (one coupling interval Δt_c)
 
 1. J at the interval midpoint; k_het(N2O5) from the aerosol at the interval start;

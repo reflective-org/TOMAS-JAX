@@ -483,6 +483,7 @@ python -m pytest tests/test_nucleation.py tests/test_ppm_condensation.py -q
 | [AAAR aerosol step](docs/aaar/aerosol_step.md) | Tutorial outer step: call contract, units, process order, config |
 | [SOA partitioning](docs/aaar/soa_partitioning.md) | vbs-jax adapter, slot map, absorbing floor, equilibrium validation |
 | [N2O5 uptake](docs/aaar/heterogeneous.md) | k_het = condensation sink with α = γ, nitrate placement |
+| [AAAR vs PyCHAM](docs/aaar/pycham_comparison.md) | Independent check against PyCHAM v5.8.0: gas chemistry, day/night photolysis, condensation, SOA; verdict per process, differences explained, upstream findings (`benchmarks/pycham/run_all.py`) |
 | [Assumptions](ASSUMPTIONS.md) | AAAR tutorial modelling assumptions to confirm |
 
 ---
