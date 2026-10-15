@@ -54,8 +54,12 @@ nitrate then move between bins with the PPM remap
 [aerosol_step.md](aerosol_step.md#bin-transfer-of-soa-and-nitrate-growth_bin_transfer)),
 and MNFIX follows. Weight on
 empty bins is dropped, so no mass goes into a bin MNFIX would wipe. If no
-populated bin has weight, nothing is added. `AerosolDiag.nitrate_added`
-always reports the mass actually added, for the driver's N budget.
+populated bin has weight, nothing is added. With the PPM remap, nitrate
+that would push the top bin's mean past the top of the grid (17.5 µm) is
+not added either (`cap_top_bin`), instead of MNFIX trimming that bin's
+sulfate along with it. `AerosolDiag.nitrate_added` always reports the
+mass actually added, for the driver's N budget; when it falls short of
+the source the driver adds a warning.
 
 ## Context for γ
 

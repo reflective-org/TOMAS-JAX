@@ -4,6 +4,112 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-10-15 (Thu) — PPM bin transfer: verifier fixes (upwind edges, top bin), A1–A8 re-measured, S1/S2 regenerated
+
+**Time**: ~23:30 PDT 2026-10-14 (06:30 UTC 2026-10-15)
+**Branch**: `feat/aaar-tutorial-ppm-soa`
+
+### Summary
+Independent verifiers of the PPM bin transfer (previous entry) reported two code defects
+and stale benchmark text. Both defects were reproduced and fixed with tests; the S1/S2
+PyCHAM comparison was regenerated with the fixed code and its text updated.
+
+### Changes
+- `physics/ppm_remap.py`: the edge displacement is now **upwind** (`edge_shifts`): each
+  bin's log shift is reconstructed linearly with the smaller one-sided slope, clipped
+  between neighbour values, and an edge is crossed with the donor bin's own value.
+  Before, the edge value was interpolated between the two neighbouring bin means, which
+  dragged unchanged particles along with a shrinking neighbour (80 bins, SOA-only bins
+  30–39 losing 99 %, unchanged sulfate bins 40–49: bin 40 went from 1e12 to 1.1e9
+  #/cell, 10 % of the unchanged particles and 1.3 % of the sulfate ended below bin 40;
+  now exactly 0). For growth with s falling with size the upward edge value is
+  unchanged, so the preset results barely move (SOA ≤ 0.001 %, nitrate ≤ 0.035 %,
+  mean diameter ≤ 0.9 %).
+- `ppm_remap.cap_top_bin` (new): no flux leaves the grid, so particles growing in the top
+  bin stay there; when its mean passes 17.5 µm, the in-place species are taken back
+  instead of letting MNFIX trim every species of the bin. `soa_partition_step('ppm')`
+  returns that SOA to the vapour and also returns any class mass the post-remap MNFIX
+  deletes (empty-bin floor), as vbs-jax does after the 'mnfix' hook. Before, the SOA
+  MNFIX trimmed was deleted: −1.1e-4 to −1.2e-4 of the class total per 600 s step
+  (2000 µg/m³ of c* = 0.01 vapour onto 15 µm particles); now ≤ 2.2e-16. The nitrate
+  remap in `aerosol_outer_step` uses the same cap; nitrate that does not fit is counted
+  out of `nitrate_added` and the driver warns (new wording).
+- Tests (`tests/test_aaar_soa_ppm.py`, +7): unchanged particles stay in place; cap unit
+  test; per-class budget with particles at the grid top (both settings); nitrate at the
+  grid top; temperature-rise evaporation (both settings).
+- PyCHAM harness: S1/S2 mismatch text describes the PPM remap; S2 size metric is now
+  number-mean dry diameter, GSD, dry-mass-weighted mean and the fraction below the
+  seed's 1st-percentile size (the fixed-bin median was biased low by about half a bin;
+  the verifier measured 184/193/198 nm at 40/80/160 bins with the first PPM version while
+  the mean was flat); S1 reports the GSD
+  difference. S1/S2 TOMAS-JAX results and figures regenerated (PyCHAM output reused).
+- Docs: aerosol_step.md (algorithm, measurements, limitations), soa_partitioning.md,
+  heterogeneous.md, pycham_comparison.md (S1/S2 tables and text), S1/S2 READMEs,
+  ASSUMPTIONS A6, CLAUDE.md.
+
+### Measurements (laptop CPU)
+- A1 conservation (preset runs, checked after every outer step, 40/80/160 bins): gas +
+  particle per SOA class ≤ 4.1e-15, particle nitrate vs `nitrate_added` ≤ 1.6e-15,
+  nucleated organic ≤ 6e-14, sulfate ≤ 7e-11 (MNFIX floor, same with 'mnfix'), number in
+  SOA-only runs ≤ 4.4e-13; min Mk = 0, no NaN/inf, no populated bin mean outside its bin.
+  Remap alone (tests): number and every species ≤ 1e-12. Top-bin case: class budget
+  ≤ 2.2e-16 per step (was −1.2e-4).
+- A2 interior extrema of the final dN/dlog10Dp, MNFIX → PPM: Level 1 SOA only 3/13/30 → 1/1/1
+  (40/80/160 bins); Level 1 preset 3/9/28 → 1/1/1; Level 2 3/5/18 → 1/1/1; Level 3
+  3/7/17 → 1/1/1; PPM is 1 at every output time (MNFIX up to 36).
+- A3 evaporation: c* = 10 SOA, no vapour (80 bins): mode returns to the seed size, 1
+  extremum every step. +30 K after 6 h of growth (c* = 1): class budget ≤ 5.6e-16 and
+  number ≤ 4e-16 per step, mean diameter falls monotonically, 1 extremum at 40 and 80
+  bins (5 small ones at 160 bins; MNFIX 13/17/22). No negative mass anywhere.
+- A4 zero-OA bootstrap: `test_zero_oa_bootstrap_both_transfers` passes with both settings
+  (c* = 0.01 > 50 % condensed, c* = 1000 < 1 %, no spike).
+- A5 end-of-run totals vs the old code (= 'mnfix', bit-identical: L1 40/80, L1 SOA-only
+  80, L2 40, L3 40/80): SOA within 0.22 % in all presets at 40, 80 and 160 bins. Level 3
+  nitrate +4.39 % at 40 bins (5.180 vs 4.962 µg/m³), +1.75 % at 80, +0.33 % at 160,
+  +0.07 % at 320 (5.153 vs 5.149). The 2 % criterion fails at 40 bins only; the old
+  40-bin value is 3.6 % below the converged ~5.15, the new one 0.6 % above.
+- A6 runtime (warm, median of 3, interleaved, load 3–4), MNFIX → PPM: 40 bins L1 1.75 →
+  1.09 s, L2 6.05 → 5.75 s, L3 13.46 → 12.26 s; 80 bins L1 6.17 → 4.26 s, L2 8.35 →
+  7.51 s, L3 22.77 → 18.74 s. `test_cstar_change_does_not_recompile` passes.
+- A7 `pytest tests -q -x`: 612 passed, 650 skipped in 169 s (before: 605 passed, 650 skipped;
+  +7 new tests).
+- A8 `AerosolStepConfig.growth_bin_transfer` = 'ppm' (default) | 'mnfix'; both settings are
+  tested (growth, evaporation, temperature rise, top bin, bootstrap, Pankow, class budget).
+- S1/S2 vs PyCHAM (TOMAS-JAX side regenerated, PyCHAM output reused, load ~4 with nothing
+  else running; TOMAS-JAX run times within 4 % of the committed ones for S2): S1 c* = 1 at
+  12 h number-mean dry diameter 122.3/122.7/123.0 nm at 40/80/160 bins vs PyCHAM 120.5
+  (+1.5 %), GSD −1.7 %, SOA +0.65 %, max +4.1 % at 1–3 h, gas −2.9 %. S2 at 6 h:
+  number-mean 213.8 vs 210.1 nm (+1.8 %; 212.6/212.0 at 80/160 bins), GSD −3.5 %, 0.16 %
+  of the particles below the seed's 1st-percentile size (0.06/0.03 % at 80/160; PyCHAM
+  0.05 %; MNFIX 2.1 %); SOA +1.1 % at 6 h, +13 % at 30 min; with coupling, transfer and
+  Raoult matched within 1.5 % from 10 min on, with Kelvin off as well −0.01 to −0.75 %.
+
+### Known issues / limitations
+- A5 nitrate: Level 3 at 40 bins is +4.4 % against the old code (limit 2 %). The new
+  value is the converged one (see A5 above); a decision is needed: accept on the
+  convergence evidence, or compare against a 160/320-bin reference instead of the old
+  40-bin value.
+- Grow-then-evaporate round trips do not return to the seed shape: one composition per
+  bin, and species move with the donor bin's mean composition (as in H2SO4 PPM). After
+  6 h of growth and an instant +30 K: number-mean 71.4/70.2 nm at 40/160 bins vs ~63 nm
+  for kept cores (MNFIX 42.0/62.7). Not seen in the presets (1 extremum, ≤ 1 % change
+  40 → 160 bins), but resolution does not cure it.
+- One remap per call: particles moving several bins in one 60 s step take the
+  displacement of the bins they pass through (c* = 100 pure-SOA mode next to a sulfate
+  mode: 0.40 % of the sulfate below bin 40 vs 0.17 % for an exact internal-mixture
+  remap; MNFIX 0.21 %). Largest populated-bin displacement per call in the presets: 0.03
+  / 1.6 / 1.9 bins (L1/L2/L3 at 160 bins).
+- Bottom of the grid: a bin-0 mean below 1.7 nm is handled by MNFIX (number trimmed, mass
+  kept), as before.
+
+### Next steps
+- Decide on the A5 nitrate criterion (above).
+- If round trips matter for the tutorial (day/night SOA), transport composition with a
+  higher-order scheme too (per-species PPM instead of the donor's mean composition), or
+  remap per vbs-jax sub-step for large one-step changes.
+
+---
+
 ## 2026-10-15 (Thu) — SOA and nitrate move between bins by PPM remap instead of MNFIX
 
 **Time**: ~20:59 PDT 2026-10-14 (03:59 UTC 2026-10-15)

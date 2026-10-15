@@ -69,14 +69,18 @@ unit round trip.
   during the vbs-jax sub-steps and are moved once afterwards (below). With
   `bin_transfer='mnfix'` (the previous scheme) the hook also calls
   `mnfix_jax` after every sub-step. vbs-jax takes the vapour change from
-  the particle change after the hook, and the PPM remap conserves every
-  species, so gas + particle mass is conserved per class (tested to 1e-10
-  with both settings).
+  the particle change after the hook. With `'ppm'` the remap conserves
+  every species, and the SOA that the top-bin cap or the MNFIX floor
+  afterwards takes out of the particles is added back to the vapour, so
+  gas + particle mass is conserved per class with both settings (tested
+  to 1e-12 per step, including particles at the top of the grid).
 - `geometry_fn` hook: `calc_wet_diameters` (`condensation_sink.py`), the
   same wet diameter and density as the H₂SO₄ condensation sink, from each
   bin's actual mean mass. A bin counts as populated if Nk >
   `NEPS_CONDSINK` = 1e10 #/cell, which is 1 cm⁻³ at the tutorial boxvol
   of 1e10 cm³.
+- `n_tiny` = 1e-10 #/cell, the value of the tomas-jax solver vbs-jax was
+  extracted from.
 
 ## Bin transfer
 
@@ -89,9 +93,13 @@ move between the fixed bins:
   remap_mass_change(Nk, Mk_before, Mk_after, xk)` moves number and every
   species with flux-form PPM in log-mass, the advection H₂SO₄ condensation
   uses. Each bin's displacement is the log change of its mean dry mass;
-  growth moves particles up, evaporation down. Conservative to round-off,
-  never negative, smooth (one extremum for a growing or shrinking mode at
-  40, 80 and 160 bins).
+  growth moves particles up, evaporation down; an edge is crossed with the
+  displacement of the bin the particles come from (upwind), so particles
+  whose mass did not change never move. Then `cap_top_bin` keeps SOA that
+  would push the top bin past the grid in the gas, and MNFIX restores its
+  floor in emptied bins (SOA it deletes there returns to the gas).
+  Conservative to round-off, never negative, smooth (one extremum for a
+  growing or shrinking mode at 40, 80 and 160 bins in the presets).
 - `'mnfix'`: MNFIX after every vbs-jax sub-step. It combs a growing mode
   (3 / 13 / 30 interior extrema at 40 / 80 / 160 bins in Level 1 with SOA
   only) and makes the size distribution depend on resolution. Kept for
@@ -100,8 +108,6 @@ move between the fixed bins:
 The partitioning physics (fluxes, Raoult, Kelvin, the absorbing floor,
 class slots) is the same for both. Algorithm, measurements and
 limitations: [aerosol_step.md](aerosol_step.md#bin-transfer-of-soa-and-nitrate-growth_bin_transfer).
-- `n_tiny` = 1e-10 #/cell, the value of the tomas-jax solver vbs-jax was
-  extracted from.
 
 ## Absorbing floor (zero-OA bootstrap)
 
@@ -153,6 +159,8 @@ MW = 200 g mol⁻¹.
 | Per-class gas + particle, all processes, 600 s | conserved to 1e-10 (with sources) |
 | The above with `bin_transfer` = `'ppm'` and `'mnfix'` | same results within the tolerances |
 | SOA evaporation, c\* = 10, no vapour (`test_aaar_soa_ppm.py`) | mode returns to the seed size; class budget 1e-10 every step; one extremum with PPM |
+| Particles in the top three bins, 2000 µg m⁻³ of c\* = 0.01 vapour, 12 × 600 s, both settings | class budget 1e-12 every step; with PPM the top-bin mean stays inside the grid and no sulfate is lost |
+| +30 K at once after 6 h of growth (c\* = 1, 40 bins), both settings | class budget 1e-12 every step, mode moves down monotonically; with PPM number conserved and one extremum |
 
 The equilibrium residuals come from the Kelvin term (Ke − 1 ≈ 0.45% at
 1.5 µm; ≈ 1% at 640 nm). The analytic references have no Kelvin term.
