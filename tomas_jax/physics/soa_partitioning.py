@@ -25,11 +25,21 @@ outside the SOA classes). The floor is never stored in Mk, so no mass is
 created; it biases equilibrium C_OA by at most that amount (ASSUMPTIONS.md
 AC1).
 
-Hooks: ``redistribute`` = mnfix_jax on the full per-cell composition;
-``geometry_fn`` = calc_wet_diameters (the same wet Dp/density as the
-H2SO4 condensation sink, NEPS_CONDSINK = 1e10 #/cell). The full per-cell
-(Nk, Mk) travel through vbs-jax as ``aux``, so non-organic columns are
-never round-tripped through per-m^3 units.
+Bin transfer (``bin_transfer``, static): how the per-bin class mass change
+moves particles between the fixed bins.
+    - 'ppm' (default): vbs-jax changes the class masses in place in every
+      sub-step (``redistribute`` only copies them into the per-cell Mk);
+      after the step, ppm_remap.remap_mass_change moves number and every
+      species with the PPM log-mass advection that H2SO4 condensation
+      uses, then MNFIX restores its floor in emptied bins (it finds no
+      populated bin to split). Growth and evaporation both stay smooth.
+    - 'mnfix': the previous scheme; ``redistribute`` calls mnfix_jax after
+      every vbs-jax sub-step. Its two-packet split spreads a growing mode
+      into a comb (kept for comparison).
+``geometry_fn`` = calc_wet_diameters (the same wet Dp/density as the H2SO4
+condensation sink, NEPS_CONDSINK = 1e10 #/cell), from the actual mean
+masses. The full per-cell (Nk, Mk) travel through vbs-jax as ``aux``, so
+non-organic columns are never round-tripped through per-m^3 units.
 
 References:
     - Donahue et al. (2006), Environ. Sci. Technol. 40, 2635-2643
@@ -49,6 +59,7 @@ from ..core.config import (
 )
 from ..core.mnfix_jax import mnfix_jax
 from .condensation_sink import calc_wet_diameters
+from .ppm_remap import BIN_TRANSFER_PPM, BIN_TRANSFERS, remap_mass_change
 
 # vbs-jax defaults: max adaptive sub-steps and Raoult fixed-point iterations
 SOA_N_SUBSTEPS = 10
@@ -80,7 +91,8 @@ def _slot_masks(icomp, n_classes):
 
 def soa_partition_step(Nk, Mk, Gc, xk, temp, pres, boxvol, dt,
                        cstar_ref, dhvap, mw_org, alpha_org,
-                       n_substeps=SOA_N_SUBSTEPS, n_iter=SOA_N_ITER):
+                       n_substeps=SOA_N_SUBSTEPS, n_iter=SOA_N_ITER,
+                       bin_transfer=BIN_TRANSFER_PPM):
     """Advance SOA gas-particle partitioning of K c*-classes by dt.
 
     Args:
@@ -100,11 +112,15 @@ def soa_partition_step(Nk, Mk, Gc, xk, temp, pres, boxvol, dt,
         n_substeps: Static max adaptive sub-steps (check
             diag.time_integrated == dt)
         n_iter: Static Raoult fixed-point iterations
+        bin_transfer: Static, 'ppm' (default) or 'mnfix' (module doc)
 
     Returns:
         (Nk, Mk, Gc, diag): updated state (Gc changes only in the class
         slots) and vbs_jax.VBSDiagnostics (per-m^3 / SI units).
     """
+    if bin_transfer not in BIN_TRANSFERS:
+        raise ValueError(
+            f"bin_transfer={bin_transfer!r}; valid: {BIN_TRANSFERS}")
     n_classes = cstar_ref.shape[0]
     if n_classes > N_SOA_CLASSES:
         raise ValueError(
@@ -134,6 +150,8 @@ def soa_partition_step(Nk, Mk, Gc, xk, temp, pres, boxvol, dt,
     def redistribute(state, aux):
         Nk_c, Mk_c = aux
         Mk_c = Mk_c.at[:, s0:s1].set(state.m_org * boxvol_m3)
+        if bin_transfer == BIN_TRANSFER_PPM:
+            return state, (Nk_c, Mk_c)      # in place; remapped after
         Nk_c, Mk_c = mnfix_jax(Nk_c, Mk_c, xk, ICOMP_NODIAG)
         return to_state(state, Nk_c, Mk_c), (Nk_c, Mk_c)
 
@@ -144,12 +162,19 @@ def soa_partition_step(Nk, Mk, Gc, xk, temp, pres, boxvol, dt,
                       m_inorg=jnp.zeros(nbins), rho_p=rho0, dp_empty=dp0),
         Nk, Mk)
 
+    Mk_in = Mk
     _, gas, (Nk, Mk), diag = vbs_partition_step(
         state0, Gc[s0:s1] / boxvol_m3, temp, pres, dt,
         cfg=cfg, alpha=alpha_org, aux=(Nk, Mk),
         redistribute=redistribute, geometry_fn=geometry_fn,
         n_substeps=n_substeps, n_iter=n_iter,
         n_tiny=SOA_N_TINY_CELL / boxvol_m3)
+    if bin_transfer == BIN_TRANSFER_PPM:
+        Nk, Mk = remap_mass_change(Nk, Mk_in, Mk, xk, ICOMP_NODIAG,
+                                   n_min=SOA_N_TINY_CELL)
+        # Bins the remap emptied get MNFIX's floor again (as after the old
+        # hook); populated bins are already inside their bounds.
+        Nk, Mk = mnfix_jax(Nk, Mk, xk, ICOMP_NODIAG)
 
     Gc = Gc.at[s0:s1].set(gas * boxvol_m3)
     return Nk, Mk, Gc, diag

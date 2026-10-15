@@ -14,10 +14,12 @@ from tomas_jax.core.config import (
 )
 from tomas_jax.physics.density import calc_density
 from tomas_jax.physics.heterogeneous import n2o5_uptake
+from tomas_jax.physics.ppm_remap import BIN_TRANSFERS
 from tomas_jax.physics.soa_partitioning import soa_partition_step
 from tomas_jax.box.aerosol_step import (
     AerosolForcing, AerosolState, SOAParams, aerosol_outer_step,
 )
+from tomas_jax.box.config import AerosolStepConfig
 from vbs_jax import vbs_equilibrium
 
 BOXVOL = 1.0e10            # cm^3 (tutorial default)
@@ -27,7 +29,7 @@ XK = make_grid(NBINS)
 XMID = jnp.sqrt(XK[:-1] * XK[1:])
 ALL = ('nucleation', 'coagulation', 'h2so4_condensation', 'soa_partitioning')
 
-soa_step = jax.jit(soa_partition_step)
+soa_step = jax.jit(soa_partition_step, static_argnames=('bin_transfer',))
 
 
 def kg(ug_m3):
@@ -87,11 +89,12 @@ def soa_gas(Gc, K):
     return np.array([ug(Gc[SRTSOA1 + j]) for j in range(K)])
 
 
-def run_soa(Nk, Mk, Gc, cstar, dt, nsteps):
+def run_soa(Nk, Mk, Gc, cstar, dt, nsteps, bin_transfer='ppm'):
     p = soa_params(cstar)
     for _ in range(nsteps):
         Nk, Mk, Gc, diag = soa_step(Nk, Mk, Gc, XK, 298.0, 101325.0, BOXVOL,
-                                    dt, p.cstar_ref, p.dhvap, p.mw, p.alpha)
+                                    dt, p.cstar_ref, p.dhvap, p.mw, p.alpha,
+                                    bin_transfer=bin_transfer)
     return Nk, Mk, Gc, diag
 
 
@@ -145,8 +148,9 @@ def test_zero_vapour_stability_12h():
 # (b), (c) equilibrium limits
 # =========================================================================
 
+@pytest.mark.parametrize("bin_transfer", BIN_TRANSFERS)
 @pytest.mark.parametrize("start_in_gas", [True, False])
-def test_single_class_pankow_equilibrium(start_in_gas):
+def test_single_class_pankow_equilibrium(start_in_gas, bin_transfer):
     """C_OA = C_nv + C_tot/(1 + c*/C_OA), approached from either side."""
     nonvol, c_tot, cstar = 2.0, 10.0, 10.0
     Nk, Mk = large_seed_with_oa(nonvol)
@@ -156,7 +160,7 @@ def test_single_class_pankow_equilibrium(start_in_gas):
     else:
         Mk = Mk.at[:, SRTSOA1].set(Mk[:, SRTORG_NUC] * c_tot / nonvol)
 
-    Nk, Mk, Gc, diag = run_soa(Nk, Mk, Gc, [cstar], 600.0, 24)
+    Nk, Mk, Gc, diag = run_soa(Nk, Mk, Gc, [cstar], 600.0, 24, bin_transfer)
 
     c_oa = nonvol + c_tot
     for _ in range(500):
@@ -167,7 +171,8 @@ def test_single_class_pankow_equilibrium(start_in_gas):
         c_tot, rel=1e-10)
 
 
-def test_multi_class_matches_vbs_equilibrium():
+@pytest.mark.parametrize("bin_transfer", BIN_TRANSFERS)
+def test_multi_class_matches_vbs_equilibrium(bin_transfer):
     """6 Donahue classes relax to vbs_jax.vbs_equilibrium."""
     nonvol = 1.0
     cstar = [0.01, 0.1, 1.0, 10.0, 100.0, 1000.0]
@@ -175,7 +180,7 @@ def test_multi_class_matches_vbs_equilibrium():
     Nk, Mk = large_seed_with_oa(nonvol)
     Gc = jnp.zeros(N_GAS_SPECIES).at[SRTSOA1:SRTSOA1 + 6].set(kg(c_tot))
 
-    Nk, Mk, Gc, _ = run_soa(Nk, Mk, Gc, cstar, 600.0, 24)
+    Nk, Mk, Gc, _ = run_soa(Nk, Mk, Gc, cstar, 600.0, 24, bin_transfer)
 
     c_part, _ = vbs_equilibrium(jnp.asarray(c_tot) * 1e-9,
                                 jnp.asarray(cstar), nonvol * 1e-9)
@@ -222,7 +227,8 @@ def test_zero_oa_high_cstar_never_spikes():
 # (e) per-class mass conservation over an outer step
 # =========================================================================
 
-def test_class_mass_conservation_all_processes():
+@pytest.mark.parametrize("bin_transfer", BIN_TRANSFERS)
+def test_class_mass_conservation_all_processes(bin_transfer):
     K = 3
     Nk, Mk = sulfate_seed(2000.0, 60e-9, 1.6)
     Mk = Mk.at[:, SRTSOA1:SRTSOA1 + K].set(0.1 * Mk[:, [SRTSO4]])
@@ -236,7 +242,8 @@ def test_class_mass_conservation_all_processes():
     p = soa_params([0.1, 10.0, 1000.0])
     dt = 600.0
 
-    st, diag = aerosol_outer_step(st0, f, p, dt)
+    st, diag = aerosol_outer_step(
+        st0, f, p, dt, cfg=AerosolStepConfig(growth_bin_transfer=bin_transfer))
 
     def class_total(s):
         return (np.asarray(jnp.sum(s.Mk[:, SRTSOA1:SRTSOA1 + K], axis=0))

@@ -5,6 +5,7 @@ the jitted step that receives it.
 """
 from dataclasses import dataclass
 
+from ..physics.ppm_remap import BIN_TRANSFER_PPM, BIN_TRANSFERS
 from ..physics.soa_partitioning import SOA_N_SUBSTEPS
 from ..physics.water_equilibrium import WATER_SCHEME_BISULFATE
 
@@ -25,3 +26,14 @@ class AerosolStepConfig:
     water_scheme: float = WATER_SCHEME_BISULFATE   # see equilibrate_water
     water_every_process: bool = False  # make_step option (TOMAS box.f order)
     soa_n_substeps: int = SOA_N_SUBSTEPS  # vbs-jax adaptive sub-step budget
+    # How SOA growth/evaporation and N2O5-uptake nitrate (mass added to or
+    # removed from bins in place) move particles between the fixed bins:
+    # 'ppm' (PPM log-mass remap, as H2SO4 condensation) or 'mnfix' (the
+    # previous MNFIX split, kept for comparison). docs/aaar/aerosol_step.md
+    growth_bin_transfer: str = BIN_TRANSFER_PPM
+
+    def __post_init__(self):
+        if self.growth_bin_transfer not in BIN_TRANSFERS:
+            raise ValueError(
+                f"growth_bin_transfer={self.growth_bin_transfer!r}; "
+                f"valid: {BIN_TRANSFERS}")

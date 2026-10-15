@@ -11,6 +11,10 @@
     3. SOA partitioning (physics.soa_partitioning, vbs-jax)
     4. water equilibrium (equilibrate_water, cfg.water_scheme)
 
+The nitrate (1) and SOA (3) mass changes are made in place and then move
+particles between bins with the PPM remap (physics/ppm_remap.py) when
+cfg.growth_bin_transfer = 'ppm' (default), or with MNFIX ('mnfix').
+
 All rates are per grid cell: [kg/cell/s]. K = len(soa_params.cstar_ref)
 (1 for the Level 1 surrogate, up to N_SOA_CLASSES); c*, dHvap, MW and
 alpha are traced, so changing their values never recompiles. See
@@ -29,6 +33,7 @@ from ..core.config import (
 from ..core.mnfix_jax import mnfix_jax
 from ..physics.condensation_sink import NEPS_CONDSINK, calc_condensation_sink
 from ..physics.nucleation import ricco_dunne_nucleation_rate
+from ..physics.ppm_remap import BIN_TRANSFER_PPM, remap_mass_change
 from ..physics.soa_partitioning import soa_partition_step
 from ..physics.water_equilibrium import equilibrate_water
 from ..solvers.condensation import make_step
@@ -126,6 +131,7 @@ def _aerosol_outer_step(state, forcing, soa_params, dt_outer, *,
 
     do_nucl = 'nucleation' in processes
     do_soa = 'soa_partitioning' in processes
+    do_nitrate_remap = cfg.growth_bin_transfer == BIN_TRANSFER_PPM
     tomas_step = make_step(
         [_MAKE_STEP_PROCESS[p] for p in AEROSOL_PROCESSES[:3]
          if p in processes],
@@ -147,8 +153,11 @@ def _aerosol_outer_step(state, forcing, soa_params, dt_outer, *,
         w_sum = jnp.sum(w)
         w = jnp.where(w_sum > 0.0, w / jnp.where(w_sum > 0.0, w_sum, 1.0), 0.0)
         d_nit = forcing.nitrate_rate * dt * w
+        Mk_old = Mk
         Mk = Mk.at[:, SRTNIT].add(d_nit)
         nit_sum = nit_sum + jnp.sum(d_nit)
+        if do_nitrate_remap:
+            Nk, Mk = remap_mass_change(Nk, Mk_old, Mk, xk, ICOMP_NODIAG)
         Nk, Mk = mnfix_jax(Nk, Mk, xk, ICOMP_NODIAG)
 
         # 2. Nucleation -> coagulation -> H2SO4 condensation
@@ -164,7 +173,8 @@ def _aerosol_outer_step(state, forcing, soa_params, dt_outer, *,
             Nk, Mk, Gc, sdiag = soa_partition_step(
                 Nk, Mk, Gc, xk, temp, pres, boxvol, dt,
                 soa_params.cstar_ref, soa_params.dhvap, soa_params.mw,
-                soa_params.alpha, n_substeps=cfg.soa_n_substeps)
+                soa_params.alpha, n_substeps=cfg.soa_n_substeps,
+                bin_transfer=cfg.growth_bin_transfer)
             soa_ok = soa_ok & (sdiag.time_integrated >= dt * (1.0 - 1e-9))
             soa_cs = sdiag.cs
 

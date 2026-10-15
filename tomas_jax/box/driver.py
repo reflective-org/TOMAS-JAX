@@ -110,8 +110,14 @@ def _processes(s: Scenario, has_organics: bool) -> tuple[str, ...]:
 
 def run(scenario: Scenario, progress_cb: Callable[[float], None] | None = None,
         cancel: Callable[[], bool] | None = None,
-        observer: Callable[[float, dict], None] | None = None) -> RunResult:
+        observer: Callable[[float, dict], None] | None = None,
+        aerosol_cfg: AerosolStepConfig | None = None) -> RunResult:
     """Run one scenario.
+
+    ``aerosol_cfg`` (optional) replaces the default ``AerosolStepConfig()``, e.g.
+    ``AerosolStepConfig(growth_bin_transfer="mnfix")`` to compare with the previous (MNFIX)
+    bin transfer of SOA and nitrate. Its non-default fields are listed in
+    ``diagnostics["aerosol_cfg"]`` (empty for a default run).
 
     ``observer`` (optional, for benchmarks/diagnostics; it does not change the run) is
     called as ``observer(t_s, snapshot)`` at t = 0 and after every coupling interval.
@@ -125,7 +131,7 @@ def run(scenario: Scenario, progress_cb: Callable[[float], None] | None = None,
     """
     t_wall = time.perf_counter()
     s = scenario
-    cfg = AerosolStepConfig()
+    cfg = AerosolStepConfig() if aerosol_cfg is None else aerosol_cfg
     boxvol = cfg.boxvol_cm3
     env = s.environment
     dt_c = float(s.numerics.coupling_dt_s)
@@ -280,7 +286,15 @@ def run(scenario: Scenario, progress_cb: Callable[[float], None] | None = None,
                      bridge if chem else None, j_names, warnings,
                      {"gas_solver_steps": gas_steps, "runtime_s": time.perf_counter() - t_wall,
                       "code_version": code_version(), "coupling_dt_s": dt_c,
-                      "processes": list(processes)})
+                      "processes": list(processes),
+                      "aerosol_cfg": _cfg_changes(cfg)})
+
+
+def _cfg_changes(cfg: AerosolStepConfig) -> dict:
+    """Fields of ``cfg`` that differ from the defaults (empty for a default run)."""
+    default = AerosolStepConfig()
+    return {f.name: getattr(cfg, f.name) for f in dataclasses.fields(cfg)
+            if getattr(cfg, f.name) != getattr(default, f.name)}
 
 
 def _observe(observer, t_s, state, y, j, counts, bridge) -> None:
