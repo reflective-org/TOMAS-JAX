@@ -4,6 +4,139 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-10-15 (Thu) — PPM bin transfer, round 3: each bin moves with its own displacement; composition slopes
+
+**Time**: ~01:40 PDT 2026-10-15 (08:40 UTC)
+**Branch**: `feat/aaar-tutorial-ppm-soa`
+
+### Summary
+Independent verifiers of the previous round reported that the flux-form remap moved
+particles wrongly when a bin had to move more than about one bin in one call, piled
+particles up next to unchanged ones, and was not smooth at 160 bins in three hard cases
+(+30 K after growth, slow Kelvin ripening after a zero-OA bootstrap, bimodal
+evaporation). All reproduced. `remap_mass_change` is now a Lagrangian remap of the same
+PPM sub-bin profile, with a composition slope inside each bin. It fixes all three and
+also the documented round-trip limitation (grow, then evaporate).
+
+### Verifier findings and what was done
+- **Multi-bin moves / pile-up (real, fixed).** The flux-form step froze one displacement
+  per bin edge for all sub-steps, so a bin moving several bins took the displacement of
+  the bins it crossed. Reproduced (80 bins, SOA-only bins 30–39 ×10 next to unchanged
+  sulfate bins 40–49): 8.25e12 #/cell in bin 40 against 2e12, 2.96 % of the sulfate
+  moved, SOA mode centre at bin 40.0 instead of 41.1; shrinking SOA (keep 1 %) stopped at
+  mean bin 48.0 instead of ~41. Now: 2.0e12, sulfate unchanged to 1e-16, SOA centre 41.15
+  (exact 41.14) and 41.21 (exact 41.21). New tests
+  `test_remap_moves_particles_past_unchanged_ones` (5 cases, growing and shrinking 3–13
+  bins) and `test_remap_multi_bin_shift_keeps_the_mode`.
+- **"Unchanged particles never move" (was only half true, now true).** It held next to a
+  shrinking neighbour only. Now unchanged bins map onto themselves exactly in both
+  directions (tests above); docs and CLAUDE.md say so with the tests that show it.
+- **Not smooth at 160 bins (real, fixed; part of it was physics).** Cause: number lagged
+  mass in the flux-form step, bin means crept to their edges (0.93–0.999 of the width),
+  and `keep_means_in_bins` + MNFIX turned that into alternating bins; switching
+  `keep_means_in_bins` off did not help (the verifier's diagnosis is right). With the new
+  remap (scenarios of the verifier's `evap_lag.py`, final dN/dlog10Dp extrema at 40 / 80 /
+  160 bins, before → now): E2 (+30 K after 6 h growth) 1/1/7 → 1/1/1; E3 (bimodal
+  evaporation) 2/2/5 → 2/2/2 (two modes); B2 (5 µg m⁻³ c* = 1 vapour on pure sulfate,
+  6 h) 1/3/11 → 3/3/3. B2's 3 are physical: moving sections (no bin transfer, 320
+  sections) form the same second mode at 45 nm (Kelvin ripening sends the smallest
+  particles back to their cores) and PPM overlays it at all three resolutions; B1 (same
+  seed, 0.5 µg m⁻³ h⁻¹ source) likewise. The 40/80/160-bin results match the moving
+  sections: +30 K case number-mean 59.0/59.9/59.5 nm vs 59.2 nm (flux-form 67.6/66.4,
+  MNFIX 39.7/59.3), +20 K case 115.3/120.4/120.1 vs 120.2 nm (flux-form 138.5/138.9). New
+  test `test_soa_matches_moving_sections` (round trip and bootstrap/ripening at 80 bins,
+  ≤ 0.3 % in mean diameter, ≤ 0.5 % in GSD) and the +30 K test at 160 bins.
+- **Dirty worktree (not ours).** The 21 modified result files (S1/S2 npz, run_info,
+  summary, one PNG) differed from HEAD only in runtimes and `code_version`; they were
+  written by a parallel verifier. They were reset to HEAD, then S1 and S2 were
+  regenerated with the final code (below), so no unreviewed file is committed.
+- **Provenance (fixed).** Regenerated S1/S2 `run_info.json` carry `code_version`
+  749346461e5f72e2 = HEAD's tomas_jax. Run with a scratch `PYCHAM_BENCH` that links the
+  PyCHAM outputs read-only; the PyCHAM model_var records were kept as committed.
+- **S2 medians (restored).** `analyse.dry_size_stats` reports number and dry-mass medians
+  again, from a mid-rank cumulative over bins with particles (resolution-stable; the old
+  plain cumulative read half a bin low and PyCHAM's empty bins inflated its value).
+- **S1 wording (fixed).** "Size distribution within 2 %" replaced by what holds: +2.3 %
+  mean / −3.2 % GSD at 40 and 160 bins; with Kelvin and transfer matched the models
+  agree within 0.2 % / 0.4 % at 40, 80 and 160 bins.
+- **A5 nitrate at 40 bins (still fails as written; decision needed).** See measurements.
+
+### Changes
+- `physics/ppm_remap.py`: `remap_mass_change` → Lagrangian remap. Displacement linear
+  inside each bin (same upwind/limited slope as before, `bin_edge_shifts`); each bin's
+  PPM profile is carried onto its image and deposited by exact overlap integrals (number:
+  polynomial; mass weighted by the new particle mass: φ_j closed forms with a Taylor
+  branch, `_phi`); MC-limited, sum-zero, positivity-limited composition slopes
+  (`composition_slopes`, `slopes=True`); images kept between 0.25 and 4 bin widths so the
+  work is a (nbins, 6) band (scatter-add); no-op calls skipped with `lax.cond`.
+  `keep_means_in_bins`, `cap_top_bin` unchanged. Tried and dropped: an exponential tilt of
+  each profile to match the bin mean (pile-ups at steep fronts, 3 extrema in the nitrate
+  test).
+- Tests (`tests/test_aaar_soa_ppm.py`, 28 → 38): see above; the old
+  unchanged-particles test is replaced by the five pass-through cases.
+- PyCHAM harness: S2 medians (mid-rank), S1/S2 mismatch texts describe the new remap;
+  S1/S2 TOMAS-JAX results and figures regenerated (PyCHAM output reused).
+- Docs: aerosol_step.md (algorithm, dropped alternatives, moving-section comparison,
+  measurements, limitations, verified behaviour), soa_partitioning.md, pycham_comparison.md
+  and the S1/S2 READMEs (new numbers), ASSUMPTIONS A6, CLAUDE.md.
+
+### Measurements (laptop CPU; other users' jobs kept the load at 4–5)
+- A1: per remap call in the presets (1440–2880 calls each, L1soa 80, L1 160, L2 80, L3 40,
+  L3 80): number ≤ 1.4e-15, every species ≤ 1.2e-15, min N/M ≥ 0, all finite. Per outer
+  step (40/80/160 bins, all presets): gas + particle per SOA class ≤ 3.7e-15, nitrate vs
+  `nitrate_added` ≤ 1.3e-15, other species ≤ 3.6e-14, sulfate ≤ 6.5e-11 (MNFIX floor, as
+  with 'mnfix'), number in SOA-only runs ≤ 4.4e-13, whole-run class budget (Level 1) ≤
+  7.8e-15, tracker vs Mk ≤ 5.7e-16, no populated bin mean outside its bin. Remap tests:
+  number and every species ≤ 1e-12 / 1e-13.
+- A2 final-extrema count, MNFIX → PPM: Level 1 SOA only 3/13/30 → 1/1/1 (40/80/160);
+  Level 1 preset 3/9/28 → 1/1/1; Level 2 3/5/18 → 1/1/1; Level 3 3/7/17 → 1/1/1 (and 1 at
+  320 bins); PPM is 1 at every output time of every preset run.
+- A3: c* = 10 evaporation test passes (mode back to the seed, 1 extremum per step);
+  +30 K after growth: 1 extremum at every step at 40/80/160 bins, class budget ≤ 3.4e-16
+  and number ≤ 1.4e-15 per step, min Mk = 0; +25 K: 1 at every step; +20 K: 1 at 80 and
+  160 bins, 2–7 at 40 bins (a physical shoulder the moving sections show at 45–70 nm,
+  which mass-doubling bins resolve as a plateau). MNFIX +30 K: 13/17/22.
+- A4: `test_zero_oa_bootstrap_both_transfers` passes with both settings; bootstrap +
+  ripening matches moving sections (B2 for 4 h at 80 bins: 139.07 vs 138.96 nm, GSD
+  1.505 vs 1.507).
+- A5 vs the old code (= 'mnfix'): SOA within 0.21 % in every preset at 40/80/160 bins
+  (L1 +0.20/+0.07/+0.01 %, L2 +0.05/+0.02 %, L3 −0.06/−0.01 % at 40/80). Level 3 nitrate
+  5.160/5.152/5.149/5.149 µg m⁻³ at 40/80/160/320 bins vs old 4.962/5.075/5.139/5.149:
+  +4.0 % at 40 bins (fails the 2 % limit), +1.5 % at 80, +0.20 % at 160. The new 40-bin
+  value is 0.21 % from the 320-bin one, the old one −3.6 %.
+- A6 warm, median of 3, interleaved, MNFIX → PPM: 80 bins L1 6.41 → 4.48 s, L2 8.54 →
+  7.56 s, L3 23.27 → 19.75 s; 40 bins 1.77 → 1.15, 6.15 → 5.74, 13.50 → 12.42 s. One
+  remap call 0.05/0.09/0.14 ms at 40/80/160 bins. `test_cstar_change_does_not_recompile`
+  passes.
+- A7 `pytest tests -q -x`: 622 passed, 650 skipped in 183 s (before: 612 passed, 650
+  skipped; +10 net new tests).
+- A8 `AerosolStepConfig.growth_bin_transfer` = 'ppm' (default) | 'mnfix'; both tested.
+- S1 (c* = 1, 12 h) number-mean dry diameter 123.3/123.2/123.2 nm at 40/80/160 bins vs
+  PyCHAM 120.5 (+2.3 %), GSD 1.817/1.816/1.815 vs 1.878 (−3.2 %); with Kelvin off and
+  PyCHAM's transfer coefficient 138.2/137.8/137.7 vs 138.1 nm, GSD 1.423/1.429/1.430 vs
+  1.428. S2 at 6 h: number-mean 212.3/211.6/211.4 nm vs 210.1, number median
+  202.6/202.7/202.4 vs 200.9, GSD 1.370/1.374/1.375 vs 1.411; SOA +1.1 % at 6 h.
+
+### Known issues / limitations
+- A5 nitrate at 40 bins: +4.0 % against the old code (limit 2 %). The new value is the
+  converged one; the user has to decide whether A5 compares against the old code or a
+  converged reference.
+- Displacement and composition are linear inside each bin: structure narrower than about
+  two bins is not kept (40-bin plateau in the +20 K case). Bins holding two kinds of
+  particle move with the bin's mean change.
+- An image wider than 4 bin widths is squeezed (not reached in any test).
+- S1 GSD differs by −3.2 % from PyCHAM (was −1.7 % with the first PPM version at 40 bins):
+  the first version was 1.3 % broader at 40 than at 160 bins; the new one does not move
+  with resolution, and with the physics matched the GSDs agree within 0.4 %. The
+  remaining gap is PyCHAM's stronger Kelvin term.
+
+### Next steps
+- Decide the A5 nitrate reference.
+- Consider the vbs-jax transfer-coefficient and Kelvin choices (A6, S1/S2), which now
+  carry all of the size-distribution difference to PyCHAM.
+
+---
+
 ## 2026-10-15 (Thu) — PPM bin transfer: verifier fixes (upwind edges, top bin), A1–A8 re-measured, S1/S2 regenerated
 
 **Time**: ~23:30 PDT 2026-10-14 (06:30 UTC 2026-10-15)

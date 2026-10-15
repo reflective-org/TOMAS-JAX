@@ -111,9 +111,9 @@ listed in `RunResult.diagnostics["aerosol_cfg"]` (empty for a default run).
 SOA partitioning (vbs-jax) and the N₂O₅-uptake nitrate source add mass to
 (or remove it from) the particles of each bin in place. The bins are
 fixed, so the particles then have to move to the bins their new mass
-belongs to. H₂SO₄ condensation already does this with PPM advection in
-log-mass (`physics/condensation_ppm.py`). SOA and nitrate now use the same
-machinery through `physics/ppm_remap.py::remap_mass_change`.
+belongs to. `physics/ppm_remap.py::remap_mass_change` does this with the
+PPM sub-bin profile that H₂SO₄ condensation uses
+(`physics/condensation_ppm.py::ppm_reconstruct`).
 
 **Previous scheme (`'mnfix'`).** MNFIX ran after every vbs-jax sub-step
 (and after the nitrate source). When a bin's mean mass leaves the bin,
@@ -129,62 +129,84 @@ place during its sub-steps (its `redistribute` hook only copies them into
 Mk; geometry comes from each bin's actual mean mass). After the call:
 
 1. Each bin with particles moved its mean dry mass m by
-   s = ln(m_new/m_old) in log-mass.
-2. Edge displacement, upwind. Inside each bin s is taken as linear in
-   ln m around the bin mean, with the smaller of the two one-sided slopes
-   to the neighbouring bin means (zero next to a neighbour without
-   particles or with the same s), and clipped so that an edge value lies
-   between the bin's s and the neighbour's. Particles cross an edge
-   upwards with the lower bin's value at that edge (if > 0) and downwards
-   with the upper bin's value (if < 0). No flux passes the two grid ends.
-3. Number moves by flux-form PPM in ln m (`ppm_reconstruct`, the same
-   monotone, positive reconstruction as H₂SO₄ condensation), sub-stepped
-   at Courant ≤ 0.8. Every species moves with the PPM mass-weighted
-   fraction of the donor bin, so all species share one flux and the
-   gained (or lost) mass travels with the particles that carry it.
-4. A bin whose mean still ended up past an edge (possible at steep edges
-   of the distribution, because PPM reconstructs number only) keeps its
-   particles just inside the edge and hands the fewest possible particles
-   to the neighbour at the neighbour's mean mass (`keep_means_in_bins`).
-5. Top bin (`cap_top_bin`): particles that grow in the top bin stay
+   s = ln(m_new/m_old) in log-mass (s < 0 for evaporation).
+2. Inside each bin, s is taken as linear in ln m through the bin mean,
+   with the smaller of the two one-sided slopes to the neighbouring bin
+   means (zero next to a neighbour without particles or with the same s),
+   and the bin-edge values are clipped between the bin's s and the
+   neighbour's. The bin then maps onto an image interval in ln m. Where s
+   varies smoothly the images of neighbouring bins join (stretched for
+   evaporation, squeezed for growth). At a jump in s (two particle
+   populations side by side) each bin keeps its own s, so particles whose
+   mass did not change stay exactly where they are while others grow or
+   shrink past them.
+3. Number inside each source bin follows its PPM reconstruction (monotone
+   and positive parabola in ln m), carried onto the image. Each target
+   bin receives the integral of that profile over the part of the image
+   inside it (exact polynomial integrals); the mass share is the same
+   integral weighted by the particle's new mass. Every bin moves with its
+   own displacement however many bins that is: there is no Courant limit
+   and no sub-stepping. For a uniform shift smaller than one bin this is
+   exactly the flux-form PPM step of H₂SO₄ condensation. Particles mapped
+   below or above the grid go into the bottom or top bin.
+4. Composition. Every species of a source bin moves with that bin's mass
+   share, and in addition each species' mass fraction is linear inside the
+   source bin (monotonized-central slope against the neighbouring bins'
+   fractions, slopes summing to zero, one common limiter so no fraction
+   goes negative). Particles therefore keep the composition that goes with
+   their size, which is what makes a grow-then-evaporate round trip come
+   back to the right sizes (below).
+5. Safety net (`keep_means_in_bins`). PPM reconstructs number only, so a
+   bin mean can still land past an edge of its target bin. Such a bin
+   hands the fewest possible particles to the neighbour at the
+   neighbour's mean mass. In the growth and evaporation tests below the
+   particles it moves add up to at most ~1e-3 of the total over a run.
+6. Top bin (`cap_top_bin`): particles that grow in the top bin stay
    there. If its mean passes the top edge, just enough of the mass added
    in place is taken back (SOA returns to the vapour; nitrate is not
    added and the driver warns), so MNFIX never trims the bin, which would
    delete seed mass as well.
 
-Number and the mass of every species are conserved to round-off (flux
-differences); no bin can go negative. Growth (s > 0) moves particles up,
-evaporation (s < 0) moves them down. MNFIX still runs where it did before
-(after the sources, inside nucleation/coagulation/condensation) and once
-after the SOA remap, where it restores its floor (1e-5 #/cell) in bins
-the remap emptied. Any SOA it deletes there goes back to the vapour, so
-gas + particle mass closes per class with either setting. In the presets
-no populated bin is left outside its bounds after the remap (checked at
-every outer step), so MNFIX has nothing to split there; after very large
-one-step changes (see Limitations) it can still split a few bins.
+Each source bin's shares sum to one and its composition-slope term to
+zero, so number and the mass of every species are conserved to
+round-off, and nothing goes negative. MNFIX still runs where it did
+before (after the sources, inside nucleation/coagulation/condensation) and
+once after the SOA remap, where it restores its floor (1e-5 #/cell) in
+bins the remap emptied. Any SOA it deletes there goes back to the vapour,
+so gas + particle mass closes per class with either setting. An image is
+kept between 0.25 and 4 bin widths (a rigid shift if it would fold,
+squeezed around the image of the bin mean if wider), so each bin touches
+at most 6 target bins and the work per call is a small band; a call with
+nothing to move (no nitrate this step) is skipped.
 
-Why the edge displacement comes from the donor's side: an edge value
-interpolated between the two neighbouring bin means (the first version)
-drags particles that did not change. Example: SOA-only particles in bins
-30–39 lose 99 % of their mass, sulfate particles in bins 40–49 do not
-change (80 bins). Interpolation gave the edge between bins 39 and 40 half
-of bin 39's displacement, pointing down, so bin 40's sulfate particles
-moved down as well: 10 % of the unchanged particles and 1.3 % of the
-sulfate ended below bin 40. Upwind, they stay exactly where they are
-(`test_remap_leaves_unchanged_particles_in_place`). Where s varies
-smoothly the edge value is the same as the interpolation for growth (the
-usual case: s falls with size).
+Choices that were tried and dropped:
 
-Why not TOMAS's `dmdt_int` law around each bin's own mean (as
-`ezcond_ppm_jax` does for H₂SO₄): `dmdt_int` assumes d(m^2/3)/dt is
-constant, which slows the upper edge of a bin more than the vbs-jax rates
-do. Number then lags mass, every bin's mean drifts to its upper edge
-(Level 1, 80 bins: from 0.50 to 0.96 of the bin width in 12 h) and MNFIX
-starts splitting bins again.
+- *Flux-form PPM with a fixed velocity per edge* (the first versions).
+  Each edge kept the donor bin's displacement for all sub-steps, so a bin
+  that had to move several bins took the displacement of the bins it
+  passed through. Next to unchanged particles it piled up: SOA-only
+  particles in bins 30–39 growing ×10 next to unchanged sulfate particles
+  in bins 40–49 (80 bins) reached 8.25e12 #/cell in bin 40 against 2e12,
+  and 3 % of the sulfate moved. In slow Kelvin ripening and after a +30 K
+  step at 160 bins, bin means crept to their edges and the safety net and
+  MNFIX left 5–11 extrema. The remap gives 2.0e12, no sulfate moved, and
+  the cases below.
+- *Edge displacement interpolated between neighbouring means.* Drags
+  unchanged particles next to a shrinking neighbour (10 % of them moved in
+  the example above with 99 % mass loss).
+- *TOMAS's `dmdt_int` law around each bin's own mean* (as `ezcond_ppm_jax`
+  does for H₂SO₄). It slows the upper edge of a bin more than the vbs-jax
+  rates do, so number lags mass and every bin mean drifts to its upper
+  edge (Level 1, 80 bins: 0.50 → 0.96 of the bin width in 12 h).
+- *Tilting each bin's PPM profile so its mean matches the bin mean.* Made
+  the number and mass shares consistent but piled particles up at steep
+  fronts (nitrate injection at 80 bins: 3 extrema instead of 1).
+- *One mean composition per source bin* (no composition slopes). Smooth,
+  but a grow-then-evaporate round trip mixes compositions bin by bin and
+  comes back too narrow (see the round-trip numbers below).
 
-**Measured (2026-10-15, laptop CPU, upwind version).** Interior extrema of
-the final dN/dlog10Dp (local maxima and minima above 5 % of the peak),
-MNFIX → PPM:
+**Measured (2026-10-15, laptop CPU).** Interior extrema of the final
+dN/dlog10Dp (local maxima and minima above 5 % of the peak), MNFIX → PPM:
 
 | Run | 40 bins | 80 bins | 160 bins |
 |---|---|---|---|
@@ -199,88 +221,96 @@ Dp, display density), PPM / MNFIX:
 
 | Preset | 40 bins | 80 bins | 160 bins |
 |---|---|---|---|
-| Level 1, SOA only (12 h) | 122.0 / 100.0 nm | 122.7 / 111.5 | 123.0 / 119.9 |
-| Level 1 preset | 127.9 / 105.8 | 128.5 / 117.4 | 128.7 / 125.7 |
-| Level 2 preset (6 h) | 214.0 / 178.9 | 213.5 / 197.1 | 212.9 / 209.2 |
-| Level 3 preset (24 h) | 196.2 / 177.7 | 194.7 / 188.8 | 194.2 / 196.4 |
+| Level 1, SOA only (12 h) | 123.0 / 100.0 nm | 123.2 / 111.5 | 123.2 / 119.9 |
+| Level 1 preset | 128.7 / 105.8 | 128.9 / 117.4 | 128.9 / 125.7 |
+| Level 2 preset (6 h) | 213.3 / 178.9 | 213.2 / 197.1 | 213.1 / 209.2 |
+| Level 3 preset (24 h) | 195.4 / 177.7 | 194.3 / 188.8 | 194.2 / 196.4 |
 
-PPM changes by ≤ 1 % between 40 and 160 bins; MNFIX by 10–20 %. Against
+PPM changes by ≤ 0.6 % between 40 and 160 bins; MNFIX by 10–20 %. Against
 PyCHAM, see [pycham_comparison.md](pycham_comparison.md) (S1 and S2).
+
+Growth and evaporation against moving sections. The reference runs the
+same vbs-jax physics with no bin transfer at all (every section keeps its
+particles; 320 sections). Number-mean dry diameter at the end:
+
+| Case | Moving sections | PPM 40 / 80 / 160 bins | flux-form PPM (before) | MNFIX |
+|---|---|---|---|---|
+| 6 h growth at 288 K (c\* = 1, 2 µg m⁻³ h⁻¹), then +30 K for 3 h | 59.2 nm, GSD 1.61 | 59.0 / 59.9 / 59.5, GSD 1.71 / 1.59 / 1.58 | 67.6 / – / 66.4 (40 / 160) | 39.7 / – / 59.3 |
+| the same with +20 K | 120.2, GSD 1.91 | 115.3 / 120.4 / 120.1, GSD 2.46 / 1.92 / 1.87 | 138.5 / 138.9 (40 / 80) | 80.9 / 105.6 (40 / 80) |
+
+(1770 kg m⁻³ for the diameter.) With +30 K the PPM count is 1 at every
+step at all three resolutions (the flux-form version had 5 at 160 bins,
+MNFIX 13–22). With +20 K, 80 and 160 bins keep 1; at 40 bins the
+mass-doubling bins cannot resolve the shoulder the moving sections form
+at 45–70 nm (small particles that Kelvin drives back to their cores) and
+show it as a plateau with 2–7 small extrema. Zero-OA bootstrap followed
+by Kelvin ripening (pure sulfate seed, 2000 cm⁻³ at 80 nm, 5 µg m⁻³ of
+c\* = 1 vapour, 6 h at 298 K) forms a real second mode at 45 nm in the
+moving sections; PPM reproduces it with the same 3 extrema at 40, 80 and
+160 bins (the flux-form version had 1 / 3 / 11, with alternating ±10–33 %
+bins).
 
 Conservation in the preset runs (checked after every outer step, 40/80/160
 bins): gas + particle per SOA class ≤ 4e-15 relative, particle nitrate vs
-`nitrate_added` ≤ 2e-15, nucleated organic ≤ 6e-14, sulfate (gas +
-particle + source) ≤ 7e-11 (MNFIX's empty-bin floor; the same with
-`'mnfix'`); number in the SOA-only runs ≤ 5e-13; no negative or
+`nitrate_added` ≤ 2e-15, every other species except sulfate ≤ 4e-14,
+sulfate (gas + particle + source) ≤ 7e-11 (MNFIX's empty-bin floor; the
+same with `'mnfix'`); number in the SOA-only runs ≤ 5e-13; no negative or
 non-finite values; no populated bin (Nk > 1e-6 of the peak) with its mean
-outside its bin. The largest displacement of a populated bin in one
-remap is 0.03 / 1.6 / 1.9 bins (Level 1 / 2 / 3, 160 bins).
+outside its bin. Per remap call inside the presets (1440–2880 calls):
+number ≤ 1.4e-15 and every species ≤ 1.2e-15 relative.
 
-End-of-run totals, PPM vs MNFIX: SOA within 0.22 % in all presets at 40,
+End-of-run totals, PPM vs MNFIX: SOA within 0.21 % in all presets at 40,
 80 and 160 bins (largest: Level 1 at 40 bins, +0.21 %). Level 3 nitrate:
 
 | | 40 bins | 80 bins | 160 bins | 320 bins |
 |---|---|---|---|---|
-| PPM | 5.180 | 5.164 | 5.156 | 5.153 µg m⁻³ |
+| PPM | 5.160 | 5.152 | 5.149 | 5.149 µg m⁻³ |
 | MNFIX (the previous code) | 4.962 | 5.075 | 5.139 | 5.149 |
-| PPM vs MNFIX | +4.4 % | +1.7 % | +0.33 % | +0.07 % |
+| PPM vs MNFIX | +4.0 % | +1.5 % | +0.20 % | −0.01 % |
 
-Both converge to about 5.15 µg m⁻³. At 40 bins PPM is 0.6 % above the
-320-bin MNFIX value and the previous code 3.6 % below it. N₂O₅ uptake
-follows the particle surface, which the bin transfer changes; the +4.4 %
-at 40 bins is the old scheme's resolution error, not a new one. The 2 %
-acceptance limit against the old code is therefore not met at 40 bins
-(it is at 80 bins and above); see PROGRESS.md for the open decision.
+Both converge to 5.149 µg m⁻³. At 40 bins PPM is 0.21 % above the 320-bin
+value and the previous code 3.6 % below it. N₂O₅ uptake follows the
+particle surface, which the bin transfer changes; the +4.0 % at 40 bins
+is the old scheme's resolution error, not a new one. The 2 % acceptance
+limit against the old code is therefore not met at 40 bins (it is at 80
+bins and above); see PROGRESS.md for the open decision.
 
-Runtime: the PPM path is not slower, because MNFIX (a sequential loop
-over the bins) no longer runs after every vbs-jax sub-step. Warm runs on a
-laptop CPU, median of 3, PPM and MNFIX interleaved in one process (load
-average 3–4):
+Runtime: the PPM path is faster, because MNFIX (a sequential loop over the
+bins) no longer runs after every vbs-jax sub-step. Warm runs on a laptop
+CPU, median of 3, PPM and MNFIX interleaved in one process (load average
+4–5 from other work):
 
 | Preset | 40 bins | 80 bins |
 |---|---|---|
-| Level 1 (12 h) | 1.75 → 1.09 s | 6.17 → 4.26 s |
-| Level 2 (6 h) | 6.05 → 5.75 s | 8.35 → 7.51 s |
-| Level 3 (24 h) | 13.46 → 12.26 s | 22.77 → 18.74 s |
+| Level 1 (12 h) | 1.77 → 1.15 s | 6.41 → 4.48 s |
+| Level 2 (6 h) | 6.15 → 5.74 s | 8.54 → 7.56 s |
+| Level 3 (24 h) | 13.50 → 12.42 s | 23.27 → 19.75 s |
 
 (MNFIX → PPM; MNFIX is bit-identical to the code before the PPM remap.)
-
-The step still compiles once per (nbins, K, dt_outer, micro_dt, processes,
-cfg); the remap's sub-step count is a traced loop bound.
+One remap call costs about 0.05 / 0.09 / 0.14 ms at 40 / 80 / 160 bins
+(timed on its own).
+The step still compiles once per (nbins, K, dt_outer, micro_dt,
+processes, cfg).
 
 **Limitations.**
-- PPM is a one-moment reconstruction; the bin means are kept inside their
-  bins by `keep_means_in_bins`, which moves a few percent of a bin when it
-  acts. It acts mostly in the sparse tails.
-- Grow-then-evaporate round trips do not return to the seed shape.
-  TOMAS keeps one composition per bin, and the remap moves species with
-  the donor bin's mean composition (as the H₂SO₄ PPM scheme does), so
-  particles with different cores that grow into the same bins share
-  their composition. Test: Level-1-like growth (c\* = 1, 2 µg m⁻³ h⁻¹,
-  6 h at 288 K), then +30 K at once and 3 h of evaporation. Kept cores
-  would give a number-mean dry diameter of ~63 nm and GSD 1.6 at the
-  end. PPM gives 71.4 / 70.2 nm and GSD 1.35 / 1.30 at 40 / 160 bins
-  (the core-size spread carried by the bins is already 1.32–1.36 after
-  the growth, at either resolution); MNFIX gives 42.0 / 62.7 nm and GSD
-  2.66 / 1.57. PPM conserves everything and moves the mode down
-  monotonically; it keeps one extremum at 40 and 80 bins, while at 160
-  bins this abrupt +30 K step leaves 5 small extrema (MNFIX 22). The
-  presets (gradual temperature change in Level 3) keep one extremum.
-- One remap per call moves particles with the displacement of the bin
-  they are in at each sub-step, so a bin that has to move several bins in
-  one 60 s step passes through bins with other displacements. Example: a
-  pure c\* = 100 SOA mode (no vapour) next to a sulfate mode loses 75 % of
-  its mass in the first step; 0.40 % of the sulfate ends below bin 40 (80
-  bins), against 0.17 % for an exact remap of the bins' new mean masses
-  and 0.21 % with MNFIX. Where a bin holds both kinds of particle, all of
-  them move with the bin's mean change (TOMAS keeps one composition per
-  bin).
+- PPM reconstructs number only. A bin mean that lands outside its target
+  bin is pulled back by `keep_means_in_bins` (it moves few particles, see
+  above). Displacement and composition are linear inside each source bin,
+  so structure finer than a bin is not kept: on the 40-bin mass-doubling
+  grid a shoulder narrower than about two bins shows as a plateau with
+  small wiggles (+20 K case above).
+- Where a bin holds two kinds of particle, all of them move with the
+  bin's mean change (TOMAS keeps one composition per bin; the slopes only
+  carry a linear trend across the bin).
 - Nothing leaves the grid. At the top, the in-place mass that would push
   the top bin past 17.5 µm is taken back (`cap_top_bin`: SOA stays in the
   gas, nitrate is not added and the driver warns), so MNFIX never trims
   the top bin's sulfate. At the bottom, a bin-0 mean below 1.7 nm is
   handled by MNFIX as before (it trims number, keeps mass). The tutorial
   presets never reach either end.
+- A bin's image is limited to 4 bin widths: a bin whose particles spread
+  over more than four times its width in one call (not seen in any test)
+  is squeezed around the image of its mean.
 - Bins with Nk ≤ 1e-10 #/cell are not moved; a change they received stays
   in place.
 - One remap per 60 s micro-step: within a micro-step vbs-jax sees the
@@ -308,14 +338,25 @@ cfg); the remap's sub-step count is a traced loop bound.
   check behave the same with both. Nitrate injection conserves nitrate,
   number and sulfate. Pankow / vbs-jax equilibrium and the all-process
   class budget are tested with both settings.
-- Unchanged particles stay put: SOA-only bins losing 99 % next to
-  unchanged sulfate bins move down, the sulfate bins keep their number
-  and mass to 1e-12 and no sulfate ends below them.
+- Particles move past unchanged ones: SOA-only particles in bins 30–39
+  (80 bins) grow ×3 or ×10, or SOA-only particles in bins 50–59 keep 25 %
+  or 1 % of their mass, next to unchanged sulfate particles in bins
+  40–49. The sulfate keeps its number and mass per bin to 1e-14, the SOA
+  particles' mean bin lands within 0.02 bins of the exact position (3 to
+  13 bins away) and no bin exceeds the two populations' 2e12 #/cell by
+  more than a few percent (`test_remap_moves_particles_past_unchanged_ones`).
+- Multi-bin shifts: ×10 and ÷10 at once at 160 bins (13.3 bins) move the
+  mode by ln 10 with its width kept to 1e-6 and one extremum. The mass
+  integrals φ_j agree with an exact series to 1e-14.
 - Top of the grid: particles in the top three bins with 2000 µg m⁻³ of
   c\* = 0.01 vapour (12 × 600 s) close the class budget to 1e-12 every
   step with both settings; with PPM the top-bin mean stays inside the
   grid and no sulfate is lost. Nitrate pushed onto top-bin particles is
   partly not added, and `nitrate_added` equals the particle nitrate.
-- +30 K after 6 h of growth (40 bins): class budget 1e-12 every step,
-  mean diameter falls monotonically with both settings; PPM conserves
-  number and keeps one extremum.
+- +30 K after 6 h of growth (40 and 160 bins with PPM, 40 with MNFIX):
+  class budget 1e-12 every step, mean diameter falls monotonically with
+  both settings; PPM conserves number and keeps one extremum at every step.
+- Against moving sections at 80 bins (`test_soa_matches_moving_sections`):
+  grow 3 h at 283 K then 1 h at 313 K, and zero-OA bootstrap with Kelvin
+  ripening (4 h); number-mean dry diameter within 0.3 % and GSD within
+  0.5 %, one extremum every hour in the round trip.

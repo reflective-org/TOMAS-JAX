@@ -82,33 +82,40 @@ is assumed, why, where it is implemented and how to change it.
     (+3–4 % at 1–3 h in Level 1 with c* = 1; part of +12 % at 30 min in Level 2);
     equilibrium SOA is unaffected.
   - Size distribution (changed 2026-10-15): SOA growth/evaporation and N2O5-uptake
-    nitrate move particles between the fixed bins with the PPM log-mass advection that
-    H2SO4 condensation uses (`physics/ppm_remap.py`, upwind edge displacement;
-    `AerosolStepConfig.growth_bin_transfer = 'ppm'`, docs/aaar/aerosol_step.md). The
-    previous MNFIX split (still selectable as `'mnfix'`, bit-identical to the old code)
-    combed the distribution (3/9/28 interior extrema in Level 1 at 40/80/160 bins),
-    spread it (number-mean dry diameter −13 % at 40 bins in S1, converging only at 160
-    bins) and put ~2 % of the particles below the seed size in Level 2. What holds now:
-    one mode with no comb at every output time of all presets at 40/80/160 bins; preset
-    mean diameters change by ≤ 1 % from 40 to 160 bins; S1 (c* = 1, 12 h) number-mean
-    dry diameter 122.3/122.7/123.0 nm at 40/80/160 bins vs PyCHAM 120.5 (+1.5 %; with
-    Kelvin off in both and PyCHAM's transfer coefficient 138.9 vs 138.1 nm, so the rest is
-    the Kelvin/transfer difference above, not the bins); S2 at 6 h number-mean 213.8 vs
-    210.1 nm, GSD −3.5 %, 0.16 % of the particles below the seed's 1st-percentile size
-    (PyCHAM 0.05 %, MNFIX 2.1 %). SOA totals
-    change by ≤ 0.22 %. Level 3 nitrate is 4.4 % above the old code at 40 bins
-    (5.18 vs 4.96 µg/m³): N2O5 uptake follows the particle surface, and the old 40-bin
-    value carried the old scheme's resolution error. Both schemes converge to ~5.15 at
-    320 bins (PPM 5.18/5.16/5.16/5.15, MNFIX 4.96/5.08/5.14/5.15 at 40/80/160/320).
-    Remaining numerical choices and limits: one remap per 60 s micro-step; PPM
-    reconstructs number only, so a small limiter keeps each bin's mean inside its bin
-    (moves a few % of a bin when it acts, mostly in the sparse tails); species move with
-    the donor bin's mean composition and TOMAS keeps one composition per bin, so a
-    grow-then-evaporate round trip does not return to the seed shape (after +30 K at
-    once: number-mean 71 vs ~63 nm for kept cores, at 40 and 160 bins); particles that
-    move several bins in one micro-step take the displacement of the bins they pass
-    through. At the top of the grid (17.5 µm) the in-place SOA/nitrate that does not fit
-    is taken back (SOA to the gas, nitrate reported) instead of MNFIX trimming the bin.
+    nitrate move particles between the fixed bins with a PPM remap in log-mass
+    (`physics/ppm_remap.py`; `AerosolStepConfig.growth_bin_transfer = 'ppm'`,
+    docs/aaar/aerosol_step.md): each bin's PPM sub-bin profile (the one H2SO4
+    condensation uses) is carried by that bin's own displacement, however many bins,
+    and deposited onto the fixed bins, with a limited composition slope inside each
+    bin. The previous MNFIX split (still selectable as `'mnfix'`, bit-identical to the
+    old code) combed the distribution (3/9/28 interior extrema in Level 1 at 40/80/160
+    bins), spread it (number-mean dry diameter −13 % at 40 bins in S1, converging only
+    at 160 bins) and put ~2 % of the particles below the seed size in Level 2. What
+    holds now: one mode with no comb at every output time of all presets at 40/80/160
+    bins; preset mean diameters change by ≤ 0.6 % from 40 to 160 bins; particles that
+    do not change stay exactly in place while others grow or shrink past them; a
+    grow-then-evaporate round trip (6 h growth, then +30 K) returns to the
+    moving-section answer (number-mean 59.0/59.9/59.5 nm at 40/80/160 bins vs 59.2 nm);
+    zero-OA bootstrap followed by Kelvin ripening reproduces the second mode the moving
+    sections form. S1 (c* = 1, 12 h): number-mean dry diameter 123.3/123.2/123.2 nm at
+    40/80/160 bins vs PyCHAM 120.5 (+2.3 %), GSD −3.2 %; with Kelvin off in both and
+    PyCHAM's transfer coefficient the two agree within 0.2 % in diameter and 0.4 % in
+    GSD at every resolution, so the rest is the Kelvin/transfer difference above, not
+    the bins. S2 at 6 h: number-mean 212.3 vs 210.1 nm (+1.1 %), number median 202.6 vs
+    200.9 nm, GSD −2.9 %, 0.11 % of the particles below the seed's 1st-percentile size
+    (PyCHAM 0.05 %, MNFIX 2.1 %). SOA totals change by ≤ 0.21 %. Level 3 nitrate is
+    4.0 % above the old code at 40 bins (5.16 vs 4.96 µg/m³): N2O5 uptake follows the
+    particle surface, and the old 40-bin value carried the old scheme's resolution
+    error. Both converge to 5.149 µg/m³ at 320 bins (PPM 5.160/5.152/5.149/5.149, MNFIX
+    4.962/5.075/5.139/5.149 at 40/80/160/320). Remaining numerical limits: one remap per
+    60 s micro-step; displacement and composition are linear inside each bin, so
+    structure narrower than about two bins is not kept (on the 40-bin grid a Kelvin
+    shoulder shows as a plateau with small wiggles); PPM reconstructs number only, so a
+    small limiter keeps each bin's mean inside its bin (it moves at most ~1e-3 of the
+    particles over a run in the tests); where a bin holds two kinds of particle they
+    move with the bin's mean change. At the top of the grid (17.5 µm) the in-place
+    SOA/nitrate that does not fit is taken back (SOA to the gas, nitrate reported)
+    instead of MNFIX trimming the bin.
   - Per-species tracker: members of one class should keep one particle fraction (same
     c*); the tracker gives 0.29–0.94 where PyCHAM gives 0.81–0.83, so individual "top
     contributors" can be off by up to 4×. Class totals agree within ~11 %.

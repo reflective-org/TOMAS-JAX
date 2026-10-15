@@ -19,7 +19,7 @@ time) are numerical experiments done in benchmark code; they never change the mo
 |---|---|---|
 | Gas chemistry (G2) | **Same ODE system.** All 2135 rate constants agree to 4e-16. At the preset 300 s coupling the median \|NMB\| over 391 species is 1.7e-3 (max 3 %); at 60 s it is 3e-4, and with tight solver tolerances and the same water vapour formula 5e-7. | RO2+RO2 products in the first 20 min (RO2 frozen at 0 for the first interval). |
 | Photolysis and day/night (G3) | **Agree once the coupling is short.** 900 s preset: median \|NMB\| 10 % over 361 species, HNO3 −9 %, NO −11 % by day. 60 s: 0.6 %, every species within 2.6 % at all times. All differences removed: 1.5e-6. | How NO2 is "held": TOMAS-JAX resets it after each interval, PyCHAM fixes it inside the solver. Plus J and RO2 frozen for 900 s. |
-| Condensation / evaporation (S1) | **Mass agrees within ~1 % at 12 h, the size distribution within 2 %; early uptake is faster.** c* = 1 SOA +0.7 % at 12 h (max +4.1 % at 1–3 h), c* = 100 −0.3 %. Number-mean dry diameter +1.5 % and GSD −1.7 % at 12 h at 40 bins (+2.1 % / −2.8 % at 160 bins). | vbs-jax's transfer coefficient (up to 1.5× PyCHAM's and above the kinetic limit) and the Kelvin term. Until 2026-10-15 TOMAS-JAX moved growing particles with MNFIX, which spread the distribution (diameter −12.6 % at 40 bins); it now uses a PPM remap. |
+| Condensation / evaporation (S1) | **Mass agrees within ~1 % at 12 h; the size distribution differs by the Kelvin term and transfer coefficient only; early uptake is faster.** c* = 1 SOA +0.7 % at 12 h (max +4.1 % at 1–3 h), c* = 100 −0.3 %. Number-mean dry diameter +2.3 % and GSD −3.2 % at 12 h, the same at 40 and 160 bins (TOMAS-JAX moves by ≤ 0.1 % with resolution). With Kelvin off in both and PyCHAM's transfer coefficient in TOMAS-JAX: −0.2 to +0.1 % in diameter and −0.4 to +0.1 % in GSD at 40–160 bins. | vbs-jax's transfer coefficient (up to 1.5× PyCHAM's and above the kinetic limit) and the Kelvin term. Until 2026-10-15 TOMAS-JAX moved growing particles with MNFIX, which spread the distribution (diameter −12.6 % at 40 bins); it now uses a PPM remap. |
 | SOA partitioning with chemistry (S2) | **Total SOA within 1–4.2 % after 1 h (+1.1 % at 6 h), +13 % at 30 min.** Per c* class within ~11 %. | Operator split and transfer rate early on; per-species apportionment inside a class off by up to 4×. The volatility itself is not tested (identical c* by construction). |
 
 What this means for the tutorial: the gas-phase chemistry and the partitioning
@@ -244,9 +244,9 @@ equals production × time to 2e-10 (PyCHAM) and 4e-14 (TOMAS-JAX).
 | SOA NMB / max deviation after 1 h | +1.3 % / 4.1 % (at 1–3 h) | −0.27 % / 0.28 % |
 | gas-phase surrogate at 12 h | 1.056 vs 1.089 µg m⁻³ (−2.9 %) | 5e-6 relative |
 | particle water at 12 h (TOMAS-JAX vs PyCHAM) | +10 % | +13 % |
-| number-mean dry diameter at 12 h | 122.3 vs 120.5 nm (+1.5 %) | 0.00 % |
-| GSD of dry diameter at 12 h | 1.847 vs 1.878 (−1.7 %) | 0.00 % |
-| number-mean wet diameter at 12 h | +3.5 % | +2.6 % |
+| number-mean dry diameter at 12 h | 123.3 vs 120.5 nm (+2.3 %) | 0.00 % |
+| GSD of dry diameter at 12 h | 1.817 vs 1.878 (−3.2 %) | 0.00 % |
+| number-mean wet diameter at 12 h | +4.4 % | +2.6 % |
 
 (Dry diameters at 1400 kg m⁻³ in every figure and table, as the tutorial reports.)
 
@@ -261,7 +261,7 @@ equals production × time to 2e-10 (PyCHAM) and 4e-14 (TOMAS-JAX).
    collision rate π r² c̄ N, which no flux should exceed with α = 1. The condensation
    sink at t = 0 is 1.61e-3 vs 1.07e-3 s⁻¹ (1.11e-3 with PyCHAM's formula on our state,
    so the formula and not the particle state is the cause). Effect: c* = 1 SOA runs
-   ahead by up to +4.1 % at 1–3 h. With Kelvin off in both it is +2.7 %; with PyCHAM's
+   ahead by up to +4.1 % at 1–3 h. With Kelvin off in both it is +2.6 %; with PyCHAM's
    coefficient in TOMAS-JAX as well, −0.9 %.
 2. *Kelvin term (physical).* vbs-jax: σ = 0.025 N m⁻¹, ρ = 1200 kg m⁻³, the
    condensing species' MW. PyCHAM: σ = 0.072 N m⁻¹ with the particle's mass-weighted
@@ -278,26 +278,34 @@ equals production × time to 2e-10 (PyCHAM) and 4e-14 (TOMAS-JAX).
 4. *Size structure (numerical).* TOMAS-JAX changes the particle mass of each bin in
    place and then moves the particles between its fixed bins with a PPM remap in
    log-mass (`AerosolStepConfig.growth_bin_transfer = 'ppm'`,
-   [aerosol_step.md](aerosol_step.md#bin-transfer-of-soa-and-nitrate-growth_bin_transfer));
-   PyCHAM's moving-centre bins keep each population's exact size. Number-mean dry
-   diameter at 12 h: 122.3 / 122.7 / 123.0 nm at 40 / 80 / 160 bins vs PyCHAM 120.5 nm
-   (120.4 at 160 bins), GSD 1.847 / 1.833 / 1.824 vs 1.878. The ~2 % that remain are the
-   physics above: with Kelvin off in both, 137.2 vs 138.1 nm (−0.6 %), and with PyCHAM's
-   transfer coefficient in TOMAS-JAX as well, 138.9 vs 138.1 nm (+0.6 %). SOA mass
-   changes by ≤ 0.02 % with resolution. Before 2026-10-15 TOMAS-JAX moved growing
-   particles only with MNFIX (part of a bin stays at its centre, the rest jumps to 1/1.1
-   of the next bin's upper edge); over the ×8.9 dry-mass growth this spread the
-   distribution: −12.6 % in diameter and +4.8 % in GSD at 40 bins, 105 / 115 / 121 nm at
-   40 / 80 / 160 bins. That scheme is still selectable (`growth_bin_transfer = 'mnfix'`)
-   for comparison.
+   [aerosol_step.md](aerosol_step.md#bin-transfer-of-soa-and-nitrate-growth_bin_transfer)):
+   each bin's PPM sub-bin profile is carried by the bin's own displacement and
+   deposited onto the bins, with a composition slope inside each bin. PyCHAM's
+   moving-centre bins keep each population's exact size. Number-mean dry diameter at
+   12 h: 123.3 / 123.2 / 123.2 nm at 40 / 80 / 160 bins vs PyCHAM 120.5 nm (120.4 at
+   160 bins), GSD 1.817 / 1.816 / 1.815 vs 1.878. The bins are converged at 40, so
+   the +2.3 % and −3.2 % that remain are the physics above. With the physics matched
+   (Kelvin off in both, PyCHAM's transfer coefficient in TOMAS-JAX) the two models
+   agree at every resolution: 138.2 / 137.8 / 137.7 nm at 40 / 80 / 160 bins vs PyCHAM
+   138.1 nm (+0.1 / −0.2 / −0.2 %), GSD 1.423 / 1.429 / 1.430 vs 1.428 (−0.4 / +0.05 /
+   +0.1 %). With Kelvin off alone: 136.6 vs 138.1 nm (−1.1 %). PyCHAM's stronger
+   Kelvin term (item 2) broadens its distribution. SOA mass changes by ≤ 0.02 % with
+   resolution. Before 2026-10-15 TOMAS-JAX moved growing particles only with MNFIX
+   (part of a bin stays at its centre, the rest jumps to 1/1.1 of the next bin's upper
+   edge); over the ×8.9 dry-mass growth this spread the distribution: −12.6 % in
+   diameter and +4.8 % in GSD at 40 bins, 105 / 115 / 121 nm at 40 / 80 / 160 bins.
+   That scheme is still selectable (`growth_bin_transfer = 'mnfix'`) for comparison.
+   (A first PPM version moved particles by flux differences with one displacement per
+   bin edge; it gave 122.3 / 122.7 / 123.0 nm and GSD 1.847 / 1.833 / 1.824, i.e. it
+   still moved with resolution, and failed for moves of more than about one bin.)
 5. *Density (physical).* TOMAS-JAX uses the Tang H2SO4-solution density with organics
    counted as sulfate; PyCHAM adds volumes with water at 1000 kg m⁻³. The dry components
    got an effective 2170 kg m⁻³ so the wet volume matches at t = 0; at 12 h the two rules
    differ by ≤ 0.6 % on the same composition (0.2 % in diameter).
 6. *Numerics.* TOMAS-JAX micro-step 10 s vs 60 s: SOA within 0.8 % after 1 h, dry
-   diameter −0.9 % at 12 h. PyCHAM update step 10 s and rtol 1e-6: within 0.03 %.
+   diameter −0.8 % at 12 h. PyCHAM update step 10 s and rtol 1e-6: within 0.03 %.
 
-Runtime per 12 h run: TOMAS-JAX 1.3 s (40 bins), 2.6 s (160 bins); PyCHAM 15 s.
+Runtime per 12 h run: TOMAS-JAX 1.3 s (40 bins), 2.9 s (160 bins); PyCHAM 14 s.
 More figures: [number-mean diameters and GSD over time](figures/pycham/S1_mean_diameter.png).
 
 ---
@@ -323,8 +331,8 @@ phase agrees as in G2 (median \|NMB\| 1.7e-3, 391 species).
 | SOA [µg m⁻³] | 30 min | 1 h | 3 h | 6 h | NMB 0–6 h |
 |---|---|---|---|---|---|
 | PyCHAM (class-centre c*) | 4.98 | 8.70 | 13.15 | 15.68 | — |
-| TOMAS-JAX 300 s | 5.65 (+13.3 %) | 9.07 (+4.2 %) | 13.41 (+2.0 %) | 15.86 (+1.1 %) | +2.4 % |
-| TOMAS-JAX 60 s | 5.42 (+8.6 %) | 9.04 (+3.9 %) | 13.45 (+2.3 %) | 15.90 (+1.4 %) | +2.4 % |
+| TOMAS-JAX 300 s | 5.64 (+13.2 %) | 9.06 (+4.2 %) | 13.41 (+1.9 %) | 15.86 (+1.1 %) | +2.4 % |
+| TOMAS-JAX 60 s | 5.41 (+8.6 %) | 9.03 (+3.9 %) | 13.45 (+2.3 %) | 15.90 (+1.3 %) | +2.4 % |
 | PyCHAM own Li c* (lumping) | 5.52 (+10.7 %) | 9.30 (+7.0 %) | 13.61 (+3.5 %) | 15.87 (+1.2 %) | +3.4 % |
 
 - The chemistry makes the same condensable material: gas + particle mass of the 245
@@ -343,11 +351,11 @@ phase agrees as in G2 (median \|NMB\| 1.7e-3, 391 species).
 
 | SOA difference, cumulative steps | 15 min | 30 min | 1 h | 3 h | 6 h |
 |---|---|---|---|---|---|
-| TOMAS-JAX 300 s vs PyCHAM (as configured) | +34 % | +13 % | +4.2 % | +2.0 % | +1.1 % |
-| coupling 60 s (= PyCHAM update step) | +16 % | +8.6 % | +3.9 % | +2.3 % | +1.4 % |
-| + transfer rate matched (our organic sink × 0.69) | +2.4 % | +3.1 % | +2.4 % | +1.7 % | +1.1 % |
-| + Raoult matched (PyCHAM with mass-fraction Raoult) | +1.0 % | +1.5 % | +0.8 % | +0.3 % | −0.07 % |
-| + Kelvin off in both (every attributed difference matched) | −0.75 % | −0.01 % | −0.09 % | −0.35 % | −0.54 % |
+| TOMAS-JAX 300 s vs PyCHAM (as configured) | +34 % | +13 % | +4.2 % | +1.9 % | +1.1 % |
+| coupling 60 s (= PyCHAM update step) | +16 % | +8.6 % | +3.9 % | +2.3 % | +1.3 % |
+| + transfer rate matched (our organic sink × 0.69) | +2.3 % | +3.1 % | +2.3 % | +1.7 % | +1.1 % |
+| + Raoult matched (PyCHAM with mass-fraction Raoult) | +1.0 % | +1.4 % | +0.8 % | +0.3 % | −0.10 % |
+| + Kelvin off in both (every attributed difference matched) | −0.77 % | −0.04 % | −0.12 % | −0.38 % | −0.57 % |
 
 1. *Operator split (numerical).* TOMAS-JAX integrates the chemistry over a coupling
    interval and then partitions the vapour formed in that interval over the same
@@ -366,7 +374,7 @@ phase agrees as in G2 (median \|NMB\| 1.7e-3, 391 species).
 
 With the three largest differences matched (coupling, transfer, Raoult) the models agree
 within 1.5 % from 10 min on (largest at 25 min); removing the Kelvin term as well leaves
-TOMAS-JAX 0.01–0.75 % *below* PyCHAM (largest at 15 min). That residual is the sum of the
+TOMAS-JAX 0.04–0.77 % *below* PyCHAM (largest at 15 min). That residual is the sum of the
 differences that were not matched: the transfer factor is one number (0.69) for 245
 species whose own ratio varies, PyCHAM's water and density rules, moving-centre vs fixed
 bins, the within-class tracker and the seed chemistry (SA is H2SO4, 98 g/mol, in
@@ -383,19 +391,22 @@ chemistry ~10 % of mass moves between neighbouring classes. Class totals are rob
 ![S2 top species](figures/pycham/S2_top_species.png)
 
 **Size distribution (numerical, as S1).** Number and mass are conserved in both. From
-each bin's mean dry size at 6 h (40 bins): number-mean dry diameter 213.8 vs 210.1 nm
-(+1.8 %), GSD 1.362 vs 1.411 (−3.5 %), dry-mass-weighted mean 276.5 vs 281.7 nm
-(−1.9 %). TOMAS-JAX barely moves with resolution (213.8 / 212.6 / 212.0 nm, GSD 1.362 /
-1.364 / 1.369 at 40 / 80 / 160 bins). A small tail below the seed is numerical
-diffusion of the remap at small sizes: 0.16 / 0.06 / 0.03 % of the particles end below
-the seed's 1st-percentile diameter at 40 / 80 / 160 bins (PyCHAM 0.05 %). These
-numbers use the PPM bin transfer for SOA (since 2026-10-15). With the previous MNFIX
-transfer the distribution was broader: number-mean 187.4 nm, GSD 1.85, dry-mass mean
-344 nm, and 2.1 % of the particles below the seed size at 40 bins (when SOA evaporates
-from small particles MNFIX moves part of a bin down). Medians are no longer reported:
-read from the cumulative at each bin's mean size they are biased low by about half a
-bin (about 12 % in diameter at 40 bins), so they drift with resolution while the mean
-does not. PyCHAM's moving-centre bins merge, so its curve is spiky.
+each bin's mean dry size at 6 h (40 bins): number-mean dry diameter 212.3 vs 210.1 nm
+(+1.1 %), GSD 1.370 vs 1.411 (−2.9 %), number median 202.6 vs 200.9 nm (+0.8 %),
+dry-mass median 266.2 vs 266.8 nm (−0.2 %), dry-mass-weighted mean 280.1 vs 281.7 nm
+(−0.6 %). TOMAS-JAX barely moves with resolution: number-mean 212.3 / 211.6 / 211.4 nm,
+GSD 1.370 / 1.374 / 1.375, number median 202.6 / 202.7 / 202.4 nm at 40 / 80 / 160
+bins. 0.11 / 0.06 / 0.03 % of the particles end below the seed's 1st-percentile
+diameter at 40 / 80 / 160 bins (PyCHAM 0.05 %). The medians are read from a mid-rank
+cumulative (each bin at its mean dry size, half of its own weight counted below it,
+bins without particles skipped); the plain cumulative used before read them about half
+a bin low (184 / 193 / 198 nm at 40 / 80 / 160 bins with the first PPM version) and
+PyCHAM's empty bins inflated its value (181 nm). These numbers use the PPM bin
+transfer for SOA (since 2026-10-15). With the previous MNFIX transfer the distribution
+was broader: number-mean 187.4 nm, number median 173.9 nm, GSD 1.85, dry-mass mean 344
+nm, and 2.1 % of the particles below the seed size at 40 bins (when SOA evaporates
+from small particles MNFIX moves part of a bin down). PyCHAM's moving-centre bins
+merge, so its curve is spiky.
 ![S2 size distributions](figures/pycham/S2_size_distributions.png)
 
 **What S2 does and does not test.** PyCHAM was given our class-centre c* for every
@@ -444,8 +455,10 @@ More figures: [all gas-phase species with particles present](figures/pycham/S2_g
   Fuchs–Sutugin form (or 2D/c̄ with a matching form) and a per-class diffusion volume.
   The size distribution used to spread at 40 bins (mean diameter −13 % after a ×9 mass
   growth; converged only at 160 bins). Fixed 2026-10-15: SOA growth now uses a PPM
-  remap; the 40-bin mean diameter is within 2 % of PyCHAM and within 1 % of the 160-bin
-  run (S1 and S2).
+  remap; the 40-bin mean diameter is within 0.1 % (S1) and 0.4 % (S2) of the 160-bin
+  run. The +2.3 % in mean diameter and −3.2 % in GSD that remain against PyCHAM in S1
+  are the Kelvin term and transfer coefficient: with both matched the models agree
+  within 0.2 % and 0.4 % at 40, 80 and 160 bins.
 - **SOA partitioning with chemistry.** Class totals agree (≤ 11 %), total SOA within
   1–4.2 % after 1 h. Per-species "top contributors" from the tracker are not reliable
   within a class (up to 4×); the tutorial should present class totals, or the tracker

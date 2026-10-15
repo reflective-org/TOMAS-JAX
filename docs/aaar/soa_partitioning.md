@@ -91,15 +91,19 @@ move between the fixed bins:
 
 - `'ppm'` (default): after vbs-jax returns, `physics/ppm_remap.py::
   remap_mass_change(Nk, Mk_before, Mk_after, xk)` moves number and every
-  species with flux-form PPM in log-mass, the advection H₂SO₄ condensation
-  uses. Each bin's displacement is the log change of its mean dry mass;
-  growth moves particles up, evaporation down; an edge is crossed with the
-  displacement of the bin the particles come from (upwind), so particles
-  whose mass did not change never move. Then `cap_top_bin` keeps SOA that
+  species to the bins they now belong to. Each bin's displacement is the
+  log change of its mean dry mass (growth up, evaporation down). The bin's
+  PPM sub-bin profile, the one H₂SO₄ condensation uses, is carried by that
+  displacement, however many bins it is, and deposited onto the fixed bins
+  by exact overlap integrals; each species' mass fraction is linear inside
+  the bin (limited), so particles keep the composition that goes with their
+  size. Particles whose mass did not change stay exactly in place, even
+  while others grow or shrink past them. Then `cap_top_bin` keeps SOA that
   would push the top bin past the grid in the gas, and MNFIX restores its
   floor in emptied bins (SOA it deletes there returns to the gas).
   Conservative to round-off, never negative, smooth (one extremum for a
-  growing or shrinking mode at 40, 80 and 160 bins in the presets).
+  growing or shrinking mode at 40, 80 and 160 bins in the presets), and a
+  grow-then-evaporate round trip comes back to the moving-section answer.
 - `'mnfix'`: MNFIX after every vbs-jax sub-step. It combs a growing mode
   (3 / 13 / 30 interior extrema at 40 / 80 / 160 bins in Level 1 with SOA
   only) and makes the size distribution depend on resolution. Kept for
