@@ -5,6 +5,9 @@ setting ('ppm' default, 'mnfix' = the previous scheme) for SOA growth,
 SOA evaporation, the zero-OA bootstrap and N2O5-uptake nitrate. See
 docs/aaar/aerosol_step.md and docs/aaar/soa_partitioning.md.
 """
+import math
+from fractions import Fraction
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -21,10 +24,12 @@ from tomas_jax.core.config import (
     ICOMP, ICOMP_NODIAG, N_GAS_SPECIES, PI, SRTH2O, SRTNIT, SRTORG_NUC,
     SRTSO4, SRTSOA1,
 )
+from tomas_jax.physics import soa_partitioning
 from tomas_jax.physics.ppm_remap import (
-    BIN_TRANSFERS, cap_top_bin, keep_means_in_bins, remap_mass_change,
+    BIN_TRANSFERS, _phi, cap_top_bin, keep_means_in_bins, remap_mass_change,
 )
 from tomas_jax.physics.soa_partitioning import soa_partition_step
+from tomas_jax.physics.water_equilibrium import equilibrate_water
 
 BOXVOL = 1.0e10                    # cm^3 (tutorial default)
 BOXVOL_M3 = BOXVOL * 1e-6
@@ -175,33 +180,90 @@ def test_keep_means_in_bins_moves_few_particles():
                                np.asarray(jnp.sum(Mk_bad, axis=0)), rtol=1e-13)
 
 
-def test_remap_leaves_unchanged_particles_in_place():
-    """Two externally mixed populations in neighbouring bins: SOA-only
-    particles (bins 30-39) lose 99 % of their mass, sulfate particles
-    (bins 40-49) do not change. The sulfate particles stay where they are
-    (the edge displacement is taken from the donor's side), the SOA
-    particles move down."""
+def _two_populations(lo_change):
+    """80 bins: SOA-only particles in bins 30-39 (lo_change) or 50-59, and
+    unchanged sulfate particles in bins 40-49, 1e12 #/cell each."""
     nbins = 80
     xk, xm = grid(nbins)
     k = np.arange(nbins)
-    Nk = jnp.where((k >= 30) & (k < 50), 1e12, 0.0)
+    soa = (k >= 30) & (k < 40) if lo_change else (k >= 50) & (k < 60)
+    so4 = (k >= 40) & (k < 50)
+    Nk = jnp.where(soa | so4, 1e12, 0.0)
     Mk = (jnp.zeros((nbins, ICOMP))
-          .at[:, SRTSOA1].set(jnp.where(k < 40, Nk * xm, 0.0))
-          .at[:, SRTSO4].set(jnp.where(k >= 40, Nk * xm, 0.0)))
-    Mk_new = Mk.at[:, SRTSOA1].multiply(0.01)
+          .at[:, SRTSOA1].set(jnp.where(soa, Nk * xm, 0.0))
+          .at[:, SRTSO4].set(jnp.where(so4, Nk * xm, 0.0)))
+    return xk, Nk, Mk, soa, so4
+
+
+@pytest.mark.parametrize("lo_change, factor", [
+    (True, 3.0), (True, 10.0),        # grow into / through the sulfate bins
+    (False, 0.25), (False, 0.01),     # shrink into / through them
+    (True, 0.01),                     # shrink away from them
+])
+def test_remap_moves_particles_past_unchanged_ones(lo_change, factor):
+    """Two externally mixed populations side by side; only the SOA
+    particles change. The sulfate particles stay exactly where they are
+    (number and mass per bin), the SOA particles move by their own
+    displacement however many bins that is (here 3 to 13 bins), without
+    piling up where they cross the sulfate bins (at most the two
+    populations' 2e12 #/cell plus a few percent from the PPM profile at
+    the edge of the top-hat; the earlier flux-form remap stacked up to
+    8e12)."""
+    xk, Nk, Mk, soa, so4 = _two_populations(lo_change)
+    k = np.arange(Nk.shape[0])
+    dxi = float(jnp.log(xk[1] / xk[0]))
+    Mk_new = Mk.at[:, SRTSOA1].multiply(factor)
 
     N2, M2 = remap(Nk, Mk, Mk_new, xk)
 
-    np.testing.assert_allclose(np.asarray(N2[40:]), np.asarray(Nk[40:]),
-                               rtol=1e-12)
-    np.testing.assert_allclose(np.asarray(M2[40:, SRTSO4]),
-                               np.asarray(Mk[40:, SRTSO4]), rtol=1e-12)
-    assert float(jnp.sum(M2[:40, SRTSO4])) == 0.0
-    assert float(jnp.sum(N2[:30])) > 0.5 * float(jnp.sum(Nk[:40]))
-    assert float(jnp.sum(N2)) == pytest.approx(float(jnp.sum(Nk)), rel=1e-12)
+    np.testing.assert_allclose(np.asarray(M2[:, SRTSO4]),
+                               np.asarray(Mk[:, SRTSO4]), rtol=1e-14,
+                               atol=1e-14 * float(jnp.max(Mk[:, SRTSO4])))
+    n_soa = np.asarray(N2) - np.where(so4, 1e12, 0.0)      # SOA particles
+    assert n_soa.min() > -1e-3
+    exact = float(np.mean(k[soa])) + np.log(factor) / dxi
+    assert np.sum(n_soa * k) / np.sum(n_soa) == pytest.approx(exact, abs=0.02)
+    assert float(jnp.max(N2)) <= 2.05e12
+    assert float(jnp.sum(N2)) == pytest.approx(float(jnp.sum(Nk)), rel=1e-13)
     np.testing.assert_allclose(np.asarray(jnp.sum(M2, axis=0)),
                                np.asarray(jnp.sum(Mk_new, axis=0)),
-                               rtol=1e-12, atol=0.0)
+                               rtol=1e-13, atol=0.0)
+    assert means_inside(N2, M2, xk)
+
+
+@pytest.mark.parametrize("factor", [10.0, 0.1])
+def test_remap_multi_bin_shift_keeps_the_mode(factor):
+    """160 bins, every particle x10 or /10 at once (13.3 bins): the mode
+    moves by ln(10) in ln(m) with its width and single maximum kept."""
+    xk, Nk, Mk = seed(160, 2000.0, 60e-9, 1.6, COMP)
+    ln_c = np.log(np.asarray(jnp.sqrt(xk[:-1] * xk[1:])))
+
+    N2, M2 = remap(Nk, Mk, factor * Mk, xk)
+
+    def moments(N):
+        N = np.asarray(N)
+        mu = np.sum(N * ln_c) / N.sum()
+        return mu, np.sqrt(np.sum(N * (ln_c - mu) ** 2) / N.sum())
+
+    (mu0, sd0), (mu1, sd1) = moments(Nk), moments(N2)
+    assert mu1 - mu0 == pytest.approx(np.log(factor), rel=1e-6)
+    assert sd1 == pytest.approx(sd0, rel=1e-6)
+    assert extrema(N2) == 1
+    assert means_inside(N2, M2, xk)
+
+
+def test_phi_matches_the_exact_series():
+    """The closed-form/Taylor mass integrals phi_j(z) = int_0^1 v^j e^(zv)
+    agree with an exact rational series to 1e-14 (both branches and the
+    switch at z = 1)."""
+    zs = [0.0, 1e-9, 0.3, 0.999999, 1.0, 1.000001, 2.5, 7.0, 20.0]
+    got = _phi(jnp.asarray(zs))
+    for j in range(4):
+        for i, z in enumerate(zs):
+            zf = Fraction(z)
+            ref = float(sum(zf ** n / (math.factorial(n) * (n + j + 1))
+                            for n in range(120)))
+            assert float(got[j][i]) == pytest.approx(ref, rel=1e-14)
 
 
 def test_cap_top_bin_takes_back_only_the_added_species():
@@ -297,13 +359,15 @@ def test_soa_evaporation_moves_particles_down(transfer):
     assert d_prev == pytest.approx(d_seed, rel=0.05)
 
 
-@pytest.mark.parametrize("transfer", BIN_TRANSFERS)
-def test_temperature_rise_evaporates_smoothly(transfer):
+@pytest.mark.parametrize("transfer, nbins", [
+    ("ppm", 40), ("ppm", 160), ("mnfix", 40)])
+def test_temperature_rise_evaporates_smoothly(transfer, nbins):
     """Grow SOA on a seed at 288 K (c* = 1, 2 ug/m3/h, 6 h), then raise T
-    to 318 K at once with no source: most of the SOA evaporates. The class
-    budget closes every step, nothing goes negative and the mode moves down
-    monotonically; with PPM number is conserved and one extremum kept."""
-    nbins = 40
+    to 318 K at once with no source: most of the SOA evaporates, the first
+    60 s step moves the smallest particles several bins. The class budget
+    closes every step, nothing goes negative and the mode moves down
+    monotonically; with PPM number is conserved and one extremum kept
+    (the earlier flux-form remap had 5 at 160 bins)."""
     xk, Nk, Mk = seed(nbins, 2000.0, 50e-9, 1.6,
                       {SRTSO4: 0.7, SRTORG_NUC: 0.3})
     st = state(xk, Nk, Mk, temp=288.0)
@@ -393,6 +457,82 @@ def test_top_bin_growth_keeps_class_budget(transfer):
         assert max(top_mean) <= float(xk[-1])
         assert max(top_mean) > 0.95 * float(xk[-1])   # the cap did act
         assert float(jnp.sum(Mk[:, SRTSO4])) == pytest.approx(so4_0, rel=1e-12)
+
+
+def _soa_hours(Nk, Mk, Gc, xk, phases, rho=1500.0):
+    """SOA partitioning (c* = 1, 'ppm') with 60 s micro-steps and water,
+    as aerosol_outer_step does; phases = [(T [K], hours, ug/m3/h), ...].
+    Returns the final (Nk, Mk), the extrema count after every hour and the
+    number-mean dry diameter [nm] and GSD from each bin's mean mass."""
+    p = soa_params([1.0])
+
+    @jax.jit
+    def hour(Nk, Mk, Gc, temp, prod):
+        def micro(_, c):
+            Nk, Mk, Gc = c
+            Gc = Gc.at[SRTSOA1].add(prod * 60.0)
+            Nk, Mk, Gc, _ = soa_partitioning.soa_partition_step(
+                Nk, Mk, Gc, xk, temp, 101325.0, BOXVOL, 60.0, p.cstar_ref,
+                p.dhvap, p.mw, p.alpha)
+            return Nk, equilibrate_water(Mk, 0.5, temp, 0.0), Gc
+        return jax.lax.fori_loop(0, 60, micro, (Nk, Mk, Gc))
+
+    ext = []
+    for temp, hours, rate in phases:
+        for _ in range(hours):
+            Nk, Mk, Gc = hour(Nk, Mk, Gc, temp, kg(rate) / 3600.0)
+            ext.append(extrema(Nk))
+    N = np.asarray(Nk)
+    pop = N > 1e-6 * N.max()
+    m = np.asarray(jnp.sum(Mk[:, :ICOMP_NODIAG], axis=1))[pop] / N[pop]
+    d = np.cbrt(6.0 * m / (PI * rho)) * 1e9
+    w = N[pop] / N[pop].sum()
+    mu = np.sum(w * np.log(d))
+    gsd = np.exp(np.sqrt(np.sum(w * (np.log(d) - mu) ** 2)))
+    return ext, float(np.sum(w * d)), float(gsd)
+
+
+def _moving_sections(monkeypatch):
+    """No bin transfer at all: every section keeps its particles and only
+    its mass changes (same vbs-jax physics) -- the reference."""
+    monkeypatch.setattr(soa_partitioning, "remap_mass_change",
+                        lambda Nk, Mk_old, Mk_new, xk, *a, **k: (Nk, Mk_new))
+    monkeypatch.setattr(soa_partitioning, "cap_top_bin",
+                        lambda Nk, Mk, xk, cols, *a, **k:
+                        (Mk, jnp.zeros(cols[1] - cols[0])))
+    monkeypatch.setattr(soa_partitioning, "mnfix_jax",
+                        lambda Nk, Mk, xk, *a, **k: (Nk, Mk))
+
+
+@pytest.mark.parametrize("case", ["round_trip", "bootstrap_ripening"])
+def test_soa_matches_moving_sections(case, monkeypatch):
+    """80 bins against moving sections (no transfer between bins).
+    round_trip: grow 3 h at 283 K (1 ug/m3/h), then 1 h at 313 K without
+    source, which evaporates most of the SOA; particles must return to the
+    sizes that go with their composition (per-bin mean composition alone
+    gave +1.0 % in mean diameter and -2.3 % in GSD, the earlier flux-form
+    remap +1.3 % / -2.8 %). bootstrap_ripening: pure sulfate seed with
+    5 ug/m3 of c* = 1 vapour, 4 h at 298 K (zero-OA bootstrap, then Kelvin
+    ripening that sends the smallest particles back towards their cores)."""
+    nbins = 80
+    if case == "round_trip":
+        xk, Nk, Mk = seed(nbins, 2000.0, 80e-9, 1.6,
+                          {SRTSO4: 0.7, SRTORG_NUC: 0.3})
+        phases, gas0 = [(283.15, 3, 1.0), (313.15, 1, 0.0)], 0.0
+    else:
+        xk, Nk, Mk = seed(nbins, 2000.0, 80e-9, 1.5, {SRTSO4: 1.0})
+        phases, gas0 = [(298.15, 4, 0.0)], 5.0
+    Mk = equilibrate_water(Mk, 0.5, phases[0][0], 0.0)
+    Gc = jnp.zeros(N_GAS_SPECIES).at[SRTSOA1].set(kg(gas0))
+
+    ext, d_ppm, g_ppm = _soa_hours(Nk, Mk, Gc, xk, phases)
+    _moving_sections(monkeypatch)
+    _, d_ref, g_ref = _soa_hours(Nk, Mk, Gc, xk, phases)
+
+    assert d_ppm == pytest.approx(d_ref, rel=0.003)
+    assert g_ppm == pytest.approx(g_ref, rel=0.005)
+    if case == "round_trip":
+        assert max(ext) == 1
 
 
 def test_transfers_agree_on_soa_mass():

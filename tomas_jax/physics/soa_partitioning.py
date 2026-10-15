@@ -30,10 +30,13 @@ moves particles between the fixed bins.
     - 'ppm' (default): vbs-jax changes the class masses in place in every
       sub-step (``redistribute`` only copies them into the per-cell Mk);
       after the step, ppm_remap.remap_mass_change moves number and every
-      species with the PPM log-mass advection that H2SO4 condensation
-      uses; SOA that would push the top bin past the grid stays in the
-      gas (cap_top_bin); then MNFIX restores its floor in emptied bins,
-      and any class mass it deletes returns to the vapour, so gas +
+      species to the bins they now belong to: each bin's PPM sub-bin
+      profile (as in H2SO4 condensation) is carried by that bin's own
+      log-mass displacement, however far, and deposited onto the fixed
+      bins, with each species' share following its composition slope
+      inside the bin. SOA that would push the top bin past the grid stays
+      in the gas (cap_top_bin); then MNFIX restores its floor in emptied
+      bins, and any class mass it deletes returns to the vapour, so gas +
       particle closes per class as with 'mnfix'. Growth and evaporation
       both stay smooth.
     - 'mnfix': the previous scheme; ``redistribute`` calls mnfix_jax after

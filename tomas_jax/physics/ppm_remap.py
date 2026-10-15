@@ -4,79 +4,77 @@ Some processes change the mass of the particles in each bin without moving
 them: SOA partitioning (vbs-jax adds or removes class mass per bin) and the
 N2O5-uptake nitrate source. Afterwards a bin's mean mass can sit outside
 the bin. ``remap_mass_change`` moves the particles to the bins they now
-belong to with the flux-form PPM advection in log-mass that H2SO4
-condensation uses (physics/condensation_ppm.py), instead of MNFIX's
+belong to, using the PPM sub-bin profile of H2SO4 condensation
+(physics/condensation_ppm.py::ppm_reconstruct) instead of MNFIX's
 two-packet split.
 
 Algorithm (one call per in-place change, e.g. per 60 s micro-step):
 
 1. Bin displacement. Each bin with particles (Nk > n_min, dry mass > 0)
-   moved its mean dry mass from m to m' = m + dm, a log-mass displacement
+   moved its mean dry mass from m to m' = m + dm: a log-mass displacement
    s_k = ln(m'/m) at xi_k = ln(m). dm < 0 (evaporation) gives s_k < 0.
-2. Edge displacement (upwind). Within each bin, s is taken as linear
-   in ln(m) around the bin mean, with the smaller (in magnitude) of the
-   two one-sided slopes to the neighbouring bin means (zero next to a
-   neighbour without particles or with the same s); the edge values are
-   clipped to lie between the bin's s and the neighbour's. Particles
-   cross an edge upwards with the lower bin's value at that edge (if > 0)
-   and downwards with the upper bin's value (if < 0); the domain edges
-   carry no flux. So particles whose mass did not change (s = 0 next to
-   a jump in s) never move, even when a neighbour grows or shrinks a lot;
-   interpolating between the two neighbouring means instead (an earlier
-   version) dragged them along. Where s varies smoothly and falls with
-   size (growth), the upward edge value equals that interpolation. A bin
-   loses particles through both of its edges only where its own s
-   changes sign inside it; the sub-step count keeps those two departure
-   regions apart.
-   Why not dmdt_int from each bin's own mean (as ezcond_ppm_jax): the
-   dmdt_int law (d m^(2/3)/dt constant) extrapolated from the bin mean to
-   the bin's upper edge slows the edge more than the vbs-jax rates (Fuchs-
-   Sutugin transition regime) do, so number lags mass, every bin's mean
-   creeps to its upper edge (Level 1 at 80 bins: from 0.50 to 0.96 of the
-   bin width in 12 h) and MNFIX then splits the bins again.
-3. Sub-steps. n_sub = ceil(max_k(out-flux displacement of bin k) /
-   (C_max dxi)), dxi = ln(x_{k+1}/x_k); each sub-step moves 1/n_sub of
-   the displacement (Courant <= C_max = 0.8).
-4. Fluxes per sub-step (condensation_ppm building blocks):
-   - number: PPM reconstruction of dN/dln m (ppm_reconstruct, monotone
-     and positive) integrated over the departure region of each edge;
-   - mass: the mass-weighted integral of the same reconstruction over the
-     departure region, as a fraction of the reconstruction's bin total.
-     Every species of the donor bin (the post-change masses) moves with
-     that fraction, so all species share one consistent flux, the change
-     travels with the particles that carry it, and no bin goes negative.
-   Updates are flux differences: number and every species' mass are
-   conserved to round-off.
-5. keep_means_in_bins: PPM carries no information on where the particles
-   sit inside a bin, so at a steep edge of the distribution a bin's mean
-   can still creep past its edge. Such a bin keeps its particles just
-   inside the edge and hands the fewest possible particles to the
-   neighbour at the neighbour's mean mass (conservative; a few percent of
-   that bin, unlike MNFIX's reset to the bin centre).
-6. cap_top_bin (called by the caller, before MNFIX): no flux leaves
-   the grid, so growth in the top bin stays there. Once its mean passes
-   the top edge MNFIX would scale down every species of that bin
-   (deleting seed mass); instead the caller takes back just enough of the
-   mass it added in place (SOA -> vapour, nitrate -> reported).
+2. Displacement inside a bin. s is taken as linear in ln(m) through the
+   bin mean, with the smaller (in magnitude) of the two one-sided slopes
+   to the neighbouring bin means (0 next to a neighbour without particles
+   or with the same s), and the bin-edge values are clipped between the
+   bin's s and the neighbour's. The bin [xi_lo, xi_hi] therefore maps onto
+   its image [xi_lo + s_bot, xi_hi + s_top]: where s varies smoothly the
+   images of neighbouring bins join (stretched for evaporation, squeezed
+   for growth); at a jump in s (two particle populations side by side)
+   each bin keeps its own s, so particles whose mass did not change stay
+   exactly where they are while others grow or shrink past them. An image
+   narrower than REMAP_MIN_STRETCH bin widths is replaced by a rigid
+   shift by s_k (it would otherwise fold).
+3. Deposit (Lagrangian remap). Number inside each source bin follows its
+   PPM reconstruction (ppm_reconstruct: monotone and positive parabola in
+   ln m), carried linearly onto the image. Target bin j receives from
+   source bin k the integral of that profile over the part of the image
+   inside j (polynomial integral) and the mass share with weight
+   exp(xi') (the particle's new mass; closed forms phi_j below). Each
+   source bin moves with its own displacement however many bins that is
+   (no Courant limit, no sub-steps); for a uniform shift smaller than one
+   bin this is exactly the flux-form PPM step of condensation_ppm (the
+   departure-region integrals). Particles mapped below/above the grid go
+   into the bottom/top bin.
+4. Composition. Every species of a source bin moves with its mass share.
+   With composition slopes (default) each species' mass fraction is also
+   linear inside the source bin (monotonized-central slope against the
+   neighbouring bins' fractions, slopes summing to 0, one common limiter
+   so no fraction goes negative), so particles keep the composition that
+   goes with their size: a grow-then-evaporate round trip comes back to
+   the moving-section answer instead of mixing compositions bin by bin.
+   Each source bin's transfer sums to 1 and its slope term to 0, so number
+   and every species are conserved to round-off; nothing goes negative.
+5. keep_means_in_bins (safety net): PPM reconstructs number only, so a
+   bin's mean mass can still land past an edge of its target bin. Such a
+   bin hands the fewest possible particles to the neighbour (see there).
+   In the growth/evaporation test cases the particles it moves add up to
+   at most ~1e-3 of the total over a whole run.
+6. cap_top_bin (called by the caller, before MNFIX): no mass leaves the
+   grid, so growth in the top bin stays there. Once its mean passes the
+   top edge MNFIX would scale down every species of that bin (deleting
+   seed mass); instead the caller takes back just enough of the mass it
+   added in place (SOA -> vapour, nitrate -> reported).
 
-For a uniform log-mass shift, number and mass move consistently: each
-bin's mean stays at the same place in its bin step after step (the mode
-itself spreads only by PPM's small numerical diffusion). Bins with
-Nk <= n_min are not moved; a change they received stays in place.
+Each bin's image is kept between REMAP_MIN_STRETCH and REMAP_MAX_STRETCH
+bin widths (a rigid shift if it would fold, squeezed around the image of
+its mean if wider), so it touches at most _BAND target bins: the work is
+a (nbins, _BAND) band per call, no loops, and the call is skipped when no
+bin changed. Bins with Nk <= n_min are not moved; a change they received
+stays in place.
 
 References:
     - Colella & Woodward (1984), J. Comput. Phys. 54, 174-201 (PPM)
+    - van Leer (1977), J. Comput. Phys. 23, 276-299 (MC limiter)
 """
+import math
+
 import jax
 # float64 enforced by core/config.py
 import jax.numpy as jnp
 
 from ..core.config import ICOMP_NODIAG
-from .condensation_ppm import (
-    _integrate_mass_parabola_left, _integrate_mass_parabola_right,
-    _integrate_parabola_left, _integrate_parabola_right, advect_totals,
-    dry_mass_from_ppm_number, ppm_reconstruct,
-)
+from .condensation_ppm import ppm_reconstruct
 
 # How an in-place mass change moves particles between the fixed bins:
 # this module's PPM remap, or MNFIX (the TOMAS split; kept for comparison)
@@ -84,15 +82,25 @@ BIN_TRANSFER_PPM = 'ppm'
 BIN_TRANSFER_MNFIX = 'mnfix'
 BIN_TRANSFERS = (BIN_TRANSFER_PPM, BIN_TRANSFER_MNFIX)
 
-# Max Courant number per sub-step (same as ppm_condensation_step)
-REMAP_C_MAX = 0.8
-
 # Bins with Nk at or below this [#/cell] are not moved
 REMAP_N_MIN = 1.0e-10
 
 # keep_means_in_bins: a corrected mean sits this fraction of a bin width
 # inside the edge it crossed
 REMAP_MARGIN = 0.02
+
+# A bin's image is at least REMAP_MIN_STRETCH bin widths wide (else a
+# rigid shift) and at most REMAP_MAX_STRETCH (else squeezed to it), so it
+# touches at most _BAND target bins
+REMAP_MIN_STRETCH = 0.25
+REMAP_MAX_STRETCH = 4
+_BAND = REMAP_MAX_STRETCH + 2
+
+# phi_j(z): Taylor series below this z (closed forms above); 17 terms
+# leave < 1e-16 relative error at z = 1
+_PHI_SERIES_Z = 1.0
+_PHI_COEF = [[1.0 / (math.factorial(n) * (n + j + 1)) for n in range(17)]
+             for j in range(4)]
 
 _TINY = 1.0e-30
 
@@ -119,20 +127,16 @@ def mean_log_shift(Nk, Mk_old, Mk_new, xk, icomp_nodiag=ICOMP_NODIAG,
     return shift, xi, active
 
 
-def edge_shifts(xk, shift, xi, active):
-    """Upward and downward log-mass displacement at each bin edge.
-
-    Upwind, from a slope-limited linear reconstruction of each bin's
-    displacement in ln(m) around its mean (module doc, step 2).
+def bin_edge_shifts(xk, shift, xi, active):
+    """Log-mass displacement at each bin's lower and upper edge (module
+    doc, step 2).
 
     Args:
         xk: Bin boundaries [kg], shape (nbins+1,)
         shift, xi, active: from mean_log_shift
 
     Returns:
-        (s_up, s_down), each shape (nbins+1,) and >= 0: s_up moves the
-        lower bin's particles up, s_down the upper bin's particles down.
-        Both are 0 at the domain edges.
+        (s_bot, s_top), each shape (nbins,); 0 for inactive bins.
     """
     ln_x = jnp.log(xk)
     dx = xi[1:] - xi[:-1]
@@ -142,8 +146,8 @@ def edge_shifts(xk, shift, xi, active):
     zero = jnp.zeros(1)
     d_lo = jnp.concatenate([zero, d])       # to the bin below
     d_hi = jnp.concatenate([d, zero])       # to the bin above
-    # the smaller one-sided slope: 0 next to a bin whose s did not change
-    # or that has no particles, the interpolation slope where s is smooth
+    # the smaller one-sided slope: 0 next to a bin whose s is the same or
+    # that has no particles, the interpolation slope where s is smooth
     slope = jnp.where(jnp.abs(d_lo) <= jnp.abs(d_hi), d_lo, d_hi)
 
     s_above = jnp.concatenate([shift[1:], shift[-1:]])
@@ -152,15 +156,81 @@ def edge_shifts(xk, shift, xi, active):
                      jnp.minimum(shift, s_above), jnp.maximum(shift, s_above))
     s_bot = jnp.clip(shift + slope * (ln_x[:-1] - xi),
                      jnp.minimum(shift, s_below), jnp.maximum(shift, s_below))
-    s_top = jnp.where(active, s_top, 0.0)
-    s_bot = jnp.where(active, s_bot, 0.0)
-    s_up = jnp.concatenate([zero, jnp.maximum(s_top[:-1], 0.0), zero])
-    s_down = jnp.concatenate([zero, jnp.maximum(-s_bot[1:], 0.0), zero])
-    return s_up, s_down
+    return jnp.where(active, s_bot, 0.0), jnp.where(active, s_top, 0.0)
+
+
+def _phi(z):
+    """phi_j(z) = int_0^1 v^j exp(z v) dv for j = 0..3, z >= 0.
+
+    Taylor series sum_n z^n / (n! (n + j + 1)) (Horner) for
+    z < _PHI_SERIES_Z, where the closed forms cancel; else
+    phi_0 = expm1(z)/z and phi_j = (exp(z) - j phi_{j-1}) / z.
+    """
+    small = z < _PHI_SERIES_Z
+    zs = jnp.where(small, z, 0.0)
+    ser = []
+    for j in range(4):
+        acc = jnp.full_like(z, _PHI_COEF[j][-1])
+        for c in _PHI_COEF[j][-2::-1]:
+            acc = acc * zs + c
+        ser.append(acc)
+    zl = jnp.where(small, 1.0, z)
+    ez = jnp.exp(zl)
+    inv = 1.0 / zl
+    closed = [jnp.expm1(zl) * inv]
+    for j in range(1, 4):
+        closed.append((ez - j * closed[-1]) * inv)
+    return [jnp.where(small, a, c) for a, c in zip(ser, closed)]
+
+
+def _minmod3(a, b, c):
+    """Smallest-magnitude argument if all three share a sign, else 0."""
+    same = ((a > 0) & (b > 0) & (c > 0)) | ((a < 0) & (b < 0) & (c < 0))
+    m = jnp.minimum(jnp.minimum(jnp.abs(a), jnp.abs(b)), jnp.abs(c))
+    return jnp.where(same, jnp.sign(a) * m, 0.0)
+
+
+def composition_slopes(Mk, active, u_c):
+    """Slope of every species' mass fraction inside each bin (module doc,
+    step 4), per bin width.
+
+    Monotonized-central limited against the neighbouring bins' fractions
+    (0 at the edge of a plateau, next to an empty bin and at the ends of
+    the grid), shifted so the slopes of a bin sum to 0 (the fractions keep
+    summing to 1), then scaled by one factor per bin so that no fraction
+    is negative at either bin edge, u = 0 or 1, for a fraction that is
+    the bin mean at u = u_c.
+
+    Args:
+        Mk: Mass per bin [kg/cell], shape (nbins, icomp)
+        active: Bins that move, shape (nbins,)
+        u_c: Mass centroid of each bin in [0, 1], shape (nbins,)
+
+    Returns:
+        Slopes, shape (nbins, icomp).
+    """
+    tot = jnp.sum(Mk, axis=1, keepdims=True)
+    f = Mk / jnp.where(tot > 0.0, tot, 1.0)
+    act = active[:, None]
+    f_lo = jnp.concatenate([f[:1], f[:-1]])
+    f_hi = jnp.concatenate([f[1:], f[-1:]])
+    no = jnp.zeros((1, 1), dtype=bool)
+    both = (act & jnp.concatenate([no, act[:-1]])
+            & jnp.concatenate([act[1:], no]))
+    sig = jnp.where(both, _minmod3(0.5 * (f_hi - f_lo), 2.0 * (f - f_lo),
+                                   2.0 * (f_hi - f)), 0.0)
+    sig = sig - f * jnp.sum(sig, axis=1, keepdims=True)
+    uc = u_c[:, None]
+    room = jnp.where(sig > 0.0, f / jnp.maximum(sig * uc, _TINY),
+                     jnp.where(sig < 0.0,
+                               f / jnp.maximum(-sig * (1.0 - uc), _TINY),
+                               jnp.inf))
+    theta = jnp.clip(jnp.min(room, axis=1, keepdims=True), 0.0, 1.0)
+    return theta * sig
 
 
 def remap_mass_change(Nk, Mk_old, Mk_new, xk, icomp_nodiag=ICOMP_NODIAG,
-                      n_min=REMAP_N_MIN, c_max=REMAP_C_MAX):
+                      n_min=REMAP_N_MIN, slopes=True):
     """Move particles whose mass changed in place to the right fixed bins.
 
     Args:
@@ -171,63 +241,102 @@ def remap_mass_change(Nk, Mk_old, Mk_new, xk, icomp_nodiag=ICOMP_NODIAG,
         xk: Bin boundaries [kg], shape (nbins+1,), uniform in ln(m)
         icomp_nodiag: Dry (bin-defining) species count, as MNFIX
         n_min: Bins with Nk <= n_min are not moved [#/cell]
-        c_max: Max Courant number per sub-step
+        slopes: Static; linear composition inside each source bin (module
+            doc, step 4). False moves every species with the source bin's
+            mean composition.
 
     Returns:
         (Nk, Mk): remapped. sum(Nk) and sum(Mk, axis=0) equal the inputs'
         (Nk, Mk_new) to round-off.
     """
-    nbins = Nk.shape[0]
-    dxi = jnp.log(xk[1] / xk[0])
-
     shift, xi, active = mean_log_shift(Nk, Mk_old, Mk_new, xk, icomp_nodiag,
                                        n_min)
-    s_up, s_down = edge_shifts(xk, shift, xi, active)
-    # A bin can lose through its top (growth) and bottom (shrinking) edge
-    # at once; keep the two departure regions apart: sum <= c_max.
-    s_out = s_up[1:] + s_down[:-1]
-    n_sub = jnp.maximum(jnp.ceil(jnp.max(s_out) / (c_max * dxi)), 1.0)
-    c_up = s_up / (n_sub * dxi)          # per-sub-step Courant numbers
-    c_down = s_down / (n_sub * dxi)
+    # nothing to move (e.g. no nitrate source this step): skip the work
+    return jax.lax.cond(
+        jnp.any(active & (shift != 0.0)),
+        lambda: _remap(Nk, Mk_new, xk, shift, xi, active, icomp_nodiag,
+                       n_min, slopes),
+        lambda: (Nk, Mk_new))
 
-    # Donor of each edge: left bin for upward, right bin for downward flux
-    edge = jnp.arange(nbins + 1)
-    left = jnp.clip(edge - 1, 0, nbins - 1)
-    right = jnp.clip(edge, 0, nbins - 1)
-    m_left = xk[:-1][left]               # lower mass bound of the donor
-    m_right = xk[:-1][right]
 
-    def substep(_, carry):
-        N, M = carry
-        n_L, n_R, n_6 = ppm_reconstruct(N / dxi)
-        m_tot = dry_mass_from_ppm_number(n_L, n_R, n_6, xk, dxi)
-        has_m = m_tot > _TINY
-        m_tot = jnp.where(has_m, m_tot, 1.0)
+def _remap(Nk, Mk_new, xk, shift, xi, active, icomp_nodiag, n_min, slopes):
+    """remap_mass_change after mean_log_shift (module doc, steps 2-5)."""
+    nbins = Nk.shape[0]
+    ln_x = jnp.log(xk)
+    dxi = ln_x[1] - ln_x[0]
+    s_bot, s_top = bin_edge_shifts(xk, shift, xi, active)
+    # image [a, b] of each bin in ln m: a rigid shift where it would fold,
+    # squeezed to REMAP_MAX_STRETCH bin widths around the image of the bin
+    # mean where wider
+    a = ln_x[:-1] + s_bot
+    b = ln_x[1:] + s_top
+    stretch = (b - a) / dxi
+    rigid = stretch < REMAP_MIN_STRETCH
+    wide = stretch > REMAP_MAX_STRETCH
+    mid = xi + shift
+    a = jnp.where(rigid, ln_x[:-1] + shift,
+                  jnp.where(wide, mid - REMAP_MAX_STRETCH * (xi - ln_x[:-1]),
+                            a))
+    b = jnp.where(rigid, ln_x[1:] + shift,
+                  jnp.where(wide, mid + REMAP_MAX_STRETCH * (ln_x[1:] - xi),
+                            b))
+    width = b - a
 
-        cl = (n_L[left], n_R[left], n_6[left])
-        cr = (n_L[right], n_R[right], n_6[right])
-        fn_up = _integrate_parabola_right(*cl, c_up) * dxi
-        fn_down = _integrate_parabola_left(*cr, c_down) * dxi
-        fm_up = (_integrate_mass_parabola_right(*cl, m_left, c_up, dxi)
-                 / m_tot[left])
-        fm_down = (_integrate_mass_parabola_left(*cr, m_right, c_down, dxi)
-                   / m_tot[right])
-        # exact zeros where nothing moves (the integrals leave ~1 ulp)
-        go_up = has_m[left] & (c_up > 0.0)
-        go_down = has_m[right] & (c_down > 0.0)
-        fn_up = jnp.where(c_up > 0.0, fn_up, 0.0)
-        fn_down = jnp.where(c_down > 0.0, fn_down, 0.0)
-        fm_up = jnp.where(go_up, jnp.clip(fm_up, 0.0, 1.0), 0.0)
-        fm_down = jnp.where(go_down, jnp.clip(fm_down, 0.0, 1.0), 0.0)
+    # The image lies within _BAND consecutive bins of the (extended) grid,
+    # starting with the one holding a; bins beyond the grid map onto the
+    # bottom/top bin. u = pre-image in [0, 1] of the band's inner edges
+    # (the grid's own edge values inside the grid, so a bin that does not
+    # move maps onto itself exactly).
+    e0 = jnp.floor((a - ln_x[0]) / dxi).astype(jnp.int32)
+    e = e0[:, None] + jnp.arange(1, _BAND)[None, :]
+    x_e = jnp.where(e < 0, ln_x[0] + e * dxi,
+                    jnp.where(e > nbins, ln_x[-1] + (e - nbins) * dxi,
+                              ln_x[jnp.clip(e, 0, nbins)]))
+    u = jnp.clip((x_e - a[:, None]) / width[:, None], 0.0, 1.0)
+    one = jnp.ones((nbins, 1))
+    u = jnp.concatenate([0.0 * one, u, one], axis=1)       # (nbins, _BAND+1)
+    k = jnp.arange(nbins)[:, None]
+    target = jnp.where(active[:, None],
+                       jnp.clip(e0[:, None] + jnp.arange(_BAND)[None, :],
+                                0, nbins - 1),
+                       k)
 
-        F_N = fn_up - fn_down
-        F_M = fm_up[:, None] * M[left] - fm_down[:, None] * M[right]
-        N = advect_totals(N, F_N, 1.0)
-        M = advect_totals(M, F_M, 1.0)
-        return jnp.maximum(N, 0.0), jnp.maximum(M, 0.0)
+    # PPM number profile p(v) = n_L + n_b v - n_6 v^2 of each source bin;
+    # cumulative number int_0^u p, mass int_0^u p e^{w v} (w = width: the
+    # particle at v has new mass e^{a + w v}) and its first moment in v
+    n_L, n_R, n_6 = ppm_reconstruct(Nk / dxi)
+    n_L, n_b, n_6 = n_L[:, None], (n_R - n_L + n_6)[:, None], n_6[:, None]
+    cum_n = u * (n_L + u * (0.5 * n_b - u * n_6 / 3.0))
+    f0, f1, f2, f3 = _phi(width[:, None] * u)
+    cum_m = u * (n_L * f0 + u * (n_b * f1 - u * n_6 * f2))
 
-    Nk, Mk = jax.lax.fori_loop(0, n_sub.astype(jnp.int32), substep,
-                               (Nk, Mk_new))
+    first = jnp.zeros(_BAND).at[0].set(1.0)
+
+    def shares(cum):
+        t = jnp.maximum(jnp.diff(cum, axis=1), 0.0)
+        tot = jnp.sum(t, axis=1, keepdims=True)
+        t = t / jnp.where(tot > 0.0, tot, 1.0)
+        return jnp.where(active[:, None], t, first)    # inactive: stay
+
+    rows = target.ravel()
+    icomp = Mk_new.shape[1]
+    Nk = jnp.zeros(nbins).at[rows].add((Nk[:, None] * shares(cum_n)).ravel())
+    dM = shares(cum_m)[:, :, None] * Mk_new[:, None, :]
+    if slopes:
+        # first moment of each target's share about the source's mass
+        # centroid u_c (sums to 0 per source): carries the composition
+        # slopes
+        cum_v = u * u * (n_L * f1 + u * (n_b * f2 - u * n_6 * f3))
+        w_tot = jnp.where(cum_m[:, -1] > 0.0, cum_m[:, -1], 1.0)
+        u_c = jnp.clip(cum_v[:, -1] / w_tot, 0.0, 1.0)
+        t_v = (jnp.diff(cum_v, axis=1)
+               - u_c[:, None] * jnp.diff(cum_m, axis=1)) / w_tot[:, None]
+        t_v = jnp.where(active[:, None], t_v, 0.0)
+        sig = composition_slopes(Mk_new, active, u_c)
+        dM = dM + t_v[:, :, None] * (jnp.sum(Mk_new, axis=1)[:, None]
+                                     * sig)[:, None, :]
+    Mk = jnp.maximum(
+        jnp.zeros_like(Mk_new).at[rows].add(dM.reshape(-1, icomp)), 0.0)
     return keep_means_in_bins(Nk, Mk, xk, icomp_nodiag, n_min)
 
 
@@ -236,10 +345,10 @@ def keep_means_in_bins(Nk, Mk, xk, icomp_nodiag=ICOMP_NODIAG,
     """Pull any bin mean that left its bin back inside, moving as few
     particles as possible to the neighbour (one vectorised pass).
 
-    PPM reconstructs number only, so a bin's mean mass can creep past an
-    edge where the number density is steep (the leading edge of a growing
-    mode). MNFIX would then reset the bin to its centre and drop a large
-    packet near the far side of the next bin. Here, a bin whose mean m is
+    PPM reconstructs number only, so a bin's mean mass can land past an
+    edge where the number density is steep. MNFIX would then reset the bin
+    to its centre and drop a large packet near the far side of the next
+    bin. Here, a bin whose mean m is
     above x_{k+1} keeps its particles at mean t = x_{k+1} exp(-margin dxi)
     and sends n = N (m - t)/(u - t) particles up, each with the
     neighbour's mean mass u (clipped to at least margin inside the
