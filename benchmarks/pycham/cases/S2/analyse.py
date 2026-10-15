@@ -301,26 +301,41 @@ def particle_metrics(d) -> dict:
         "py_class": float(pyc["gas_ppb"][-1, names.index("SA")] * pyc["ppb_to_molec_cm3"][-1]
                           * pyc["mw_g_mol"][names.index("SA")] / AVOGADRO * 1e12)}
     out["number_cm3"] = {}
-    out["median_dry_diameter_nm"] = {}
+    out["dry_size_stats"] = {}
+    dd0, _, _, n0 = size_distribution(o300, "ours", 0)
+    d_p01 = seed_percentile_diameter(dd0, n0, 0.01)
+    out["seed_p01_dry_diameter_nm"] = d_p01
     for k, run, kind in (("o300", o300, "ours"), ("py_class", pyc, "py"),
                          ("py_exact", pye, "py")):
         out["number_cm3"][k] = {}
-        out["median_dry_diameter_nm"][k] = {}
+        out["dry_size_stats"][k] = {}
         for th in S2["psd_times_h"]:
             dd, _, dm, n = size_distribution(run, kind, _idx(run["t_s"], th),
                                              pycham_nominal_diameters(d))
             out["number_cm3"][k][f"{th:g}h"] = float(n.sum())
-            out["median_dry_diameter_nm"][k][f"{th:g}h"] = {
-                "number": median_diameter(dd, n), "dry_mass": median_diameter(dd, dm)}
+            out["dry_size_stats"][k][f"{th:g}h"] = dry_size_stats(dd, n, dm, d_p01)
     return out
 
 
-def median_diameter(dd, weights) -> float:
-    """Diameter [nm] below which half of ``weights`` lies (log-interpolated)."""
+def dry_size_stats(dd, n, dm, d_p01) -> dict:
+    """Size statistics from each bin's mean dry diameter, the same way for both models
+    (as S1's sizestats): number-mean [nm], number GSD [-], dry-mass-weighted mean [nm],
+    and the number fraction below the seed's 1st-percentile diameter. No medians: a
+    median read from fixed-bin cumulatives is biased by about half a bin."""
+    w = np.where((n > 0) & np.isfinite(dd), n, 0.0)
+    lg = np.log(np.where(w > 0, dd, 1.0))
+    mu = (w * lg).sum() / w.sum()
+    return {"number_mean_nm": float((w * dd).sum() / w.sum()),
+            "gsd": float(np.exp(np.sqrt((w * (lg - mu) ** 2).sum() / w.sum()))),
+            "dry_mass_mean_nm": float((dm * dd).sum() / dm.sum()),
+            "frac_below_seed_p01": float(w[dd < d_p01].sum() / w.sum())}
+
+
+def seed_percentile_diameter(dd, n, q) -> float:
+    """Dry diameter [nm] below which a fraction q of the particles lies at t = 0."""
     order = np.argsort(dd)
-    c = np.cumsum(np.asarray(weights, float)[order])
-    c = c / c[-1]
-    return float(10.0 ** np.interp(0.5, c, np.log10(np.asarray(dd)[order])))
+    c = np.cumsum(np.asarray(n, float)[order])
+    return float(10.0 ** np.interp(q, c / c[-1], np.log10(np.asarray(dd)[order])))
 
 
 def feedback(d) -> dict:
@@ -941,7 +956,7 @@ def measured(d, part, attr, wc, vs) -> dict:
         "water": part["particle_water_ugm3"], "water_rel": part["particle_water_rel_diff"],
         "within_class_F": {"ours": [m["F_ours_tracker"] for m in wcls],
                            "pycham": [m["F_pycham_class"] for m in wcls]},
-        "median_dd_6h": part["median_dry_diameter_nm"],
+        "size_6h": {k: v["6h"] for k, v in part["dry_size_stats"].items()},
         "density": density_rule_difference(d),
         "nitrogen": vs["nitrogen_6h"], "native": vs["soa_native_over_class"],
         "native_feedback": vs["gas_feedback_6h"],

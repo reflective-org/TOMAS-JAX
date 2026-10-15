@@ -68,6 +68,7 @@ def mismatches(setup: dict, m: dict) -> list[dict]:
     seed = setup["seed"]
     w, wr = m["water"], m["water_rel"]
     st = m["steps"]
+    zo, zp = m["size_6h"]["o300"], m["size_6h"]["py_class"]
     rng = lambda dct, keys: (f"{pct(min(dct[k] for k in keys))} to "    # noqa: E731
                              f"{pct(max(dct[k] for k in keys))}")
     late = ("0.5h", "1h", "3h", "6h")
@@ -119,16 +120,20 @@ def mismatches(setup: dict, m: dict) -> list[dict]:
                    f"{min(m['within_class_F']['ours']):.2f}-{max(m['within_class_F']['ours']):.2f}. "
                    "Per-species particle and gas masses of condensables differ accordingly; class "
                    "totals are robust."},
-        {"what": "Sectional numerics: TOMAS fixed bins with MNFIX partial transfer vs PyCHAM "
-                 "moving centre on the same 40-bin grid.",
+        {"what": "Sectional numerics: TOMAS two-moment fixed bins (SOA growth and evaporation "
+                 "move particles with the PPM log-mass remap, AerosolStepConfig."
+                 "growth_bin_transfer = 'ppm') vs PyCHAM moving centre on the same 40-bin grid.",
          "why": "Each model's scheme.",
-         "effect": "Number-median dry diameter at 6 h "
-                   f"{m['median_dd_6h']['o300']['6h']['number']:.0f} (TOMAS-JAX) vs "
-                   f"{m['median_dd_6h']['py_class']['6h']['number']:.0f} nm (PyCHAM); dry-mass median "
-                   f"{m['median_dd_6h']['o300']['6h']['dry_mass']:.0f} vs "
-                   f"{m['median_dd_6h']['py_class']['6h']['dry_mass']:.0f} nm. TOMAS-JAX is broader "
-                   "(and puts ~2 % of the particles below the seed size); PyCHAM bins merge. "
-                   "Number and mass are conserved in both."},
+         "effect": "At 6 h, from each bin's mean dry size: number-mean dry diameter "
+                   f"{zo['number_mean_nm']:.1f} (TOMAS-JAX) vs {zp['number_mean_nm']:.1f} nm "
+                   f"(PyCHAM, {pct(zo['number_mean_nm'] / zp['number_mean_nm'] - 1)}), "
+                   f"GSD {zo['gsd']:.3f} vs {zp['gsd']:.3f} ({pct(zo['gsd'] / zp['gsd'] - 1)}), "
+                   f"dry-mass-weighted mean {zo['dry_mass_mean_nm']:.1f} vs "
+                   f"{zp['dry_mass_mean_nm']:.1f} nm; particles below the seed's 1st-percentile "
+                   f"diameter {100 * zo['frac_below_seed_p01']:.2f} % vs "
+                   f"{100 * zp['frac_below_seed_p01']:.2f} %. "
+                   "PyCHAM bins merge, so its curve is spiky. Number and mass are conserved in "
+                   "both."},
         {"what": "Particle water. TOMAS-JAX: ezwatereqm, "
                  f"{seed['water_per_mass']['sulfate']:.4f} kg water per kg SO4 (NH4HSO4 ratio "
                  f"x 1.2) and {seed['water_per_mass']['organic']:.4f} per kg of any organic (A9); "

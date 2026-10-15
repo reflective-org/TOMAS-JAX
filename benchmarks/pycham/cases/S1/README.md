@@ -63,26 +63,29 @@ TOMAS-JAX raised no warnings.
 Generated with measured numbers into `results/summary.json` → `mismatches`
 (`case.mismatches`): Kelvin term, transfer coefficient, Raoult term (matched), molar
 mass, particle water (PyCHAM's Kelvin term on water: −13 % total water at t = 0, −9 % at
-12 h, −22 % in the 50 nm mode bin), density, size structure, growth across bins (MNFIX),
-time stepping, c* temperature, dummy chemistry.
+12 h, −22 % in the 50 nm mode bin), density, size structure, growth across bins (PPM
+remap since 2026-10-15; MNFIX before), time stepping, c* temperature, dummy chemistry.
 
 ## Results (`results/summary.json`)
 
 | TOMAS-JAX vs PyCHAM | c* = 1 | c* = 100 |
 |---|---|---|
-| particle SOA at 12 h | +0.44 % (4.933 vs 4.911 µg m⁻³) | −0.26 % |
-| SOA max deviation after 1 h | 3.7 % (1–3 h) | 0.28 % |
-| gas-phase surrogate at 12 h | −2.0 % | 5e-6 |
+| particle SOA at 12 h | +0.65 % (4.944 vs 4.911 µg m⁻³) | −0.26 % |
+| SOA max deviation after 1 h | 4.1 % (1–3 h) | 0.28 % |
+| gas-phase surrogate at 12 h | −2.9 % | 5e-6 |
 | particle water at 12 h | +10 % | +13 % |
-| number-mean dry diameter at 12 h | −12.6 % (105.3 vs 120.5 nm at 1400 kg m⁻³) | 0.00 % |
-| GSD of dry diameter at 12 h | +4.8 % | 0.00 % |
+| number-mean dry diameter at 12 h | +1.5 % (122.3 vs 120.5 nm at 1400 kg m⁻³) | 0.00 % |
+| GSD of dry diameter at 12 h | −1.7 % (1.847 vs 1.878) | 0.00 % |
+
+(TOMAS-JAX with the PPM bin transfer for SOA, re-run 2026-10-15. With the previous
+MNFIX transfer the diameter was −12.6 % and the GSD +4.8 % at 40 bins, SOA +0.44 %.)
 
 Attribution (`S1_attribution.png`): with Kelvin off in both, c* = 100 SOA agrees to
-+0.02 % and water to 0.2 %; with PyCHAM's transfer coefficient in TOMAS-JAX as well, the
-c* = 1 SOA gap at 1–3 h goes from +3.7 % to −1.1 %; with 160 bins in both, the mean dry
-diameter agrees to +0.7 % (TOMAS-JAX 105 / 115 / 121 nm at 40 / 80 / 160 bins, PyCHAM
-120.5 nm at either resolution). Numerics are small in both models (TOMAS-JAX micro-step:
-SOA ≤ 0.8 % after 1 h; PyCHAM tight: ≤ 0.03 %).
++0.02 % and water to 0.4 %; with PyCHAM's transfer coefficient in TOMAS-JAX as well, the
+c* = 1 SOA gap at 1–3 h goes from +4.1 % to −0.9 % and the mean dry diameter to +0.6 %.
+TOMAS-JAX's mean dry diameter is 122.3 / 122.7 / 123.0 nm at 40 / 80 / 160 bins (PyCHAM
+120.5 nm at either resolution), so the bins no longer matter. Numerics are small in both
+models (TOMAS-JAX micro-step: SOA ≤ 0.8 % after 1 h; PyCHAM tight: ≤ 0.03 %).
 
 Figures: `S1_mass_timeseries.png`, `S1_size_distributions.png`,
 `S1_mean_diameter.png`, `S1_attribution.png`, `S1_diagnostics.png` (water/dry and

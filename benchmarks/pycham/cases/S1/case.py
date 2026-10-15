@@ -283,25 +283,29 @@ def mismatches(setup: dict, m: dict) -> list[dict]:
                    f"that differ by up to {100 * m['density_max_rel_12h']:.1f} % "
                    f"({100 * m['density_max_rel_12h'] / 3:.1f} % in diameter)."},
         {"what": "Size structure. TOMAS-JAX: two-moment sectional on 40 fixed mass-doubling bins "
-                 "with MNFIX. PyCHAM: moving-centre on the same bins (manual bounds in wet "
+                 "(MNFIX after sources, nucleation and coagulation). PyCHAM: moving-centre on the "
+                 "same bins (manual bounds in wet "
                  "radius), same number per bin at t = 0, bins with < "
                  f"{S1['pycham_min_bin_number_cm3']:g} cm-3 left empty "
                  f"({setup['n_total_ours_cm3'] - setup['n_total_pycham_cm3']:.1e} cm-3 in total).",
          "why": "Each model's own size scheme.",
          "effect": "Identical initial number and dry mass per bin (checked to 1e-9)."},
-        {"what": "Growth across bins. TOMAS-JAX's SOA step moves particles between its fixed "
-                 "bins only through MNFIX (vbs-jax redistribute hook): when a bin's mean dry mass "
-                 "leaves the bin, part of the population stays at the bin's geometric-mean mass "
-                 "and the rest jumps to 1/1.1 of the next bin's upper edge. PyCHAM's moving-centre "
-                 "bins keep each population's exact size.",
+        {"what": "Growth across bins. TOMAS-JAX's SOA step changes each bin's particle mass in "
+                 "place and then moves the particles between its fixed bins with a flux-form PPM "
+                 "remap in log-mass (physics/ppm_remap.py, AerosolStepConfig.growth_bin_transfer "
+                 "= 'ppm'; the H2SO4 condensation scheme), once per 60 s micro-step. PyCHAM's "
+                 "moving-centre bins keep each population's exact size.",
          "why": "Size-structure numerics of each model (two-moment fixed sectional vs "
                 "moving-centre).",
-         "effect": "Numerical spreading of the TOMAS-JAX distribution when particles grow over "
-                   "several bins (c* = 1: number-mean dry diameter "
-                   f"{pct(m['d_dry_c1_12h']['40'])} vs PyCHAM at 12 h with 40 bins, "
-                   f"{pct(m['d_dry_c1_12h']['160'])} with 160 bins in both; PyCHAM itself changes "
-                   f"by {pct(m['d_dry_c1_12h']['pycham_160_vs_40'])} from 40 to 160 bins). Mass "
-                   "is unaffected."},
+         "effect": "c* = 1, 12 h: number-mean dry diameter "
+                   f"{pct(m['d_dry_c1_12h']['40'])} vs PyCHAM with 40 bins and "
+                   f"{pct(m['d_dry_c1_12h']['160'])} with 160 bins in both, GSD "
+                   f"{pct(m['gsd_c1_12h']['40'])} / {pct(m['gsd_c1_12h']['160'])}; PyCHAM itself "
+                   f"changes by {pct(m['d_dry_c1_12h']['pycham_160_vs_40'])} from 40 to 160 bins. "
+                   "The rest of the diameter difference is the transfer coefficient and Kelvin "
+                   "term (attribution). The remap conserves number and mass. (The previous MNFIX "
+                   "transfer, still selectable as growth_bin_transfer = 'mnfix', spread the "
+                   "distribution: -12.6 % at 40 bins.)"},
         {"what": "Time stepping. TOMAS-JAX: source added every 60 s micro-step, then vbs-jax "
                  "adaptive analytic sub-steps (operator split), Kelvin/CS frozen per sub-step. "
                  "PyCHAM: continuous influx inside the BDF solve (rtol 1e-4), partitioning "

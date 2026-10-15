@@ -313,6 +313,7 @@ def measured(stats: dict, diag: dict, tc: dict, runs: dict, setup1: dict) -> dic
                                                        setup1["rho_dry_g_cm3"] * 1e3),
         "d_dry_c1_12h": {"40": at(c1, "full", "d_dry", 12), "160": at(c1, "bins160", "d_dry", 12),
                          "pycham_160_vs_40": at(c1, "pycham_resolution", "d_dry", 12)},
+        "gsd_c1_12h": {"40": at(c1, "full", "gsd", 12), "160": at(c1, "bins160", "gsd", 12)},
         "ours_numerics_soa_after_1h": max(stats[c]["ours_numerics"]["soa"]["max_rel_dev_after_1h"]
                                           for c in S1["cstar_ugm3"]),
         "pycham_numerics_soa_after_1h": max(

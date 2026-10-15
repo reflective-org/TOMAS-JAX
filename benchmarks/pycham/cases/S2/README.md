@@ -67,13 +67,13 @@ The full list with measured effects is generated into `results/summary.json` →
 
 | # | What | Measured effect |
 |---|---|---|
-| 1 | **Operator split** (chemistry, then partitioning, per coupling interval) vs one ODE | SOA +12 % at 30 min, +3.9 % at 1 h (300 s); +7.2 %, +3.4 % at 60 s |
-| 2 | **Transfer rate**: one diffusion volume (120), mfp 2D/c̄, Zaveri form vs per-species volume (~200–235), 3D/c̄, Jacobson form | PyCHAM's organic sink 0.69× ours (diffusivity alone 0.79×); with ours × 0.69 the 30 min excess falls to +1.2 % |
+| 1 | **Operator split** (chemistry, then partitioning, per coupling interval) vs one ODE | SOA +13 % at 30 min, +4.2 % at 1 h (300 s); +8.6 %, +3.9 % at 60 s |
+| 2 | **Transfer rate**: one diffusion volume (120), mfp 2D/c̄, Zaveri form vs per-species volume (~200–235), 3D/c̄, Jacobson form | PyCHAM's organic sink 0.69× ours (diffusivity alone 0.79×); with ours × 0.69 the 30 min excess falls from +8.6 % to +3.1 % |
 | 3 | **Raoult**: mass fraction vs mole fraction | PyCHAM with mass-fraction Raoult: +1.2 to +1.6 % SOA |
-| 4 | **Kelvin**: σ 0.025, ρ 1200, class MW vs σ 0.072, mass-mean particle MW incl. water and sulfate | lowers SOA by 0.8 % (ours) vs 1.3 % (PyCHAM) at 6 h, 2.5 % vs 3.8 % at 30 min |
+| 4 | **Kelvin**: σ 0.025, ρ 1200, class MW vs σ 0.072, mass-mean particle MW incl. water and sulfate | lowers SOA by 0.8 % (ours) vs 1.3 % (PyCHAM) at 6 h, 2.4 % vs 3.8 % at 30 min |
 | 5 | **Within-class species identity** (tracker vs explicit species) | particle fractions in class log c* = 0.5: 0.29–0.94 vs 0.81–0.83; top contributors off up to 4× |
-| 6 | **Sectional numerics** (MNFIX fixed bins vs moving centre) | number median at 6 h 156 vs 181 nm, dry-mass median 272 vs 233 nm; ~2 % of particles below the seed size in TOMAS-JAX |
-| 7 | **Water**: PyCHAM's Kelvin term on water (bulk water matched per component) | PyCHAM water −9 % at t = 0, −12 % at 1 h, −10 % at 3 h, −9 % at 6 h; with Kelvin off in both: within 1.4 % at 30 min, ≤ 0.6 % after 1 h |
+| 6 | **Sectional numerics** (fixed bins, SOA moved by the PPM remap, vs moving centre) | at 6 h number-mean dry diameter 213.8 vs 210.1 nm (+1.8 %), GSD 1.362 vs 1.411 (−3.5 %), dry-mass-weighted mean 276.5 vs 281.7 nm; 0.16 % of particles below the seed's 1st-percentile size (PyCHAM 0.05 %; 0.06 / 0.03 % at 80 / 160 bins). The previous MNFIX transfer: 187.4 nm, GSD 1.85, 2.1 % below the seed |
+| 7 | **Water**: PyCHAM's Kelvin term on water (bulk water matched per component) | PyCHAM water −9 % at t = 0, −12 % at 1 h, −10 % at 3 h, −9 % at 6 h; with Kelvin off in both: within 2.5 % at 30 min, ≤ 0.6 % after 1 h |
 | 8 | **Density**: Tang vs additive (matched at t = 0) | +0.5 % on the 6 h bulk composition (+0.2 % in diameter) |
 | 9 | **Seed sulfate identity**: SA is H2SO4 (98.08 g/mol) in PyCHAM, SO4 (96) / NH4HSO4 for water in TOMAS-JAX | mass identical, moles 2 % different; enters PyCHAM's mean MW in its Kelvin term; negligible for SOA (sulfate is not in the absorbing phase) |
 | 10 | **Volatility input**: PyCHAM gets our class-centre c* | exact by construction, so S2 tests partitioning and transport for identical volatility, **not** the Li c* (A8); see the `native` sensitivity |
@@ -85,11 +85,14 @@ SOA [µg m⁻³] (245 condensable species; seed OA and sulfate excluded):
 
 | t | TOMAS-JAX 300 s | TOMAS-JAX 60 s | PyCHAM class-centre c* | PyCHAM own Li c* |
 |---|---|---|---|---|
-| 0.5 h | 5.59 (+12.1 %) | 5.34 (+7.2 %) | 4.98 | 5.52 (+10.7 %) |
-| 1 h | 9.03 (+3.9 %) | 8.99 (+3.4 %) | 8.70 | 9.30 (+7.0 %) |
-| 3 h | 13.40 (+1.8 %) | 13.43 (+2.1 %) | 13.15 | 13.61 (+3.5 %) |
-| 6 h | 15.85 (+1.0 %) | 15.88 (+1.3 %) | 15.68 | 15.87 (+1.2 %) |
-| NMB over 6 h | +2.2 % | +2.2 % | — | +3.4 % |
+| 0.5 h | 5.65 (+13.3 %) | 5.42 (+8.6 %) | 4.98 | 5.52 (+10.7 %) |
+| 1 h | 9.07 (+4.2 %) | 9.04 (+3.9 %) | 8.70 | 9.30 (+7.0 %) |
+| 3 h | 13.41 (+2.0 %) | 13.45 (+2.3 %) | 13.15 | 13.61 (+3.5 %) |
+| 6 h | 15.86 (+1.1 %) | 15.90 (+1.4 %) | 15.68 | 15.87 (+1.2 %) |
+| NMB over 6 h | +2.4 % | +2.4 % | — | +3.4 % |
+
+(TOMAS-JAX with the PPM bin transfer for SOA, re-run 2026-10-15; with the previous
+MNFIX transfer the 300 s run was +12.1 / +3.9 / +1.8 / +1.0 % at 0.5 / 1 / 3 / 6 h.)
 
 The water correction (per-component instead of one seed-average ratio, 2026-10-14)
 changed PyCHAM's SOA by −0.3 % at 30 min, −0.15 % at 1 h and −0.05 % at 6 h; its water
@@ -99,12 +102,12 @@ term on water, the only remaining water difference).
 - Gas + particle mass of the 245 species: 39.50 (ours) vs 39.69 µg m⁻³ at 6 h (−0.5 %).
 - Per class: within 11 % for every class above 0.3 µg m⁻³ at 1, 3 and 6 h
   (`S2_cstar_class_bars.png`).
-- Gas phase with particles: median \|NMB\| 4.3 % (300 s) and 3.7 % (60 s) over 374
-  species, 72 % within ±10 %; condensables 5.5 %, the rest 3.4 %. Without particles the
+- Gas phase with particles: median \|NMB\| 4.2 % (300 s) and 3.7 % (60 s) over 374
+  species, 72 % within ±10 %; condensables 5.5 %, the rest 3.6 %. Without particles the
   same set-ups agree to 0.17 %, so the extra spread comes from items 1–5, mostly 5.
 - Partitioning feedback (each model against its own run without particles, 6 h): NO
   −78 %, NO2 −79 %, NO3 −78 %, N2O5 −95 %, OH −35 %, HO2 −30 %, O3 −15 %, HNO3 −42 %,
-  PAN −71 %, limonene +167 %, the two models within 1 point. 98 % of the SOA is
+  PAN −71 %, limonene +168 %, the two models within 1 point. 98 % of the SOA is
   N-containing (0.067 µmol m⁻³ of N, two thirds of the initial NOx).
 - Volatility sensitivity (`S2_volatility_sensitivity.png`): with PyCHAM's own vapour
   pressures SOA is 0.08× at 1 h and 0.51× at 6 h (7.96 µg m⁻³), 5 % N-containing, and
@@ -114,16 +117,16 @@ term on water, the only remaining water difference).
 
 | SOA difference, cumulative | 15 min | 30 min | 1 h | 3 h | 6 h |
 |---|---|---|---|---|---|
-| TOMAS-JAX 300 s vs PyCHAM | +32 % | +12 % | +3.9 % | +1.8 % | +1.0 % |
-| 60 s coupling | +15 % | +7.2 % | +3.4 % | +2.1 % | +1.3 % |
-| + transfer rate matched (CS × 0.69) | +1.2 % | +1.2 % | +1.7 % | +1.5 % | +0.9 % |
-| + Raoult matched (PyCHAM `massfrac`) | −0.1 % | −0.4 % | +0.2 % | +0.05 % | −0.2 % |
-| + Kelvin off in both | −1.9 % | −1.8 % | −0.7 % | −0.6 % | −0.7 % |
+| TOMAS-JAX 300 s vs PyCHAM | +34 % | +13 % | +4.2 % | +2.0 % | +1.1 % |
+| 60 s coupling | +16 % | +8.6 % | +3.9 % | +2.3 % | +1.4 % |
+| + transfer rate matched (CS × 0.69) | +2.4 % | +3.1 % | +2.4 % | +1.7 % | +1.1 % |
+| + Raoult matched (PyCHAM `massfrac`) | +1.0 % | +1.5 % | +0.8 % | +0.3 % | −0.07 % |
+| + Kelvin off in both | −0.75 % | −0.01 % | −0.09 % | −0.35 % | −0.54 % |
 
 With the three largest differences matched (coupling, transfer, Raoult) SOA agrees
-within 0.5 % from 10 min on. That agreement contains offsetting terms: PyCHAM's Kelvin
-term is stronger than ours, and with Kelvin off in both TOMAS-JAX is 0.5–2.2 % below
-PyCHAM (largest at 20 min). The remaining differences are not matched: one scalar transfer factor for 245
+within 1.5 % from 10 min on (largest at 25 min). PyCHAM's Kelvin term is stronger than
+ours; with Kelvin off in both TOMAS-JAX is 0.01–0.75 % below PyCHAM (largest at
+15 min). The remaining differences are not matched: one scalar transfer factor for 245
 species (species-dependent through diffusion volumes 200–235), water and density rules,
 moving-centre vs fixed bins, the within-class tracker and the seed sulfate identity.
 The attribution runs are numerical experiments in benchmark code (`attribution.py`,
@@ -132,13 +135,15 @@ unchanged.
 
 ## Findings for the tutorial
 
-1. Total SOA agrees with PyCHAM to 1–4 % after 1 h (+1.0 % at 6 h) and the class
+1. Total SOA agrees with PyCHAM to 1–4.2 % after 1 h (+1.1 % at 6 h) and the class
    totals to ≤ 11 %. Early SOA is faster in TOMAS-JAX because of the operator split and
    the vbs-jax transfer coefficient (items 1–2).
 2. Per-species "top contributors" are a bookkeeping estimate: within a class they can
    be off by up to 4× (item 5). Present class totals.
-3. MNFIX partial transfer creates a small tail of particles below the seed size during
-   SOA growth (item 6).
+3. Since 2026-10-15 SOA growth moves particles with a PPM remap; the size distribution
+   is within 2 % (mean) and 3.5 % (GSD) of PyCHAM and barely depends on resolution. The
+   previous MNFIX transfer broadened it and left ~2 % of the particles below the seed
+   size (item 6).
 4. The NOx-sink feedback (NO2 −79 % at 6 h) and most of the SOA amount follow the Li
    (2016) placeholder c* (A8); S2 cannot test the volatility itself.
 
