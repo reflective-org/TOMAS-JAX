@@ -258,7 +258,8 @@ def run(scenario: Scenario, progress_cb: Callable[[float], None] | None = None,
             state = state._replace(Gc=jnp.asarray(gc_new))
         forcing = AerosolForcing(jnp.float64(h2so4_rate), jnp.asarray(org_rate, dtype=jnp.float64),
                                  jnp.float64(nitrate_rate), jnp.asarray(weights, dtype=jnp.float64))
-        state, diag = aerosol_outer_step(state, forcing, soa, dt_c, processes=processes, cfg=cfg)
+        state, diag = aerosol_outer_step(state, forcing, soa, dt_c, micro_dt=cfg.micro_dt,
+                                         processes=processes, cfg=cfg)
         soa_bad += int(not bool(diag.soa_time_integrated))
         nitrate_expected += nitrate_rate * dt_c
         nitrate_added += float(diag.nitrate_added)

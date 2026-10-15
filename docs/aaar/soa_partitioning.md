@@ -98,7 +98,10 @@ move between the fixed bins:
   by exact overlap integrals; each species' mass fraction is linear inside
   the bin (limited), so particles keep the composition that goes with their
   size. Particles whose mass did not change stay exactly in place, even
-  while others grow or shrink past them. Then `cap_top_bin` keeps SOA that
+  while others grow or shrink past them: next to particles that change the
+  same way their displacement is 0 at both edges, and a bin whose
+  displacement is a local extremum (for example one unchanged bin between
+  growing neighbours) gets no slope across it (minmod). Then `cap_top_bin` keeps SOA that
   would push the top bin past the grid in the gas, and MNFIX restores its
   floor in emptied bins (SOA it deletes there returns to the gas).
   Conservative to round-off, never negative, smooth (one extremum for a

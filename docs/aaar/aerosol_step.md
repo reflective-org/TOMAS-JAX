@@ -272,8 +272,20 @@ Both converge to 5.149 µg m⁻³. At 40 bins PPM is 0.21 % above the 320-bin
 value and the previous code 3.6 % below it. N₂O₅ uptake follows the
 particle surface, which the bin transfer changes; the +4.0 % at 40 bins
 is the old scheme's resolution error, not a new one. The 2 % acceptance
-limit against the old code is therefore not met at 40 bins (it is at 80
-bins and above); see PROGRESS.md for the open decision.
+limit against the old code is not met at 40 bins (it is at 80 bins and
+above). **Decision (2026-10-15):** totals are judged against the converged
+(320-bin) value, not against the previous code, whose accuracy was never
+established for nitrate (N₂O₅ uptake was off in every PyCHAM case). PPM is
+within 0.21 % of it at 40 bins.
+
+**Abrupt evaporation.** A sudden +35 K step after strong growth (c* about
+0.3 → 100 at once) leaves ripples of up to 14 % of the peak (3 / 5 / 12
+extrema at 40 / 80 / 160 bins) in the first hot step, although mean, width
+and conservation are right. One 60 s remap cannot carry such a large,
+strongly size-dependent shrink in one go; `micro_dt = 10` s removes the
+ripples (+25 K and +30 K steps are smooth at 60 s). The presets never do
+this (temperature is constant within a run). `driver.run(...,
+aerosol_cfg=AerosolStepConfig(micro_dt=...))` sets the micro-step.
 
 Runtime: the PPM path is faster, because MNFIX (a sequential loop over the
 bins) no longer runs after every vbs-jax sub-step. Warm runs on a laptop

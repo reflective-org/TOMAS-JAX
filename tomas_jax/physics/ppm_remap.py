@@ -146,9 +146,13 @@ def bin_edge_shifts(xk, shift, xi, active):
     zero = jnp.zeros(1)
     d_lo = jnp.concatenate([zero, d])       # to the bin below
     d_hi = jnp.concatenate([d, zero])       # to the bin above
-    # the smaller one-sided slope: 0 next to a bin whose s is the same or
-    # that has no particles, the interpolation slope where s is smooth
-    slope = jnp.where(jnp.abs(d_lo) <= jnp.abs(d_hi), d_lo, d_hi)
+    # minmod: the smaller one-sided slope where both sides agree in sign
+    # (s smooth), 0 where they disagree (the bin's s is a local extremum,
+    # e.g. unchanged particles between growing neighbours, which must stay
+    # in place) or next to a bin with the same s or no particles
+    slope = jnp.where(d_lo * d_hi > 0.0,
+                      jnp.where(jnp.abs(d_lo) <= jnp.abs(d_hi), d_lo, d_hi),
+                      0.0)
 
     s_above = jnp.concatenate([shift[1:], shift[-1:]])
     s_below = jnp.concatenate([shift[:1], shift[:-1]])

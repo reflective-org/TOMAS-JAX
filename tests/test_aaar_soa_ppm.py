@@ -627,3 +627,45 @@ def test_default_is_ppm_and_driver_reports_changes():
     assert r_mnfix.diagnostics["aerosol_cfg"] == {"growth_bin_transfer": "mnfix"}
     assert r_ppm.totals["SOA_ugm3"][-1] == pytest.approx(
         r_mnfix.totals["SOA_ugm3"][-1], rel=0.01)
+
+
+@pytest.mark.parametrize("lo, hi", [(3.0, 1.5), (0.5, 0.25), (3.0, 0.5)])
+def test_unchanged_bin_between_changing_neighbours_stays(lo, hi):
+    """One bin of sulfate-only particles (bin 40) between SOA-only bins 30-39
+    and 41-50 whose particles change by different factors: the sulfate
+    particles keep their bin exactly (minmod edge slope), whatever passes
+    through it. Before the minmod slope, (3.0, 1.5) moved 43 % of the
+    sulfate into bin 41."""
+    nbins = 80
+    xk, xm = grid(nbins)
+    k = np.arange(nbins)
+    lo_bins, hi_bins = (k >= 30) & (k < 40), (k >= 41) & (k <= 50)
+    so4 = k == 40
+    Nk = jnp.where(lo_bins | hi_bins | so4, 1e12, 0.0)
+    Mk = (jnp.zeros((nbins, ICOMP))
+          .at[:, SRTSOA1].set(jnp.where(lo_bins | hi_bins, Nk * xm, 0.0))
+          .at[:, SRTSO4].set(jnp.where(so4, Nk * xm, 0.0)))
+    factor = jnp.where(lo_bins, lo, jnp.where(hi_bins, hi, 1.0))
+    Mk_new = Mk.at[:, SRTSOA1].multiply(factor)
+
+    N2, M2 = remap(Nk, Mk, Mk_new, xk)
+
+    np.testing.assert_allclose(np.asarray(M2[:, SRTSO4]), np.asarray(Mk[:, SRTSO4]),
+                               rtol=1e-14, atol=1e-14 * float(jnp.max(Mk[:, SRTSO4])))
+    assert float(jnp.sum(N2)) == pytest.approx(float(jnp.sum(Nk)), rel=1e-13)
+    np.testing.assert_allclose(np.asarray(jnp.sum(M2, axis=0)),
+                               np.asarray(jnp.sum(Mk_new, axis=0)), rtol=1e-13, atol=0.0)
+
+
+def test_driver_passes_micro_dt():
+    """AerosolStepConfig.micro_dt reaches the aerosol step: 60 s (the default)
+    reproduces a default run bit for bit, 20 s changes the result slightly."""
+    import dataclasses
+    s = load_preset("level1_volatility").replace(duration_h=1.0)
+    base = run(s)
+    same = run(s, aerosol_cfg=dataclasses.replace(AerosolStepConfig(), micro_dt=60.0))
+    finer = run(s, aerosol_cfg=dataclasses.replace(AerosolStepConfig(), micro_dt=20.0))
+    np.testing.assert_array_equal(np.asarray(same.dndlog10dp_cm3), np.asarray(base.dndlog10dp_cm3))
+    assert not np.array_equal(np.asarray(finer.dndlog10dp_cm3), np.asarray(base.dndlog10dp_cm3))
+    assert finer.totals["SOA_ugm3"][-1] == pytest.approx(base.totals["SOA_ugm3"][-1], rel=0.02)
+

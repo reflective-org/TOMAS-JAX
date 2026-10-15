@@ -4,6 +4,27 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-10-15 (Thu) — PPM bin transfer: final fixes after the last verification round
+
+**Time**: ~03:00 PDT 2026-10-15
+**Branch**: `feat/aaar-tutorial-ppm-soa` (pushed to `feat/aaar-tutorial`)
+
+- `ppm_remap.bin_edge_shifts`: minmod edge slope. A bin whose displacement is a local
+  extremum (e.g. one unchanged sulfate bin between growing SOA bins) gets no slope, so its
+  particles stay in place; before, 43 % of such a bin's sulfate could move into the next bin
+  (adversarial review, final round). Test `test_unchanged_bin_between_changing_neighbours_stays`.
+- `driver.run` passes `AerosolStepConfig.micro_dt` to `aerosol_outer_step` (it was silently
+  ignored). Default 60 s is bit-identical. Test `test_driver_passes_micro_dt`.
+- Decision on A5: totals are judged against the converged 320-bin value, not the previous
+  code (Ali, 2026-10-15). Level 3 nitrate at 40 bins is +4.0 % against the old code but within
+  0.21 % of the converged 5.149 µg m⁻³; the old 40-bin value was 3.6 % low.
+- Documented limitation: an abrupt +35 K step after strong growth leaves ripples at 60 s
+  micro-steps (smooth at 10 s; +25/+30 K smooth). Not reachable in the presets.
+- Final verification round (independent agents): PyCHAM sizes pass (numerics converged; the
+  remaining +2.3 % mean diameter / −3.2 % GSD in S1 is the Kelvin term and the vbs-jax
+  transfer coefficient, +0.1 % / −0.4 % with those matched); runtime pass (PPM faster than
+  MNFIX at 80 bins in clean A/B pairs, 18.9 vs 22.7 s for Level 3); conservation to 5e-15.
+
 ## 2026-10-15 (Thu) — PPM bin transfer, round 3: each bin moves with its own displacement; composition slopes
 
 **Time**: ~01:40 PDT 2026-10-15 (08:40 UTC)
