@@ -72,42 +72,42 @@
   "ours_base_cstar1": {
     "cstar": 1.0,
     "variant": "base",
-    "wall_s": 1.2727115420275368,
+    "wall_s": 1.3012756669777445,
     "warnings": [],
-    "soa_end_ugm3": 4.943541524064281,
-    "gas_end_ugm3": 1.0564584759357112,
-    "mass_closure_max_rel": 1.3322676295501878e-15,
-    "code_version": "bfe1367e0aeddc28"
+    "soa_end_ugm3": 4.943201329410188,
+    "gas_end_ugm3": 1.0567986705898063,
+    "mass_closure_max_rel": 1.1842378929335002e-15,
+    "code_version": "749346461e5f72e2"
   },
   "ours_micro10_cstar1": {
     "cstar": 1.0,
     "variant": "micro10",
-    "wall_s": 2.1164259589859284,
+    "wall_s": 2.255322790995706,
     "warnings": [],
-    "soa_end_ugm3": 4.941462740971579,
-    "gas_end_ugm3": 1.0585372590286086,
-    "mass_closure_max_rel": 3.301063126552132e-14,
-    "code_version": "bfe1367e0aeddc28"
+    "soa_end_ugm3": 4.941163649933496,
+    "gas_end_ugm3": 1.0588363500667857,
+    "mass_closure_max_rel": 4.692542650748995e-14,
+    "code_version": "749346461e5f72e2"
   },
   "ours_nokelvin_cstar1": {
     "cstar": 1.0,
     "variant": "nokelvin",
-    "wall_s": 1.2387169169960544,
+    "wall_s": 1.2828976669698022,
     "warnings": [],
-    "soa_end_ugm3": 4.985475525792045,
-    "gas_end_ugm3": 1.0145244742079413,
-    "mass_closure_max_rel": 3.2566542055671257e-15,
-    "code_version": "bfe1367e0aeddc28"
+    "soa_end_ugm3": 4.984674965178575,
+    "gas_end_ugm3": 1.0153250348213994,
+    "mass_closure_max_rel": 5.0330110449673766e-15,
+    "code_version": "749346461e5f72e2"
   },
   "ours_nokelvin_pytransfer_cstar1": {
     "cstar": 1.0,
     "variant": "nokelvin_pytransfer",
-    "wall_s": 1.2561840830021538,
+    "wall_s": 1.2981468749931082,
     "warnings": [],
-    "soa_end_ugm3": 4.9763511469938795,
-    "gas_end_ugm3": 1.0236488530061139,
-    "mass_closure_max_rel": 3.2566542055671257e-15,
-    "code_version": "bfe1367e0aeddc28"
+    "soa_end_ugm3": 4.9753491566822605,
+    "gas_end_ugm3": 1.0246508433177355,
+    "mass_closure_max_rel": 2.0724163126336257e-15,
+    "code_version": "749346461e5f72e2"
   },
   "pycham_base_cstar100": {
     "wall_s": 13.204220124986023,
@@ -178,42 +178,42 @@
   "ours_base_cstar100": {
     "cstar": 100.0,
     "variant": "base",
-    "wall_s": 1.2493097920087166,
+    "wall_s": 1.4200184170040302,
     "warnings": [],
-    "soa_end_ugm3": 0.010873949517048538,
-    "gas_end_ugm3": 5.9891260504829535,
-    "mass_closure_max_rel": 1.8503717077085944e-15,
-    "code_version": "bfe1367e0aeddc28"
+    "soa_end_ugm3": 0.01087394927328372,
+    "gas_end_ugm3": 5.989126050726713,
+    "mass_closure_max_rel": 2.294460917558657e-15,
+    "code_version": "749346461e5f72e2"
   },
   "ours_micro10_cstar100": {
     "cstar": 100.0,
     "variant": "micro10",
-    "wall_s": 2.1329898749827407,
+    "wall_s": 2.242381416959688,
     "warnings": [],
-    "soa_end_ugm3": 0.010875362137720888,
-    "gas_end_ugm3": 5.989124637861952,
-    "mass_closure_max_rel": 5.4474943074941016e-14,
-    "code_version": "bfe1367e0aeddc28"
+    "soa_end_ugm3": 0.010875361896666668,
+    "gas_end_ugm3": 5.989124638102996,
+    "mass_closure_max_rel": 5.6251299914341267e-14,
+    "code_version": "749346461e5f72e2"
   },
   "ours_nokelvin_cstar100": {
     "cstar": 100.0,
     "variant": "nokelvin",
-    "wall_s": 1.2597283339709975,
+    "wall_s": 1.3096309580141678,
     "warnings": [],
-    "soa_end_ugm3": 0.011687512273875754,
-    "gas_end_ugm3": 5.988312487726123,
-    "mass_closure_max_rel": 1.924386576016938e-15,
-    "code_version": "bfe1367e0aeddc28"
+    "soa_end_ugm3": 0.011687512273874108,
+    "gas_end_ugm3": 5.988312487726121,
+    "mass_closure_max_rel": 2.146431180941969e-15,
+    "code_version": "749346461e5f72e2"
   },
   "ours_nokelvin_pytransfer_cstar100": {
     "cstar": 100.0,
     "variant": "nokelvin_pytransfer",
-    "wall_s": 1.2650776670197956,
+    "wall_s": 1.2410154580138624,
     "warnings": [],
-    "soa_end_ugm3": 0.011687506592353855,
-    "gas_end_ugm3": 5.98831249340765,
-    "mass_closure_max_rel": 1.6283271027835629e-15,
-    "code_version": "bfe1367e0aeddc28"
+    "soa_end_ugm3": 0.011687506592347633,
+    "gas_end_ugm3": 5.988312493407659,
+    "mass_closure_max_rel": 1.3322676295501878e-15,
+    "code_version": "749346461e5f72e2"
   },
   "pycham_bins160_cstar1": {
     "wall_s": 37.692448625020916,
@@ -240,22 +240,22 @@
   "ours_bins80_cstar1": {
     "cstar": 1.0,
     "variant": "bins80",
-    "wall_s": 1.580952916003298,
+    "wall_s": 1.650424292020034,
     "warnings": [],
-    "soa_end_ugm3": 4.943205781402397,
-    "gas_end_ugm3": 1.0567942185976062,
-    "mass_closure_max_rel": 1.924386576016938e-15,
-    "code_version": "bfe1367e0aeddc28"
+    "soa_end_ugm3": 4.942980121908708,
+    "gas_end_ugm3": 1.057019878091268,
+    "mass_closure_max_rel": 4.440892098500626e-15,
+    "code_version": "749346461e5f72e2"
   },
   "ours_bins160_cstar1": {
     "cstar": 1.0,
     "variant": "bins160",
-    "wall_s": 2.616313625010662,
+    "wall_s": 2.869348792009987,
     "warnings": [],
-    "soa_end_ugm3": 4.943090797037495,
-    "gas_end_ugm3": 1.0569092029625258,
-    "mass_closure_max_rel": 4.736951571734001e-15,
-    "code_version": "bfe1367e0aeddc28"
+    "soa_end_ugm3": 4.942966532624347,
+    "gas_end_ugm3": 1.0570334673756234,
+    "mass_closure_max_rel": 5.0330110449673766e-15,
+    "code_version": "749346461e5f72e2"
   },
   "pycham_bins160_cstar100": {
     "wall_s": 41.130690749996575,
@@ -282,21 +282,21 @@
   "ours_bins80_cstar100": {
     "cstar": 100.0,
     "variant": "bins80",
-    "wall_s": 1.6008932080003433,
+    "wall_s": 1.587240541994106,
     "warnings": [],
-    "soa_end_ugm3": 0.010874137251795243,
-    "gas_end_ugm3": 5.989125862748207,
-    "mass_closure_max_rel": 1.4062824978585316e-15,
-    "code_version": "bfe1367e0aeddc28"
+    "soa_end_ugm3": 0.010874137131640645,
+    "gas_end_ugm3": 5.989125862868353,
+    "mass_closure_max_rel": 1.4802973661668755e-15,
+    "code_version": "749346461e5f72e2"
   },
   "ours_bins160_cstar100": {
     "cstar": 100.0,
     "variant": "bins160",
-    "wall_s": 2.81941925000865,
+    "wall_s": 2.9459260830190033,
     "warnings": [],
-    "soa_end_ugm3": 0.010874590646725102,
-    "gas_end_ugm3": 5.989125409353257,
-    "mass_closure_max_rel": 3.1086244689504383e-15,
-    "code_version": "bfe1367e0aeddc28"
+    "soa_end_ugm3": 0.010874590587131569,
+    "gas_end_ugm3": 5.989125409412848,
+    "mass_closure_max_rel": 3.4046839421838135e-15,
+    "code_version": "749346461e5f72e2"
   }
 }

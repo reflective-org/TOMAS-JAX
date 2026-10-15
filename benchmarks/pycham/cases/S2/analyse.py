@@ -320,15 +320,32 @@ def particle_metrics(d) -> dict:
 def dry_size_stats(dd, n, dm, d_p01) -> dict:
     """Size statistics from each bin's mean dry diameter, the same way for both models
     (as S1's sizestats): number-mean [nm], number GSD [-], dry-mass-weighted mean [nm],
-    and the number fraction below the seed's 1st-percentile diameter. No medians: a
-    median read from fixed-bin cumulatives is biased by about half a bin."""
+    number and dry-mass medians [nm] (mid-rank, see midrank_median) and the number
+    fraction below the seed's 1st-percentile diameter."""
     w = np.where((n > 0) & np.isfinite(dd), n, 0.0)
     lg = np.log(np.where(w > 0, dd, 1.0))
     mu = (w * lg).sum() / w.sum()
     return {"number_mean_nm": float((w * dd).sum() / w.sum()),
             "gsd": float(np.exp(np.sqrt((w * (lg - mu) ** 2).sum() / w.sum()))),
             "dry_mass_mean_nm": float((dm * dd).sum() / dm.sum()),
+            "number_median_nm": midrank_median(dd, n),
+            "dry_mass_median_nm": midrank_median(dd, dm),
             "frac_below_seed_p01": float(w[dd < d_p01].sum() / w.sum())}
+
+
+def midrank_median(dd, weights) -> float:
+    """Diameter [nm] at half of ``weights``, each bin at its mean dry diameter, from the
+    mid-rank cumulative (weight below the bin + half its own), log-interpolated over
+    the bins with weight. The plain cumulative (weight up to and including the bin)
+    reads the median about half a bin low and drifts with resolution; bins without
+    weight (PyCHAM keeps empty ones) would pull it as well."""
+    w = np.asarray(weights, float)
+    keep = (w > 0) & np.isfinite(dd)
+    d, w = np.asarray(dd, float)[keep], w[keep]
+    order = np.argsort(d)
+    d, w = d[order], w[order]
+    c = (np.cumsum(w) - 0.5 * w) / w.sum()
+    return float(10.0 ** np.interp(0.5, c, np.log10(d)))
 
 
 def seed_percentile_diameter(dd, n, q) -> float:

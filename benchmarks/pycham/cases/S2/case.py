@@ -128,6 +128,8 @@ def mismatches(setup: dict, m: dict) -> list[dict]:
                    f"{zo['number_mean_nm']:.1f} (TOMAS-JAX) vs {zp['number_mean_nm']:.1f} nm "
                    f"(PyCHAM, {pct(zo['number_mean_nm'] / zp['number_mean_nm'] - 1)}), "
                    f"GSD {zo['gsd']:.3f} vs {zp['gsd']:.3f} ({pct(zo['gsd'] / zp['gsd'] - 1)}), "
+                   f"number median {zo['number_median_nm']:.1f} vs {zp['number_median_nm']:.1f} nm "
+                   "(mid-rank cumulative over the bins with particles), "
                    f"dry-mass-weighted mean {zo['dry_mass_mean_nm']:.1f} vs "
                    f"{zp['dry_mass_mean_nm']:.1f} nm; particles below the seed's 1st-percentile "
                    f"diameter {100 * zo['frac_below_seed_p01']:.2f} % vs "

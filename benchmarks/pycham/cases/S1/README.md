@@ -74,17 +74,22 @@ remap since 2026-10-15; MNFIX before), time stepping, c* temperature, dummy chem
 | SOA max deviation after 1 h | 4.1 % (1–3 h) | 0.28 % |
 | gas-phase surrogate at 12 h | −2.9 % | 5e-6 |
 | particle water at 12 h | +10 % | +13 % |
-| number-mean dry diameter at 12 h | +1.5 % (122.3 vs 120.5 nm at 1400 kg m⁻³) | 0.00 % |
-| GSD of dry diameter at 12 h | −1.7 % (1.847 vs 1.878) | 0.00 % |
+| number-mean dry diameter at 12 h | +2.3 % (123.3 vs 120.5 nm at 1400 kg m⁻³) | 0.00 % |
+| GSD of dry diameter at 12 h | −3.2 % (1.817 vs 1.878) | 0.00 % |
 
-(TOMAS-JAX with the PPM bin transfer for SOA, re-run 2026-10-15. With the previous
-MNFIX transfer the diameter was −12.6 % and the GSD +4.8 % at 40 bins, SOA +0.44 %.)
+(TOMAS-JAX with the PPM bin transfer for SOA, re-run 2026-10-15 after the remap was
+changed to carry each bin with its own displacement. The first PPM version gave +1.5 %
+/ −1.7 %, but moved by +0.5 % / −1.3 % from 40 to 160 bins; the previous MNFIX transfer
+gave −12.6 % in diameter and +4.8 % in GSD at 40 bins, SOA +0.44 %.)
 
 Attribution (`S1_attribution.png`): with Kelvin off in both, c* = 100 SOA agrees to
 +0.02 % and water to 0.4 %; with PyCHAM's transfer coefficient in TOMAS-JAX as well, the
-c* = 1 SOA gap at 1–3 h goes from +4.1 % to −0.9 % and the mean dry diameter to +0.6 %.
-TOMAS-JAX's mean dry diameter is 122.3 / 122.7 / 123.0 nm at 40 / 80 / 160 bins (PyCHAM
-120.5 nm at either resolution), so the bins no longer matter. Numerics are small in both
+c* = 1 SOA gap at 1–3 h goes from +4.1 % to −0.9 % and the 12 h mean dry diameter and
+GSD to +0.1 % and −0.4 % (−0.2 % / +0.1 % at 160 bins). TOMAS-JAX's mean dry diameter is
+123.3 / 123.2 / 123.2 nm and its GSD 1.817 / 1.816 / 1.815 at 40 / 80 / 160 bins (PyCHAM
+120.5 nm and 1.878 at either resolution), so the bins no longer matter: the +2.3 % /
+−3.2 % are the Kelvin term (PyCHAM's σ is 3× larger, which broadens its distribution)
+and the transfer coefficient. Numerics are small in both
 models (TOMAS-JAX micro-step: SOA ≤ 0.8 % after 1 h; PyCHAM tight: ≤ 0.03 %).
 
 Figures: `S1_mass_timeseries.png`, `S1_size_distributions.png`,

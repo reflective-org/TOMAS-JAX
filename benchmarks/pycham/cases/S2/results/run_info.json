@@ -126,23 +126,23 @@
     "attribution_factor": 0.6903111519227932
   },
   "ours_dt300": {
-    "wall_s": 6.930849791038781,
+    "wall_s": 7.214903333981056,
     "gas_solver_steps": 546,
     "warnings": [],
-    "code_version": "bfe1367e0aeddc28"
+    "code_version": "749346461e5f72e2"
   },
   "ours_dt60": {
-    "wall_s": 18.986517957993783,
+    "wall_s": 19.236315207963344,
     "gas_solver_steps": 1873,
     "warnings": [],
-    "code_version": "bfe1367e0aeddc28"
+    "code_version": "749346461e5f72e2"
   },
   "ours_dt300_nopart": {
-    "wall_s": 4.901747916999739
+    "wall_s": 4.845912374963518
   },
   "seed_oa_mw_check": {
-    "3h_number_mean_mw": 232.32177949644182,
-    "6h_number_mean_mw": 233.15848939519913
+    "3h_number_mean_mw": 232.3213222098397,
+    "6h_number_mean_mw": 233.15657427684337
   },
   "initial_particles": {
     "N_cm3": {
@@ -167,11 +167,11 @@
     }
   },
   "ours_dt60_cs_pycham": {
-    "wall_s": 23.192505541956052,
+    "wall_s": 23.535937207983807,
     "cs_factor": 0.6903111519227932,
     "coupling_dt_s": 60.0,
     "kelvin_off": false,
-    "stdout": "cs factor 0.6903, coupling 60 s, kelvin_off False, runtime 22.5 s"
+    "stdout": "cs factor 0.6903, coupling 60 s, kelvin_off False, runtime 22.9 s"
   },
   "setup": {
     "seed": {
@@ -382,11 +382,11 @@
     "other_particle_max_ugm3": 0.0
   },
   "ours_dt60_cs_pycham_nokelvin": {
-    "wall_s": 23.16745287500089,
+    "wall_s": 23.705360332969576,
     "cs_factor": 0.6903111519227932,
     "coupling_dt_s": 60.0,
     "kelvin_off": true,
-    "stdout": "cs factor 0.6903, coupling 60 s, kelvin_off True, runtime 22.5 s"
+    "stdout": "cs factor 0.6903, coupling 60 s, kelvin_off True, runtime 23.1 s"
   },
   "stored_species": {
     "store_floor_ppb": 1e-07,

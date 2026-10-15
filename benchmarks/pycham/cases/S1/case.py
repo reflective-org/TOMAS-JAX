@@ -291,10 +291,11 @@ def mismatches(setup: dict, m: dict) -> list[dict]:
          "why": "Each model's own size scheme.",
          "effect": "Identical initial number and dry mass per bin (checked to 1e-9)."},
         {"what": "Growth across bins. TOMAS-JAX's SOA step changes each bin's particle mass in "
-                 "place and then moves the particles between its fixed bins with a flux-form PPM "
-                 "remap in log-mass (physics/ppm_remap.py, AerosolStepConfig.growth_bin_transfer "
-                 "= 'ppm'; the H2SO4 condensation scheme), once per 60 s micro-step. PyCHAM's "
-                 "moving-centre bins keep each population's exact size.",
+                 "place and then moves the particles between its fixed bins with a PPM remap in "
+                 "log-mass (physics/ppm_remap.py, AerosolStepConfig.growth_bin_transfer = 'ppm': "
+                 "each bin's PPM sub-bin profile, as in H2SO4 condensation, carried by the bin's "
+                 "own displacement and deposited onto the bins), once per 60 s micro-step. "
+                 "PyCHAM's moving-centre bins keep each population's exact size.",
          "why": "Size-structure numerics of each model (two-moment fixed sectional vs "
                 "moving-centre).",
          "effect": "c* = 1, 12 h: number-mean dry diameter "
