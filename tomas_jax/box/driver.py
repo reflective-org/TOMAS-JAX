@@ -280,7 +280,8 @@ def run(scenario: Scenario, progress_cb: Callable[[float], None] | None = None,
         warnings.append(f"SOA partitioning hit its sub-step budget in {soa_bad} of {n_int} intervals")
     if nitrate_added < nitrate_expected * (1.0 - 1e-6):
         lost = kg_cell_to_ugm3(nitrate_expected - nitrate_added, boxvol)
-        warnings.append(f"{lost:.3g} ug/m3 of N2O5-uptake nitrate had no populated bin to go to")
+        warnings.append(f"{lost:.3g} ug/m3 of N2O5-uptake nitrate was not added (no populated bin, "
+                        "or it would have pushed the top bin past the grid)")
 
     return _assemble(s, rec, xk, boxvol, air, chem, k_cls, cstar, cstar_source,
                      bridge if chem else None, j_names, warnings,

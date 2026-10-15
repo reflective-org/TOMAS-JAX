@@ -22,7 +22,7 @@ from tomas_jax.core.config import (
     SRTSO4, SRTSOA1,
 )
 from tomas_jax.physics.ppm_remap import (
-    BIN_TRANSFERS, keep_means_in_bins, remap_mass_change,
+    BIN_TRANSFERS, cap_top_bin, keep_means_in_bins, remap_mass_change,
 )
 from tomas_jax.physics.soa_partitioning import soa_partition_step
 
@@ -175,6 +175,54 @@ def test_keep_means_in_bins_moves_few_particles():
                                np.asarray(jnp.sum(Mk_bad, axis=0)), rtol=1e-13)
 
 
+def test_remap_leaves_unchanged_particles_in_place():
+    """Two externally mixed populations in neighbouring bins: SOA-only
+    particles (bins 30-39) lose 99 % of their mass, sulfate particles
+    (bins 40-49) do not change. The sulfate particles stay where they are
+    (the edge displacement is taken from the donor's side), the SOA
+    particles move down."""
+    nbins = 80
+    xk, xm = grid(nbins)
+    k = np.arange(nbins)
+    Nk = jnp.where((k >= 30) & (k < 50), 1e12, 0.0)
+    Mk = (jnp.zeros((nbins, ICOMP))
+          .at[:, SRTSOA1].set(jnp.where(k < 40, Nk * xm, 0.0))
+          .at[:, SRTSO4].set(jnp.where(k >= 40, Nk * xm, 0.0)))
+    Mk_new = Mk.at[:, SRTSOA1].multiply(0.01)
+
+    N2, M2 = remap(Nk, Mk, Mk_new, xk)
+
+    np.testing.assert_allclose(np.asarray(N2[40:]), np.asarray(Nk[40:]),
+                               rtol=1e-12)
+    np.testing.assert_allclose(np.asarray(M2[40:, SRTSO4]),
+                               np.asarray(Mk[40:, SRTSO4]), rtol=1e-12)
+    assert float(jnp.sum(M2[:40, SRTSO4])) == 0.0
+    assert float(jnp.sum(N2[:30])) > 0.5 * float(jnp.sum(Nk[:40]))
+    assert float(jnp.sum(N2)) == pytest.approx(float(jnp.sum(Nk)), rel=1e-12)
+    np.testing.assert_allclose(np.asarray(jnp.sum(M2, axis=0)),
+                               np.asarray(jnp.sum(Mk_new, axis=0)),
+                               rtol=1e-12, atol=0.0)
+
+
+def test_cap_top_bin_takes_back_only_the_added_species():
+    xk, Nk, Mk = seed(40, 1000.0, 100e-9, 1.6, {SRTSO4: 1.0})
+    Nk = Nk.at[-1].set(1e6)
+    m_top = float(jnp.sqrt(xk[-2] * xk[-1]))
+    Mk = Mk.at[-1].set(0.0).at[-1, SRTSO4].set(1e6 * m_top)
+    Mk = Mk.at[-1, SRTSOA1].set(1e6 * 0.8 * float(xk[-1]))  # mean 1.5x top
+
+    M2, removed = cap_top_bin(Nk, Mk, xk, (SRTSOA1, SRTSOA1 + 1))
+
+    mean = float(jnp.sum(M2[-1, :ICOMP_NODIAG])) / 1e6
+    assert float(xk[-2]) < mean <= float(xk[-1])
+    assert float(M2[-1, SRTSO4]) == float(Mk[-1, SRTSO4])
+    assert float(removed[0]) == pytest.approx(
+        float(Mk[-1, SRTSOA1] - M2[-1, SRTSOA1]), rel=1e-14)
+    np.testing.assert_array_equal(np.asarray(M2[:-1]), np.asarray(Mk[:-1]))
+    M3, removed3 = cap_top_bin(Nk, M2, xk, (SRTSOA1, SRTSOA1 + 1))
+    assert float(removed3[0]) == 0.0           # inside the grid: no change
+
+
 # =========================================================================
 # SOA growth, evaporation, bootstrap through the aerosol step
 # =========================================================================
@@ -250,6 +298,44 @@ def test_soa_evaporation_moves_particles_down(transfer):
 
 
 @pytest.mark.parametrize("transfer", BIN_TRANSFERS)
+def test_temperature_rise_evaporates_smoothly(transfer):
+    """Grow SOA on a seed at 288 K (c* = 1, 2 ug/m3/h, 6 h), then raise T
+    to 318 K at once with no source: most of the SOA evaporates. The class
+    budget closes every step, nothing goes negative and the mode moves down
+    monotonically; with PPM number is conserved and one extremum kept."""
+    nbins = 40
+    xk, Nk, Mk = seed(nbins, 2000.0, 50e-9, 1.6,
+                      {SRTSO4: 0.7, SRTORG_NUC: 0.3})
+    st = state(xk, Nk, Mk, temp=288.0)
+    p = SOAParams(cstar_ref=jnp.array([1.0]), dhvap=jnp.array([131.0]),
+                  mw=jnp.array([200.0]), alpha=jnp.float64(1.0))
+    for _ in range(72):
+        st, _ = aerosol_outer_step(st, forcing(nbins, org_ugm3_h=2.0), p, 300.0,
+                                   processes=('soa_partitioning',),
+                                   cfg=cfg(transfer))
+    soa_grown = float(jnp.sum(st.Mk[:, SRTSOA1]))
+    st = st._replace(temp=jnp.float64(318.0))
+    n0 = float(jnp.sum(st.Nk))
+    d_prev = number_mean_diameter(st.Nk, st.Mk)
+    for _ in range(36):
+        tot0 = _class_total(st)
+        st, diag = aerosol_outer_step(st, forcing(nbins), p, 300.0,
+                                      processes=('soa_partitioning',),
+                                      cfg=cfg(transfer))
+        np.testing.assert_allclose(_class_total(st), tot0, rtol=1e-12)
+        assert bool(jnp.all(st.Mk >= 0.0)) and bool(jnp.all(st.Nk >= 0.0))
+        d_now = number_mean_diameter(st.Nk, st.Mk)
+        assert d_now <= d_prev * (1.0 + 1e-9)
+        d_prev = d_now
+        if transfer == 'ppm':   # MNFIX drops particles below the grid (0.13 %)
+            assert float(jnp.sum(st.Nk)) == pytest.approx(n0, rel=1e-10)
+            assert extrema(st.Nk) == 1
+            assert means_inside(st.Nk, st.Mk, xk)
+    assert bool(diag.soa_time_integrated)
+    assert float(jnp.sum(st.Mk[:, SRTSOA1])) < 0.05 * soa_grown
+
+
+@pytest.mark.parametrize("transfer", BIN_TRANSFERS)
 def test_zero_oa_bootstrap_both_transfers(transfer):
     """Pure sulfate seed (the absorbing floor AC1 acts the same with either
     transfer): c* = 0.01 condenses and c* = 1000 stays in the gas; alone,
@@ -275,6 +361,38 @@ def test_zero_oa_bootstrap_both_transfers(transfer):
                                    60.0, processes=('soa_partitioning',),
                                    cfg=cfg(transfer))
         assert float(jnp.sum(st.Mk[:, SRTSOA1])) < 1e-3 * kg(2.0)
+
+
+@pytest.mark.parametrize("transfer", BIN_TRANSFERS)
+def test_top_bin_growth_keeps_class_budget(transfer):
+    """Particles in the top three bins, 2000 ug/m3 of c* = 0.01 vapour,
+    12 x 600 s: the top bin's mean reaches the grid's upper edge. Gas +
+    particle closes per class every step with both settings; with PPM the
+    SOA that does not fit stays in the gas and no sulfate is trimmed."""
+    nbins = 40
+    xk, xm = grid(nbins)
+    k = np.arange(nbins)
+    Nk = jnp.where(k >= nbins - 3, 1e6, 0.0) + 1e-5
+    Mk = jnp.zeros((nbins, ICOMP)).at[:, SRTSO4].set(Nk * xm)
+    Gc = jnp.zeros(N_GAS_SPECIES).at[SRTSOA1].set(kg(2000.0))
+    p = soa_params([0.01])
+    step = jax.jit(soa_partition_step, static_argnames=('bin_transfer',))
+    so4_0 = float(jnp.sum(Mk[:, SRTSO4]))
+    top_mean = []
+    for _ in range(12):
+        tot0 = float(jnp.sum(Mk[:, SRTSOA1]) + Gc[SRTSOA1])
+        Nk, Mk, Gc, diag = step(Nk, Mk, Gc, xk, 298.0, 101325.0, BOXVOL, 600.0,
+                                p.cstar_ref, p.dhvap, p.mw, p.alpha,
+                                bin_transfer=transfer)
+        tot1 = float(jnp.sum(Mk[:, SRTSOA1]) + Gc[SRTSOA1])
+        assert tot1 == pytest.approx(tot0, rel=1e-12)
+        assert bool(jnp.all(Mk >= 0.0)) and float(Gc[SRTSOA1]) >= 0.0
+        top_mean.append(float(jnp.sum(Mk[-1, :ICOMP_NODIAG]) / Nk[-1]))
+    assert float(jnp.sum(Mk[:, SRTSOA1])) > kg(0.5)
+    if transfer == 'ppm':
+        assert max(top_mean) <= float(xk[-1])
+        assert max(top_mean) > 0.95 * float(xk[-1])   # the cap did act
+        assert float(jnp.sum(Mk[:, SRTSO4])) == pytest.approx(so4_0, rel=1e-12)
 
 
 def test_transfers_agree_on_soa_mass():
@@ -317,6 +435,32 @@ def test_nitrate_injection_conserved(transfer):
     if transfer == 'ppm':
         assert extrema(st.Nk) == 1
         assert means_inside(st.Nk, st.Mk, xk)
+
+
+def test_nitrate_that_does_not_fit_the_grid_is_reported():
+    """Nitrate pushed onto top-bin particles: with PPM, what would push
+    the top bin past the grid is not added, nitrate_added says so (the
+    driver then warns) and no sulfate is trimmed."""
+    nbins = 40
+    xk, xm = grid(nbins)
+    n_top = 2e10
+    Nk = jnp.zeros(nbins).at[-1].set(n_top)
+    Mk = jnp.zeros((nbins, ICOMP)).at[-1, SRTSO4].set(
+        n_top * 0.9 * float(xk[-1]))
+    w = jnp.zeros(nbins).at[-1].set(1.0)
+    dt = 600.0
+    rate = n_top * 0.5 * float(xk[-1]) / dt          # +0.5 x top edge
+    st, diag = aerosol_outer_step(state(xk, Nk, Mk),
+                                  forcing(nbins, nitrate_rate=rate,
+                                          nitrate_weights=w),
+                                  soa_params([1.0]), dt, processes=(),
+                                  cfg=cfg('ppm'))
+    added = float(diag.nitrate_added)
+    assert 0.0 < added < 0.5 * rate * dt
+    assert float(jnp.sum(st.Mk[:, SRTNIT])) == pytest.approx(added, rel=1e-12)
+    assert float(jnp.sum(st.Mk[:, SRTSO4])) == pytest.approx(
+        float(jnp.sum(Mk[:, SRTSO4])), rel=1e-10)
+    assert float(jnp.sum(st.Mk[-1, :ICOMP_NODIAG]) / st.Nk[-1]) <= float(xk[-1])
 
 
 # =========================================================================

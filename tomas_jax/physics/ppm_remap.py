@@ -13,13 +13,21 @@ Algorithm (one call per in-place change, e.g. per 60 s micro-step):
 1. Bin displacement. Each bin with particles (Nk > n_min, dry mass > 0)
    moved its mean dry mass from m to m' = m + dm, a log-mass displacement
    s_k = ln(m'/m) at xi_k = ln(m). dm < 0 (evaporation) gives s_k < 0.
-2. Edge displacement. At each interior edge x_e, s is interpolated
-   linearly in ln(m) between the two neighbouring bin means (or taken from
-   the only neighbour with particles). The domain edges carry no flux.
-   s_e > 0 moves particles of the left bin up, s_e < 0 particles of the
-   right bin down. A bin can lose particles through both of its edges only
-   where growth turns into evaporation; the sub-step count keeps those two
-   departure regions apart.
+2. Edge displacement (upwind). Within each bin, s is taken as linear
+   in ln(m) around the bin mean, with the smaller (in magnitude) of the
+   two one-sided slopes to the neighbouring bin means (zero next to a
+   neighbour without particles or with the same s); the edge values are
+   clipped to lie between the bin's s and the neighbour's. Particles
+   cross an edge upwards with the lower bin's value at that edge (if > 0)
+   and downwards with the upper bin's value (if < 0); the domain edges
+   carry no flux. So particles whose mass did not change (s = 0 next to
+   a jump in s) never move, even when a neighbour grows or shrinks a lot;
+   interpolating between the two neighbouring means instead (an earlier
+   version) dragged them along. Where s varies smoothly and falls with
+   size (growth), the upward edge value equals that interpolation. A bin
+   loses particles through both of its edges only where its own s
+   changes sign inside it; the sub-step count keeps those two departure
+   regions apart.
    Why not dmdt_int from each bin's own mean (as ezcond_ppm_jax): the
    dmdt_int law (d m^(2/3)/dt constant) extrapolated from the bin mean to
    the bin's upper edge slows the edge more than the vbs-jax rates (Fuchs-
@@ -45,6 +53,11 @@ Algorithm (one call per in-place change, e.g. per 60 s micro-step):
    inside the edge and hands the fewest possible particles to the
    neighbour at the neighbour's mean mass (conservative; a few percent of
    that bin, unlike MNFIX's reset to the bin centre).
+6. cap_top_bin (called by the caller, before MNFIX): no flux leaves
+   the grid, so growth in the top bin stays there. Once its mean passes
+   the top edge MNFIX would scale down every species of that bin
+   (deleting seed mass); instead the caller takes back just enough of the
+   mass it added in place (SOA -> vapour, nitrate -> reported).
 
 For a uniform log-mass shift, number and mass move consistently: each
 bin's mean stays at the same place in its bin step after step (the mode
@@ -106,24 +119,44 @@ def mean_log_shift(Nk, Mk_old, Mk_new, xk, icomp_nodiag=ICOMP_NODIAG,
     return shift, xi, active
 
 
-def edge_shift(xk, shift, xi, active):
-    """Log-mass displacement at each bin edge, shape (nbins+1,).
+def edge_shifts(xk, shift, xi, active):
+    """Upward and downward log-mass displacement at each bin edge.
 
-    Linear in ln(m) between the two neighbouring bin means; the active
-    neighbour's value if only one side has particles; 0 at the domain
-    edges (no flux leaves the grid).
+    Upwind, from a slope-limited linear reconstruction of each bin's
+    displacement in ln(m) around its mean (module doc, step 2).
+
+    Args:
+        xk: Bin boundaries [kg], shape (nbins+1,)
+        shift, xi, active: from mean_log_shift
+
+    Returns:
+        (s_up, s_down), each shape (nbins+1,) and >= 0: s_up moves the
+        lower bin's particles up, s_down the upper bin's particles down.
+        Both are 0 at the domain edges.
     """
-    xi_e = jnp.log(xk[1:-1])
-    dxi_lr = xi[1:] - xi[:-1]
-    w = jnp.where(dxi_lr > 0.0,
-                  (xi_e - xi[:-1]) / jnp.where(dxi_lr > 0.0, dxi_lr, 1.0), 0.5)
-    w = jnp.clip(w, 0.0, 1.0)
-    both = shift[:-1] + w * (shift[1:] - shift[:-1])
-    a_l, a_r = active[:-1], active[1:]
-    s = jnp.where(a_l & a_r, both,
-                  jnp.where(a_l, shift[:-1], jnp.where(a_r, shift[1:], 0.0)))
+    ln_x = jnp.log(xk)
+    dx = xi[1:] - xi[:-1]
+    pair = active[:-1] & active[1:] & (dx > 0.0)
+    d = jnp.where(pair, (shift[1:] - shift[:-1]) / jnp.where(pair, dx, 1.0),
+                  0.0)
     zero = jnp.zeros(1)
-    return jnp.concatenate([zero, s, zero])
+    d_lo = jnp.concatenate([zero, d])       # to the bin below
+    d_hi = jnp.concatenate([d, zero])       # to the bin above
+    # the smaller one-sided slope: 0 next to a bin whose s did not change
+    # or that has no particles, the interpolation slope where s is smooth
+    slope = jnp.where(jnp.abs(d_lo) <= jnp.abs(d_hi), d_lo, d_hi)
+
+    s_above = jnp.concatenate([shift[1:], shift[-1:]])
+    s_below = jnp.concatenate([shift[:1], shift[:-1]])
+    s_top = jnp.clip(shift + slope * (ln_x[1:] - xi),
+                     jnp.minimum(shift, s_above), jnp.maximum(shift, s_above))
+    s_bot = jnp.clip(shift + slope * (ln_x[:-1] - xi),
+                     jnp.minimum(shift, s_below), jnp.maximum(shift, s_below))
+    s_top = jnp.where(active, s_top, 0.0)
+    s_bot = jnp.where(active, s_bot, 0.0)
+    s_up = jnp.concatenate([zero, jnp.maximum(s_top[:-1], 0.0), zero])
+    s_down = jnp.concatenate([zero, jnp.maximum(-s_bot[1:], 0.0), zero])
+    return s_up, s_down
 
 
 def remap_mass_change(Nk, Mk_old, Mk_new, xk, icomp_nodiag=ICOMP_NODIAG,
@@ -149,9 +182,7 @@ def remap_mass_change(Nk, Mk_old, Mk_new, xk, icomp_nodiag=ICOMP_NODIAG,
 
     shift, xi, active = mean_log_shift(Nk, Mk_old, Mk_new, xk, icomp_nodiag,
                                        n_min)
-    s_e = edge_shift(xk, shift, xi, active)
-    s_up = jnp.maximum(s_e, 0.0)         # left bin -> right bin
-    s_down = jnp.maximum(-s_e, 0.0)      # right bin -> left bin
+    s_up, s_down = edge_shifts(xk, shift, xi, active)
     # A bin can lose through its top (growth) and bottom (shrinking) edge
     # at once; keep the two departure regions apart: sum <= c_max.
     s_out = s_up[1:] + s_down[:-1]
@@ -216,7 +247,8 @@ def keep_means_in_bins(Nk, Mk, xk, icomp_nodiag=ICOMP_NODIAG,
     downwards. If m is beyond u the whole bin moves. The moved
     particles carry the donor's composition. Number and every species are
     conserved exactly. Top-bin means above the grid and bottom-bin means
-    below it are left (MNFIX trims them).
+    below it are left (see cap_top_bin; MNFIX trims the number of a
+    bottom bin whose mean is below the grid).
     """
     nbins = Nk.shape[0]
     dxi = jnp.log(xk[1] / xk[0])
@@ -247,3 +279,41 @@ def keep_means_in_bins(Nk, Mk, xk, icomp_nodiag=ICOMP_NODIAG,
     Mk = (Mk - dM + jnp.roll(jnp.where(up_f, dM, 0.0), 1, axis=0)
           + jnp.roll(jnp.where(down_f, dM, 0.0), -1, axis=0))
     return jnp.maximum(Nk, 0.0), jnp.maximum(Mk, 0.0)
+
+
+def cap_top_bin(Nk, Mk, xk, cols, icomp_nodiag=ICOMP_NODIAG,
+                n_min=REMAP_N_MIN, margin=REMAP_MARGIN):
+    """Take mass of the columns ``cols`` out of the top bin until its mean
+    dry mass is back inside the grid.
+
+    The remap has no flux through the top edge of the grid, so particles
+    growing in the top bin stay there. When the top bin's mean passes
+    xk[-1], MNFIX would scale every species of that bin down to a mean of
+    xk[-1]/1.2, deleting seed mass as well. This removes only the given
+    in-place species (proportionally, at most all of them), down to a mean
+    margin inside the top edge; the caller decides where it goes (SOA
+    returns to the vapour, nitrate is reported as not added).
+
+    Args:
+        Nk, Mk, xk: as remap_mass_change
+        cols: Static (start, stop) column range of the in-place species,
+            all dry (< icomp_nodiag)
+        icomp_nodiag, n_min, margin: as keep_means_in_bins
+
+    Returns:
+        (Mk, removed): removed [kg/cell] has shape (stop - start,).
+    """
+    c0, c1 = cols
+    dxi = jnp.log(xk[1] / xk[0])
+    n_top = Nk[-1]
+    dry = jnp.sum(Mk[-1, :icomp_nodiag])
+    over = (n_top > n_min) & (dry > n_top * xk[-1])
+    excess = jnp.where(over, dry - n_top * xk[-1] * jnp.exp(-margin * dxi),
+                       0.0)
+    avail = Mk[-1, c0:c1]
+    tot = jnp.sum(avail)
+    frac = jnp.where(tot > 0.0,
+                     jnp.minimum(excess / jnp.where(tot > 0.0, tot, 1.0), 1.0),
+                     0.0)
+    removed = frac * avail
+    return Mk.at[-1, c0:c1].add(-removed), removed

@@ -31,8 +31,11 @@ moves particles between the fixed bins.
       sub-step (``redistribute`` only copies them into the per-cell Mk);
       after the step, ppm_remap.remap_mass_change moves number and every
       species with the PPM log-mass advection that H2SO4 condensation
-      uses, then MNFIX restores its floor in emptied bins (it finds no
-      populated bin to split). Growth and evaporation both stay smooth.
+      uses; SOA that would push the top bin past the grid stays in the
+      gas (cap_top_bin); then MNFIX restores its floor in emptied bins,
+      and any class mass it deletes returns to the vapour, so gas +
+      particle closes per class as with 'mnfix'. Growth and evaporation
+      both stay smooth.
     - 'mnfix': the previous scheme; ``redistribute`` calls mnfix_jax after
       every vbs-jax sub-step. Its two-packet split spreads a growing mode
       into a comb (kept for comparison).
@@ -59,7 +62,9 @@ from ..core.config import (
 )
 from ..core.mnfix_jax import mnfix_jax
 from .condensation_sink import calc_wet_diameters
-from .ppm_remap import BIN_TRANSFER_PPM, BIN_TRANSFERS, remap_mass_change
+from .ppm_remap import (
+    BIN_TRANSFER_PPM, BIN_TRANSFERS, cap_top_bin, remap_mass_change,
+)
 
 # vbs-jax defaults: max adaptive sub-steps and Raoult fixed-point iterations
 SOA_N_SUBSTEPS = 10
@@ -169,12 +174,20 @@ def soa_partition_step(Nk, Mk, Gc, xk, temp, pres, boxvol, dt,
         redistribute=redistribute, geometry_fn=geometry_fn,
         n_substeps=n_substeps, n_iter=n_iter,
         n_tiny=SOA_N_TINY_CELL / boxvol_m3)
+    gas = gas * boxvol_m3
     if bin_transfer == BIN_TRANSFER_PPM:
         Nk, Mk = remap_mass_change(Nk, Mk_in, Mk, xk, ICOMP_NODIAG,
                                    n_min=SOA_N_TINY_CELL)
-        # Bins the remap emptied get MNFIX's floor again (as after the old
-        # hook); populated bins are already inside their bounds.
+        # SOA that would push the top bin past the grid stays in the gas
+        Mk, back = cap_top_bin(Nk, Mk, xk, (s0, s1), ICOMP_NODIAG,
+                               n_min=SOA_N_TINY_CELL)
+        # MNFIX restores its floor in bins the remap emptied. Class mass it
+        # deletes there (or trims) returns to the vapour, as vbs-jax does
+        # after the 'mnfix' hook, so gas + particle closes per class.
+        cls = jnp.sum(Mk[:, s0:s1], axis=0)
         Nk, Mk = mnfix_jax(Nk, Mk, xk, ICOMP_NODIAG)
+        back = back + jnp.maximum(cls - jnp.sum(Mk[:, s0:s1], axis=0), 0.0)
+        gas = gas + back
 
-    Gc = Gc.at[s0:s1].set(gas * boxvol_m3)
+    Gc = Gc.at[s0:s1].set(gas)
     return Nk, Mk, Gc, diag

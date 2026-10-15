@@ -33,7 +33,9 @@ from ..core.config import (
 from ..core.mnfix_jax import mnfix_jax
 from ..physics.condensation_sink import NEPS_CONDSINK, calc_condensation_sink
 from ..physics.nucleation import ricco_dunne_nucleation_rate
-from ..physics.ppm_remap import BIN_TRANSFER_PPM, remap_mass_change
+from ..physics.ppm_remap import (
+    BIN_TRANSFER_PPM, cap_top_bin, remap_mass_change,
+)
 from ..physics.soa_partitioning import soa_partition_step
 from ..physics.water_equilibrium import equilibrate_water
 from ..solvers.condensation import make_step
@@ -158,6 +160,11 @@ def _aerosol_outer_step(state, forcing, soa_params, dt_outer, *,
         nit_sum = nit_sum + jnp.sum(d_nit)
         if do_nitrate_remap:
             Nk, Mk = remap_mass_change(Nk, Mk_old, Mk, xk, ICOMP_NODIAG)
+            # nitrate that would push the top bin past the grid is not
+            # added (counted out of nitrate_added; the driver warns)
+            Mk, nit_back = cap_top_bin(Nk, Mk, xk, (SRTNIT, SRTNIT + 1),
+                                       ICOMP_NODIAG)
+            nit_sum = nit_sum - nit_back[0]
         Nk, Mk = mnfix_jax(Nk, Mk, xk, ICOMP_NODIAG)
 
         # 2. Nucleation -> coagulation -> H2SO4 condensation
