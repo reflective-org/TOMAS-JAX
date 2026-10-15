@@ -33,8 +33,8 @@ the run.
    (kg/cell/s) for the aerosol step, reset to zero.
 3. Gather: condensable species (ClassMap) → class gas mass in `Gc[1:1+K]`.
 4. `aerosol_outer_step` over Δt_c in 60 s micro-steps: sources (H2SO4, nitrate by
-   uptake weights) → MNFIX → nucleation → coagulation → H2SO4 condensation → SOA
-   partitioning → water.
+   uptake weights, PPM remap) → MNFIX → nucleation → coagulation → H2SO4 condensation
+   → SOA partitioning (PPM remap) → water.
 5. Scatter (`ClassBridge`): the class gas change goes back to species — condensation
    by gas share, evaporation by share of the per-species particle tracker P_i — then
    P_i is rescaled to the size-resolved class mass. "Hold constant" species are reset.

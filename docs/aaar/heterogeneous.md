@@ -48,7 +48,11 @@ It passes this and `weights` to `aerosol_outer_step` as
 `AerosolForcing.nitrate_rate` and `.nitrate_weights`. In each micro-step,
 `rate·dt` is split by the weights over **populated** bins only
 (Nk > `NEPS_CONDSINK` = 1e10 #/cell = 1 cm⁻³ at the tutorial boxvol). The
-weights are renormalised over those bins, and MNFIX follows. Weight on
+weights are renormalised over those bins. The particles that gained
+nitrate then move between bins with the PPM remap
+(`AerosolStepConfig.growth_bin_transfer = 'ppm'`, default; see
+[aerosol_step.md](aerosol_step.md#bin-transfer-of-soa-and-nitrate-growth_bin_transfer)),
+and MNFIX follows. Weight on
 empty bins is dropped, so no mass goes into a bin MNFIX would wipe. If no
 populated bin has weight, nothing is added. `AerosolDiag.nitrate_added`
 always reports the mass actually added, for the driver's N budget.

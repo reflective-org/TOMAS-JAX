@@ -19,7 +19,7 @@ time) are numerical experiments done in benchmark code; they never change the mo
 |---|---|---|
 | Gas chemistry (G2) | **Same ODE system.** All 2135 rate constants agree to 4e-16. At the preset 300 s coupling the median \|NMB\| over 391 species is 1.7e-3 (max 3 %); at 60 s it is 3e-4, and with tight solver tolerances and the same water vapour formula 5e-7. | RO2+RO2 products in the first 20 min (RO2 frozen at 0 for the first interval). |
 | Photolysis and day/night (G3) | **Agree once the coupling is short.** 900 s preset: median \|NMB\| 10 % over 361 species, HNO3 −9 %, NO −11 % by day. 60 s: 0.6 %, every species within 2.6 % at all times. All differences removed: 1.5e-6. | How NO2 is "held": TOMAS-JAX resets it after each interval, PyCHAM fixes it inside the solver. Plus J and RO2 frozen for 900 s. |
-| Condensation / evaporation (S1) | **Mass agrees within ~1 % at 12 h; early uptake and size distribution do not.** c* = 1 SOA +0.4 % at 12 h (max +3.7 % at 1–3 h), c* = 100 −0.3 %. Number-mean dry diameter −12.6 % at 12 h at 40 bins. | vbs-jax's transfer coefficient (up to 1.5× PyCHAM's and above the kinetic limit), the Kelvin term, and numerical spreading in TOMAS's fixed bins (gone at 160 bins). |
+| Condensation / evaporation (S1) | **Mass agrees within ~1 % at 12 h; early uptake and size distribution do not.** c* = 1 SOA +0.4 % at 12 h (max +3.7 % at 1–3 h), c* = 100 −0.3 %. Number-mean dry diameter −12.6 % at 12 h at 40 bins (MNFIX bin transfer; +1.6 % with the PPM remap used since 2026-10-15). | vbs-jax's transfer coefficient (up to 1.5× PyCHAM's and above the kinetic limit), the Kelvin term, and (before 2026-10-15) numerical spreading in TOMAS's fixed bins. |
 | SOA partitioning with chemistry (S2) | **Total SOA within 1–4 % after 1 h (+1.0 % at 6 h), +12 % at 30 min.** Per c* class within ~11 %. | Operator split and transfer rate early on; per-species apportionment inside a class off by up to 4×. The volatility itself is not tested (identical c* by construction). |
 
 What this means for the tutorial: the gas-phase chemistry and the partitioning
@@ -274,7 +274,15 @@ equals production × time to 2e-10 (PyCHAM) and 4e-14 (TOMAS-JAX).
    (1.48 vs 1.63); in the most populated bin (the 50 nm seed mode) water/dry is 0.256
    vs 0.330 (−22 %). With Kelvin off in both, water agrees within 0.2 %. Water does not
    absorb organics in either model, so it acts only through particle size.
-4. *Size structure (numerical).* TOMAS-JAX moves growing particles between its fixed
+4. *Size structure (numerical).* **Update 2026-10-15:** SOA growth now moves particles
+   with the PPM remap (`AerosolStepConfig.growth_bin_transfer = 'ppm'`,
+   [aerosol_step.md](aerosol_step.md#bin-transfer-of-soa-and-nitrate-growth_bin_transfer)).
+   Re-running only the TOMAS-JAX side of S1 (c\* = 1, 12 h) gives a number-mean dry
+   diameter of 122.4 / 122.7 / 123.0 nm at 40 / 80 / 160 bins vs PyCHAM 120.5 nm, GSD
+   1.848 / 1.833 / 1.824 vs 1.878; with Kelvin off in both and PyCHAM's transfer
+   coefficient, 138.9 vs 138.1 nm. The rest of this item, the S1 tables and the
+   figures describe the previous MNFIX scheme (rerun `benchmarks/pycham/run_all.py` to
+   regenerate them). Previously, TOMAS-JAX moved growing particles between its fixed
    bins only through MNFIX: when a bin's mean mass leaves the bin, part of it stays at
    the bin centre and part jumps to 1/1.1 of the next bin's upper edge. Over the ×8.9
    dry-mass growth (about three bins) this spreads the distribution: number-mean dry
@@ -374,7 +382,11 @@ chemistry ~10 % of mass moves between neighbouring classes. Class totals are rob
 ![S2 within class](figures/pycham/S2_within_class.png)
 ![S2 top species](figures/pycham/S2_top_species.png)
 
-**Size distribution (numerical, as S1).** Number and mass are conserved in both, but
+**Size distribution (numerical, as S1).** *Update 2026-10-15:* with the PPM remap
+for SOA (re-running the TOMAS-JAX side only) the number-median dry diameter at 6 h is
+184 nm (PyCHAM 181), the dry-mass median 237 nm (PyCHAM 233) and 0.2 % of the
+particles end below the seed's 1st-percentile size. The rest of this paragraph and
+the figure describe the previous MNFIX scheme. Number and mass are conserved in both, but
 TOMAS-JAX's distribution is broader: number-median dry diameter at 6 h 156 vs 181 nm,
 dry-mass median 272 vs 233 nm. About 2 % of the particles end below the seed size
 (only with SOA partitioning on: when SOA evaporates from small particles MNFIX moves
@@ -425,8 +437,9 @@ More figures: [all gas-phase species with particles present](figures/pycham/S2_g
   kinetic limit for small particles; this shows as +3–4 % SOA at 1–3 h (S1) and part of
   the +12 % at 30 min (S2). **Decision needed:** use mfp = 3D/c̄ with the Zaveri
   Fuchs–Sutugin form (or 2D/c̄ with a matching form) and a per-class diffusion volume.
-  The size distribution spreads at 40 bins (mean diameter −13 % after a ×9 mass growth;
-  converges at 160 bins); for size-resolved teaching plots consider 80+ bins or note it.
+  The size distribution spread at 40 bins (mean diameter −13 % after a ×9 mass growth;
+  converged at 160 bins). *Fixed 2026-10-15:* SOA growth now uses a PPM remap; the
+  40-bin mean diameter is within 2 % of PyCHAM and of the 160-bin run.
 - **SOA partitioning with chemistry.** Class totals agree (≤ 11 %), total SOA within
   1–4 % after 1 h. Per-species "top contributors" from the tracker are not reliable
   within a class (up to 4×); the tutorial should present class totals, or the tracker
@@ -443,7 +456,8 @@ More figures: [all gas-phase species with particles present](figures/pycham/S2_g
 3. vbs-jax transfer coefficient exceeds the kinetic limit by up to 1.5× and uses one
    diffusion volume (120) for every organic (S1, S2).
 4. MNFIX-only growth across bins spreads the size distribution at 40 bins and puts
-   ~2 % of the particles below the seed size (S1, S2).
+   ~2 % of the particles below the seed size (S1, S2). *Fixed 2026-10-15:* SOA and
+   nitrate now use a PPM remap (see item 4 of S1 for the new numbers).
 5. The within-class species tracker (`ClassBridge.scatter`) gives members of one class
    different particle fractions (S2).
 6. `driver.run` never passes `AerosolStepConfig.micro_dt` to `aerosol_outer_step`; the

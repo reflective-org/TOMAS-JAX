@@ -399,6 +399,7 @@ tomas-jax/
 │   │   ├── water_equilibrium.py     # Hygroscopic water uptake (ISORROPIA)
 │   │   ├── nh3_equilibrium.py       # NH3/NH4 equilibrium
 │   │   ├── soa_partitioning.py      # SOA c*-class partitioning (vbs-jax adapter)
+│   │   ├── ppm_remap.py             # PPM remap of in-place mass changes (SOA, nitrate) onto the bins
 │   │   └── heterogeneous.py         # N2O5 heterogeneous uptake
 │   ├── box/
 │   │   ├── aerosol_step.py          # AAAR tutorial aerosol outer step (JIT)
@@ -480,7 +481,7 @@ python -m pytest tests/test_nucleation.py tests/test_ppm_condensation.py -q
 | [Future Features](docs/future_features.md) | GPU acceleration, autodiff, vmap, learned surrogates |
 | [AAAR gas chemistry & photolysis](docs/aaar/gaschem.md) | MCM/KPP parser, rate constants, JAX solver benchmark, TUV-x J provider, c* classes |
 | [AAAR coupled driver](docs/aaar/coupling.md) | `box.driver.run(Scenario)`, operator split, presets, runtimes |
-| [AAAR aerosol step](docs/aaar/aerosol_step.md) | Tutorial outer step: call contract, units, process order, config |
+| [AAAR aerosol step](docs/aaar/aerosol_step.md) | Tutorial outer step: call contract, units, process order, config, PPM bin transfer of SOA/nitrate (`growth_bin_transfer`) |
 | [SOA partitioning](docs/aaar/soa_partitioning.md) | vbs-jax adapter, slot map, absorbing floor, equilibrium validation |
 | [N2O5 uptake](docs/aaar/heterogeneous.md) | k_het = condensation sink with α = γ, nitrate placement |
 | [AAAR vs PyCHAM](docs/aaar/pycham_comparison.md) | Independent check against PyCHAM v5.8.0: gas chemistry, day/night photolysis, condensation, SOA; verdict per process, differences explained, upstream findings (`benchmarks/pycham/run_all.py`) |

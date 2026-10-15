@@ -4,6 +4,82 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-10-15 (Thu) — SOA and nitrate move between bins by PPM remap instead of MNFIX
+
+**Time**: ~20:59 PDT 2026-10-14 (03:59 UTC 2026-10-15)
+**Branch**: `feat/aaar-tutorial-ppm-soa` (from `feat/aaar-tutorial`)
+
+### Summary
+SOA partitioning (vbs-jax) and the N2O5-uptake nitrate source change particle mass in
+place. Until now MNFIX then moved the particles between the fixed bins (after every
+vbs-jax sub-step), and its two-packet split combed a growing mode: the final
+dN/dlog10Dp of Level 1 with SOA only had 3 / 13 / 30 interior extrema at 40 / 80 / 160
+bins and the number-mean diameter depended on resolution (S1 vs PyCHAM: −12.6 % at 40
+bins). They now move with a flux-form PPM remap in log-mass built from the H2SO4
+condensation pieces. The partitioning physics is unchanged.
+
+### Changes
+- `tomas_jax/physics/ppm_remap.py` (new): `remap_mass_change(Nk, Mk_old, Mk_new, xk)`.
+  Bin displacement = log change of each bin's mean dry mass, interpolated in ln m to the
+  edges; number by PPM (`ppm_reconstruct`), every species with the PPM mass-weighted
+  departing fraction of the donor (one consistent flux, conservative, never negative);
+  sub-steps at Courant ≤ 0.8 with growth and evaporation regions kept apart;
+  `keep_means_in_bins` hands the fewest possible particles to a neighbour when a bin
+  mean still crosses an edge. `BIN_TRANSFER_PPM` / `BIN_TRANSFER_MNFIX`.
+- `physics/soa_partitioning.py`: static `bin_transfer` ('ppm' default, 'mnfix' = old
+  hook). With 'ppm' the vbs-jax `redistribute` hook only writes the class masses; the
+  remap runs once per call, then MNFIX restores its floor in emptied bins.
+- `box/aerosol_step.py`: the nitrate source is remapped the same way;
+  `box/config.py`: `AerosolStepConfig.growth_bin_transfer` ('ppm' | 'mnfix', validated).
+- `box/driver.py`: `run(..., aerosol_cfg=None)`; non-default fields reported in
+  `diagnostics["aerosol_cfg"]` (empty dict for default runs).
+- Tests: `tests/test_aaar_soa_ppm.py` (new, 21 tests: remap conservation per species at
+  40/80/160 bins, mode shift, identity, limiter, growth and evaporation with both
+  settings, zero-OA bootstrap, nitrate, settings, driver); `tests/test_aaar_aerosol.py`
+  runs Pankow, vbs-jax equilibrium and the all-process class budget with both settings.
+- Docs: `docs/aaar/aerosol_step.md` (new "Bin transfer" section with algorithm,
+  measurements, limitations), `soa_partitioning.md`, `heterogeneous.md`, `coupling.md`,
+  dated notes in `pycham_comparison.md`, ASSUMPTIONS A6, CLAUDE.md, README.md.
+
+### Measurements (laptop CPU)
+- Interior extrema of the final dN/dlog10Dp (> 5 % of peak), MNFIX → PPM: Level 1 SOA
+  only 3/13/30 → 1/1/1 (40/80/160 bins); Level 1 preset 3/9/28 → 1/1/1; Level 2 3/5 → 1/1
+  (40/80); Level 3 3/7/17 → 1/1/1 (40/80/160). PPM: 1 at every output time.
+- Conservation of the remap per call inside the preset runs: number ≤ 1e-15, every
+  species ≤ 1.3e-15 relative; no negative or non-finite values (1440–2880 calls/run).
+- S1 (TOMAS-JAX side re-run, c* = 1, 12 h): number-mean dry diameter 122.4 / 122.7 /
+  123.0 nm at 40/80/160 bins vs PyCHAM 120.5 (old 105.3 / 115.1 / 121.3). With Kelvin
+  off and PyCHAM's transfer coefficient: 138.9 vs 138.1 nm. S2 (6 h, 40 bins):
+  number-median dry diameter 184 vs PyCHAM 181 (old 156).
+- Evaporation (c* = 10 SOA, no vapour, 80 bins): the mode shrinks back to the seed
+  size, one extremum at every step, class budget 1e-14 (MNFIX: 6–13 extrema).
+- Totals vs the MNFIX scheme: SOA within 0.21 % in all presets at 40 and 80 bins.
+  Level 3 nitrate +4.4 % (40 bins) and +1.7 % (80 bins): the corrected distribution has
+  15–23 % more surface for N2O5 uptake at 40 bins; the old scheme's nitrate drifted with
+  resolution (4.96/5.08/5.14 µg/m³), the new one does not (5.18/5.16/5.16).
+- Runtime (warm, 80 bins): Level 1 6.14 → 4.28 s, Level 2 8.41 → 7.50 s, Level 3
+  22.4 → 18.8 s (40 bins: 1.75 → 1.20, 5.91 → 5.64, 13.3 → 12.3 s).
+- `pytest tests`: 605 passed, 650 skipped (baseline 580 passed, 650 skipped).
+- `growth_bin_transfer='mnfix'` reproduces the previous results exactly (Level 1 and
+  Level 3 at 80 bins, S2 medians).
+
+### Known issues / limitations
+- Level 3 nitrate at 40 bins differs from the old code by 4.4 % (> 2 %); the old value
+  was the resolution-dependent one (see above).
+- PPM reconstructs number only; `keep_means_in_bins` acts where a bin mean crosses an
+  edge (mostly sparse tails), moving a few percent of that bin.
+- No mass leaves the grid in the remap; beyond the top/bottom bin MNFIX trims as before.
+- The figures and tables of `docs/aaar/pycham_comparison.md` (S1/S2) still show the
+  MNFIX scheme; only the TOMAS-JAX side was re-run (into a scratch directory).
+
+### Next steps
+- Re-run `benchmarks/pycham/run_all.py` to regenerate the S1/S2 figures and tables.
+- Check whether H2SO4 condensation (`ezcond_ppm_jax` adds the condensed mass to the
+  source bins after the PPM transport) would gain from the same mass-with-particles
+  flux; it is smooth today (1 extremum at 40/80/160 bins).
+
+---
+
 ## 2026-10-14 (Wed) — PyCHAM comparison: cases G3, S1, S2, audit fixes, run_all, write-up
 
 **Time**: ~23:30 PDT 2026-10-13 (06:30 UTC 2026-10-14)

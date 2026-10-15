@@ -64,14 +64,42 @@ works per m³. The adapter divides by `boxvol·1e-6` only for the vbs-jax
 through vbs-jax as `aux`, so SO₄, NH₄ and the other columns never make a
 unit round trip.
 
-- `redistribute` hook: writes the new class masses into Mk and calls
-  `mnfix_jax` once per sub-step. vbs-jax takes the vapour change from the
-  particle change after the hook, so gas + particle mass is conserved
-  per class (tested to 1e-10).
+- `redistribute` hook: writes the new class masses into Mk. With
+  `bin_transfer='ppm'` (default) that is all: the particles keep their bin
+  during the vbs-jax sub-steps and are moved once afterwards (below). With
+  `bin_transfer='mnfix'` (the previous scheme) the hook also calls
+  `mnfix_jax` after every sub-step. vbs-jax takes the vapour change from
+  the particle change after the hook, and the PPM remap conserves every
+  species, so gas + particle mass is conserved per class (tested to 1e-10
+  with both settings).
 - `geometry_fn` hook: `calc_wet_diameters` (`condensation_sink.py`), the
-  same wet diameter and density as the H₂SO₄ condensation sink. A bin
-  counts as populated if Nk > `NEPS_CONDSINK` = 1e10 #/cell, which is
-  1 cm⁻³ at the tutorial boxvol of 1e10 cm³.
+  same wet diameter and density as the H₂SO₄ condensation sink, from each
+  bin's actual mean mass. A bin counts as populated if Nk >
+  `NEPS_CONDSINK` = 1e10 #/cell, which is 1 cm⁻³ at the tutorial boxvol
+  of 1e10 cm³.
+
+## Bin transfer
+
+The SOA a bin gains or loses changes the mass of its particles in place.
+`soa_partition_step(..., bin_transfer=...)` (static; `AerosolStepConfig.
+growth_bin_transfer` in the box model) chooses how those particles then
+move between the fixed bins:
+
+- `'ppm'` (default): after vbs-jax returns, `physics/ppm_remap.py::
+  remap_mass_change(Nk, Mk_before, Mk_after, xk)` moves number and every
+  species with flux-form PPM in log-mass, the advection H₂SO₄ condensation
+  uses. Each bin's displacement is the log change of its mean dry mass;
+  growth moves particles up, evaporation down. Conservative to round-off,
+  never negative, smooth (one extremum for a growing or shrinking mode at
+  40, 80 and 160 bins).
+- `'mnfix'`: MNFIX after every vbs-jax sub-step. It combs a growing mode
+  (3 / 13 / 30 interior extrema at 40 / 80 / 160 bins in Level 1 with SOA
+  only) and makes the size distribution depend on resolution. Kept for
+  comparison.
+
+The partitioning physics (fluxes, Raoult, Kelvin, the absorbing floor,
+class slots) is the same for both. Algorithm, measurements and
+limitations: [aerosol_step.md](aerosol_step.md#bin-transfer-of-soa-and-nitrate-growth_bin_transfer).
 - `n_tiny` = 1e-10 #/cell, the value of the tomas-jax solver vbs-jax was
   extracted from.
 
@@ -100,9 +128,13 @@ Mk. Effects:
 from tomas_jax.physics.soa_partitioning import soa_partition_step
 Nk, Mk, Gc, diag = soa_partition_step(
     Nk, Mk, Gc, xk, temp, pres, boxvol, dt,
-    cstar_ref, dhvap, mw_org, alpha_org)     # (K,), (K,), (K,), scalar
+    cstar_ref, dhvap, mw_org, alpha_org,     # (K,), (K,), (K,), scalar
+    bin_transfer='ppm')                      # static: 'ppm' or 'mnfix'
 assert diag.time_integrated >= dt            # else raise n_substeps
 ```
+
+Under `jax.jit`, pass `bin_transfer` (and `n_substeps`, `n_iter`) as static
+arguments.
 
 c\*, ΔH_vap (kJ mol⁻¹), MW and α are traced, so the step compiles once
 per (nbins, K). The adapter applies no c\* or ΔH_vap rule. The tutorial
@@ -119,6 +151,8 @@ MW = 200 g mol⁻¹.
 | 6 Donahue classes (0.01–1000) vs `vbs_jax.vbs_equilibrium` | per class within 0.5% |
 | Zero-OA seed, C\* = 0.01 and 1000 | low C\* > 50% condensed; high C\* > 99% gas; no spikes |
 | Per-class gas + particle, all processes, 600 s | conserved to 1e-10 (with sources) |
+| The above with `bin_transfer` = `'ppm'` and `'mnfix'` | same results within the tolerances |
+| SOA evaporation, c\* = 10, no vapour (`test_aaar_soa_ppm.py`) | mode returns to the seed size; class budget 1e-10 every step; one extremum with PPM |
 
 The equilibrium residuals come from the Kelvin term (Ke − 1 ≈ 0.45% at
 1.5 µm; ≈ 1% at 640 nm). The analytic references have no Kelvin term.
@@ -131,6 +165,8 @@ The equilibrium residuals come from the Kelvin term (Ke − 1 ≈ 0.45% at
   phase-state change with RH; D_b is fixed.
 - SOA takes the bisulfate water ratio through `equilibrate_water`, as all
   organic slots do (ASSUMPTIONS.md A9).
+- vbs-jax sees each bin's particles at their in-place mean mass for the
+  whole 60 s micro-step; the PPM remap moves them once at the end.
 - Known vbs-jax issues: a degenerate mixed condensation/evaporation sum
   can stall one sub-step, and `diag.time_integrated` < dt flags
   under-integration (see vbs-jax `docs/porting_notes.md`).

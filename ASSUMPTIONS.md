@@ -81,10 +81,23 @@ is assumed, why, where it is implemented and how to change it.
     gives D 29 % above Fuller's value for C10H16O4. Effect: SOA forms faster early
     (+3–4 % at 1–3 h in Level 1 with c* = 1; part of +12 % at 30 min in Level 2);
     equilibrium SOA is unaffected.
-  - Size distribution: SOA growth moves particles between the 40 fixed bins only
-    through MNFIX, which spreads the distribution numerically (number-mean dry diameter
-    −13 % after a ×9 mass growth; converges at 160 bins) and puts ~2 % of the particles
-    below the seed size in Level 2. Mass is unaffected.
+  - Size distribution (changed 2026-10-15): SOA growth/evaporation and N2O5-uptake
+    nitrate now move particles between the fixed bins with the PPM log-mass advection
+    that H2SO4 condensation uses (`physics/ppm_remap.py`,
+    `AerosolStepConfig.growth_bin_transfer = 'ppm'`, docs/aaar/aerosol_step.md). The
+    previous MNFIX split (still selectable as `'mnfix'`) spread the distribution
+    (number-mean dry diameter −13 % at 40 bins, converging only at 160 bins) and put
+    ~2 % of the particles below the seed size in Level 2. What holds now: one mode with
+    no comb at 40/80/160 bins in all presets; S1 (c* = 1, 12 h) number-mean dry diameter
+    122.4/122.7/123.0 nm at 40/80/160 bins vs PyCHAM 120.5 (+1.6 to +2.1 %; with Kelvin
+    off in both and PyCHAM's transfer coefficient 138.9 vs 138.1 nm, so the rest is the
+    Kelvin/transfer difference above, not the bins); S2 at 6 h number-median dry
+    diameter 184 vs 181 nm, 0.2 % of the particles below the seed's 1st-percentile size.
+    SOA totals change by ≤ 0.25 %. Level 3 nitrate rises 4.4 % at 40 bins (more particle
+    surface for N2O5 uptake) and now agrees across resolutions within 0.5 %.
+    Remaining numerical choices: one remap per 60 s micro-step; PPM reconstructs number
+    only, so a small limiter keeps each bin's mean inside its bin (moves a few % of a
+    bin when it acts, mostly in the sparse tails).
   - Per-species tracker: members of one class should keep one particle fraction (same
     c*); the tracker gives 0.29–0.94 where PyCHAM gives 0.81–0.83, so individual "top
     contributors" can be off by up to 4×. Class totals agree within ~11 %.
