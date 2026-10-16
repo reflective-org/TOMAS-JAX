@@ -1,0 +1,273 @@
+{
+ "inorganic_plus_limonene": {
+  "species": 725,
+  "reactions": 2135,
+  "duplicates_removed": 68,
+  "equals_limonene_file": true,
+  "ro2_members": 146,
+  "ro2_equal": true
+ },
+ "rate_conflict": "same reaction, different rate: [('mcm_inorganic:31', 'patched:31')]",
+ "overlap_default": "reactant sets described by more than one source: [(('OH', 'SO2'), ('mcm_inorganic', 'jpl_sulfur'))]",
+ "overlap_resolved_jpl_wins": {
+  "reactions": 68,
+  "so2_oh_channels": [
+   "jpl_sulfur:R79"
+  ],
+  "HSO3_still_present": true
+ },
+ "ro2_check_limonene": {
+  "ro2_dependent": 280,
+  "reactant_not_in_ro2": []
+ },
+ "atom_balance_limonene": {
+  "classes": {
+   "omitted O2": 604,
+   "balanced": 533,
+   "omitted H2O": 216,
+   "omitted H2O+O2": 188,
+   "omitted CO2+O2": 133,
+   "not CO2/H2O/O2": 25,
+   "RO2 permutation (partner RO2 not written)": 280,
+   "omitted CO2": 105,
+   "omitted CO2+H2O+O2": 44,
+   "omitted CO2+H2O": 7
+  },
+  "unexplained": [
+   [
+    "33",
+    {
+     "H": -1.0,
+     "N": -1.0,
+     "O": -3.0
+    }
+   ],
+   [
+    "34",
+    {
+     "N": -2.0,
+     "O": -5.0
+    }
+   ],
+   [
+    "35",
+    {
+     "O": -3.0,
+     "S": -1.0
+    }
+   ],
+   [
+    "2676",
+    {
+     "H": -1.0,
+     "Cl": -1.0,
+     "O": 2.0
+    }
+   ],
+   [
+    "14132",
+    {
+     "H": 1.0,
+     "O": -1.0
+    }
+   ],
+   [
+    "14133",
+    {
+     "H": -1.0,
+     "O": -1.0
+    }
+   ],
+   [
+    "14549",
+    {
+     "H": 1.0,
+     "O": -1.0
+    }
+   ],
+   [
+    "14550",
+    {
+     "H": -1.0,
+     "O": -1.0
+    }
+   ],
+   [
+    "14551",
+    {
+     "C": 1.0,
+     "H": 2.0,
+     "O": 1.0
+    }
+   ],
+   [
+    "4494",
+    {
+     "H": 1.0,
+     "O": 2.0
+    }
+   ],
+   [
+    "13369",
+    {
+     "C": 1.0,
+     "H": 2.0,
+     "O": 2.0
+    }
+   ],
+   [
+    "13552",
+    {
+     "H": -3.0,
+     "O": -1.0
+    }
+   ],
+   [
+    "13553",
+    {
+     "H": -3.0,
+     "O": -1.0
+    }
+   ],
+   [
+    "13854",
+    {
+     "C": -1.0,
+     "H": -3.0,
+     "O": 2.0
+    }
+   ],
+   [
+    "13856",
+    {
+     "C": -1.0,
+     "H": -3.0,
+     "O": 2.0
+    }
+   ],
+   [
+    "13917",
+    {
+     "H": -1.0,
+     "N": -1.0,
+     "O": -3.0
+    }
+   ],
+   [
+    "16437",
+    {
+     "H": -1.0
+    }
+   ],
+   [
+    "7727",
+    {
+     "C": 1.0,
+     "O": 5.0
+    }
+   ],
+   [
+    "7729",
+    {
+     "C": 1.0,
+     "O": 5.0
+    }
+   ],
+   [
+    "13568",
+    {
+     "H": -1.0,
+     "O": -1.0
+    }
+   ]
+  ],
+  "n_unexplained": 25
+ },
+ "sandbox_coverage": {
+  "Cl": "mcm_inorganic as CL",
+  "ClO": "not in MCM: JPL halogen module",
+  "ClOOCl": "not in MCM: JPL halogen module",
+  "ClONO2": "not in MCM: JPL halogen module",
+  "HCl": "declared in limonene_mcm.eqn as HCL but no chemistry",
+  "Cl2": "not in MCM: JPL halogen module",
+  "NO": "mcm_inorganic as NO",
+  "NO2": "mcm_inorganic as NO2",
+  "O": "mcm_inorganic as O",
+  "O2": "environment (fixed; enters rates as O2, H2O)",
+  "O3": "mcm_inorganic as O3",
+  "CH3": "folded: CH3 + O2 -> CH3O2 is instantaneous in MCM",
+  "CH4": "mcm_inorganic as CH4",
+  "HNO3": "mcm_inorganic as HNO3",
+  "H2O": "environment (fixed; enters rates as O2, H2O)",
+  "HOCl": "not in MCM: JPL halogen module",
+  "N2O5": "mcm_inorganic as N2O5",
+  "NO3": "mcm_inorganic as NO3",
+  "OH": "mcm_inorganic as OH",
+  "HO2": "mcm_inorganic as HO2",
+  "O1D": "mcm_inorganic as O1D",
+  "HONO": "mcm_inorganic as HONO",
+  "HNO4": "mcm_inorganic as HO2NO2",
+  "OClO": "not in MCM: JPL halogen module",
+  "Br": "declared in limonene_mcm.eqn as BR but no chemistry",
+  "BrO": "not in MCM: JPL halogen module",
+  "BrONO2": "not in MCM: JPL halogen module",
+  "BrCl": "not in MCM: JPL halogen module",
+  "HBr": "not in MCM: JPL halogen module",
+  "HOBr": "not in MCM: JPL halogen module",
+  "HNO3aq": "aerosol counter (like NA_HET), not a gas species",
+  "C2H6": "MCM ethane export (not in the file)",
+  "SO2": "mcm_inorganic as SO2",
+  "H2O2": "mcm_inorganic as H2O2",
+  "SO3": "mcm_inorganic as SO3",
+  "H2SO4": "mcm_inorganic as SA"
+ },
+ "sandbox_coverage_counts": {
+  "mcm_inorganic": 18,
+  "not in MCM": 11,
+  "declared in limonene_mcm.eqn": 2,
+  "environment (fixed; enters rates": 2,
+  "folded": 1,
+  "aerosol counter (like NA_HET), not a gas species": 1,
+  "MCM ethane export (not in the file)": 1
+ },
+ "j_names": {
+  "mcm_parameterised": 34,
+  "mapped_in_photolysis_SOURCES": 28,
+  "mcm_without_source": [
+   "J_C2H5CHO",
+   "J_C2H5NO3",
+   "J_C3H7CHO_C2H4",
+   "J_CH3CHO",
+   "J_MVK_CO",
+   "J_TC4H9NO3"
+  ],
+  "tuvx_direct": 22,
+  "tuvx_split": 3
+ },
+ "tuvx_port": {
+  "n_reactions": 94,
+  "needed_for_new_modules": {
+   "CH3CHO+hv->CH3+HCO": true,
+   "C2H5CHO+hv->C2H5+HCO": true,
+   "C2H5ONO2+hv->C2H5O+NO2": true,
+   "C(CH3)3(ONO2)+hv->C(CH3)(O.)+NO2": false,
+   "N2O5+hv->NO2+NO3": true,
+   "HNO4+hv->HO2+NO2": true,
+   "PAN+hv->CH3CO(OO)+NO2": true,
+   "Cl2+hv->Cl+Cl": true,
+   "ClONO2+hv->Cl+NO3": true,
+   "ClONO2+hv->ClO+NO2": true,
+   "ClOOCl+hv->Cl+ClOO": true,
+   "HOCl+hv->HO+Cl": true,
+   "OClO+hv->Products": true,
+   "ClNO2+hv->Cl+NO2": true,
+   "BrO+hv->Br+O": true,
+   "BrONO2+hv->Br+NO3": true,
+   "BrONO2+hv->BrO+NO2": true,
+   "BrCl+hv->Br+Cl": true,
+   "HOBr+hv->OH+Br": true,
+   "HCl+hv->H+Cl": true,
+   "Br2+hv->Br+Br": true
+  }
+ }
+}

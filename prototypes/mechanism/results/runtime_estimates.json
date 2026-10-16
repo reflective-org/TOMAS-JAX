@@ -1,0 +1,100 @@
+{
+ "a_dense": 1.3988688482497056,
+ "a_sparse": 0.5237839107760984,
+ "steps": {
+  "kvaerno3_dense": {
+   "900s": 1061,
+   "120s": 4855
+  },
+  "ros3_sparse": {
+   "900s": 1576,
+   "120s": 8029
+  }
+ },
+ "rows": [
+  {
+   "name": "inorganic",
+   "species": 29,
+   "reactions": 68,
+   "ms_per_step_dense": 0.18161983132583168,
+   "ms_per_step_sparse": 0.08282339751680352,
+   "gas_24h_s_dense_900": 0.19269864103670742,
+   "gas_24h_s_dense_120": 0.8817642810869127,
+   "gas_24h_s_sparse_900": 0.13052967448648234,
+   "gas_24h_s_sparse_120": 0.6649890586624154,
+   "speedup": 2.192856569171579
+  },
+  {
+   "name": "c3",
+   "species": 98,
+   "reactions": 280,
+   "ms_per_step_dense": 0.6835842895082633,
+   "ms_per_step_sparse": 0.14318791017915436,
+   "gas_24h_s_dense_900": 0.7252829311682674,
+   "gas_24h_s_dense_120": 3.3188017255626185,
+   "gas_24h_s_sparse_900": 0.22566414644234725,
+   "gas_24h_s_sparse_120": 1.1496557308284303,
+   "speedup": 4.774036360003955
+  },
+  {
+   "name": "limonene",
+   "species": 725,
+   "reactions": 2135,
+   "ms_per_step_dense": 11.3,
+   "ms_per_step_sparse": 0.39,
+   "gas_24h_s_dense_900": 11.989300000000002,
+   "gas_24h_s_dense_120": 54.8615,
+   "gas_24h_s_sparse_900": 0.61464,
+   "gas_24h_s_sparse_120": 3.13131,
+   "speedup": 28.974358974358974
+  },
+  {
+   "name": "copies2",
+   "species": 1352,
+   "reactions": 3989,
+   "ms_per_step_dense": 41.72510629424078,
+   "ms_per_step_sparse": 0.6558638837838466,
+   "gas_24h_s_dense_900": 44.270337778189464,
+   "gas_24h_s_dense_120": 202.57539105853897,
+   "gas_24h_s_sparse_900": 1.0336414808433423,
+   "gas_24h_s_sparse_120": 5.265931122900504,
+   "speedup": 63.618545441956584
+  },
+  {
+   "name": "copies4",
+   "species": 2606,
+   "reactions": 7697,
+   "ms_per_step_dense": 214.77025412237793,
+   "ms_per_step_sparse": 1.1978723455983862,
+   "gas_24h_s_dense_900": 227.871239623843,
+   "gas_24h_s_dense_120": 1042.709583764145,
+   "gas_24h_s_sparse_900": 1.8878468166630566,
+   "gas_24h_s_sparse_120": 9.617717062809442,
+   "speedup": 179.29310657480067
+  },
+  {
+   "name": "copies7",
+   "species": 4487,
+   "reactions": 13259,
+   "ms_per_step_dense": 789.9030653831368,
+   "ms_per_step_sparse": 2.2960298351626145,
+   "gas_24h_s_dense_900": 838.0871523715081,
+   "gas_24h_s_dense_120": 3834.979382435129,
+   "gas_24h_s_sparse_900": 3.6185430202162805,
+   "gas_24h_s_sparse_120": 18.43482354652063,
+   "speedup": 344.02996567646625
+  },
+  {
+   "name": "copies9",
+   "species": 5741,
+   "reactions": 16967,
+   "ms_per_step_dense": 1823.0790901497041,
+   "ms_per_step_sparse": 4.240205667387883,
+   "gas_24h_s_dense_900": 1934.286914648836,
+   "gas_24h_s_dense_120": 8851.048982676813,
+   "gas_24h_s_sparse_900": 6.682564131803304,
+   "gas_24h_s_sparse_120": 34.044611303457316,
+   "speedup": 429.9506281431828
+  }
+ ]
+}

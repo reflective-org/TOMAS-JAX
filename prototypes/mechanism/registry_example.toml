@@ -1,0 +1,78 @@
+# Example mechanism registry (design sketch for docs/pro/mechanism/architecture.md, section 3).
+# Not read by any code yet. One [[mechanism]] per selectable mechanism; one [[module]] per
+# file. sha256 values are placeholders except where a file exists today.
+
+schema = 1
+
+# ------------------------------------------------------------------ modules (files)
+[[module]]
+id = "mcm331_limonene_jathar"             # the tutorial file, byte-identical
+file = "limonene_mcm.eqn"
+format = "mcm_kpp"
+source = "mcm"                            # rule 4 of the composer: overlaps across sources need a winner
+provenance = "MCM v3.3.1 limonene subset for SCENTS 04272022, from S. Jathar; LIMONENE + OH scaled to chamber kOH"
+particle_sinks = ["33", "34", "35"]       # MCM gas-particle sinks HNO3 = NA, N2O5 = 2 NA, SO3 = SA
+
+[[module]]
+id = "mcm331_inorganic_c1"                # 29 species, 68 reactions (prototype extraction)
+file = "mcm_inorganic_c1_sulfur.eqn"
+format = "mcm_kpp"
+source = "mcm"
+provenance = "closure of non-carbon species + CH4 + CO in limonene_mcm.eqn; replace with a direct MCM export (methane, 'Include inorganic reactions')"
+particle_sinks = ["33", "34", "35"]
+
+[[module]]
+id = "mcm331_dms"                         # to export from mcm.york.ac.uk (DIMETHYL SULPHIDE)
+file = "mcm331_dms.eqn"
+format = "mcm_kpp"
+source = "mcm"
+
+[[module]]
+id = "jpl195_core"                        # SANDBOX's JPL 19-5 O/HOx/NOx/SOx set, for stratospheric runs
+file = "jpl195_core.eqn"                  # alternative to mcm331_inorganic_c1, never combined with it
+format = "tomas_kpp"
+source = "jpl"
+
+[[module]]
+id = "jpl195_halogen_strat"               # generated from SANDBOX stratchem-jax reactions.py; only
+                                          # reactions with at least one Cl or Br species
+file = "jpl195_halogen.eqn"
+format = "tomas_kpp"                      # KPP syntax + vetted JPL rate functions (JPL_TER, JPL_CA, JPL_EQ)
+source = "jpl"
+species_map = { Cl = "CL", ClO = "CLO", ClOOCl = "CL2O2", ClONO2 = "CLONO2", HCl = "HCL", Cl2 = "CL2", HOCl = "HOCL", OClO = "OCLO", Br = "BR", BrO = "BRO", BrONO2 = "BRONO2", BrCl = "BRCL", HBr = "HBR", HOBr = "HOBR", HNO4 = "HO2NO2", H2SO4 = "SA", CH3 = "CH3O2" }
+external = ["ClONO2+HCl", "ClONO2+H2O", "HOCl+HCl", "BrONO2+H2O"]   # gamma-based, k from the aerosol (N2O5 uptake stays in the core)
+counters = { HNO3aq = "particle nitrate" }
+
+# ------------------------------------------------------------------ mechanisms (what users pick)
+[[mechanism]]
+id = "mcm_limonene"                       # tutorial; frozen
+title = "MCM v3.3.1 limonene (tutorial)"
+modules = ["mcm331_limonene_jathar"]
+patches = ["tutorial_n2o5_het"]           # <34> product -> NA_HET (box/coupling.py today)
+counters = ["SA", "NA_HET"]
+cstar_table = "mcm_limonene_cstar_298K.csv"
+reported_gases = ["LIMONENE", "O3", "NO", "NO2", "HNO3", "N2O5", "HCHO", "CO", "SO2", "H2O2"]
+solver = "kvaerno3_dense"
+status = "validated"                      # tests + PyCHAM G2/G3/S1/S2
+
+[[mechanism]]
+id = "mcm_inorganic"
+title = "MCM v3.3.1 inorganic + methane + SO2"
+modules = ["mcm331_inorganic_c1"]
+drop_labels = ["mcm331_inorganic_c1:33", "mcm331_inorganic_c1:34"]   # lumped HNO3/N2O5 particle sinks; N2O5 by gamma uptake instead
+counters = ["SA"]
+cstar_table = ""                          # no condensable organics
+reported_gases = ["O3", "NO", "NO2", "HNO3", "N2O5", "HCHO", "CO", "SO2", "H2O2"]
+solver = "kvaerno3_dense"
+status = "prototype"
+
+[[mechanism]]
+id = "mcm_inorganic_halogen_jpl"
+title = "MCM inorganic core + JPL 19-5 chlorine/bromine (SANDBOX species)"
+modules = ["mcm331_inorganic_c1", "jpl195_halogen_strat"]
+# the halogen module holds only reactions with a Cl or Br species, so the only overlap with the
+# MCM core is CH4 + CL (MCM <2676> omits HCl; JPL R7 gives HCl + CH3): JPL wins
+overlap_winner = { "CH4+CL" = "jpl195_halogen_strat" }
+counters = ["SA", "HNO3aq"]
+solver = "kvaerno3_dense"
+status = "planned"

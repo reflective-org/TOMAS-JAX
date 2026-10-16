@@ -1,0 +1,103 @@
+{
+ "species": 29,
+ "reactions": 68,
+ "photolysis": 12,
+ "ro2_members": [
+  "CH3O2"
+ ],
+ "ro2_dependent": 3,
+ "j_names": [
+  "J_CH3NO3",
+  "J_CH3OOH",
+  "J_H2O2",
+  "J_HCHO_H",
+  "J_HCHO_H2",
+  "J_HNO3",
+  "J_HONO",
+  "J_NO2",
+  "J_NO3_NO",
+  "J_NO3_NO2",
+  "J_O3_O1D",
+  "J_O3_O3P"
+ ],
+ "species_list": [
+  "O",
+  "O3",
+  "NO",
+  "NO2",
+  "NO3",
+  "O1D",
+  "N2O5",
+  "OH",
+  "HO2",
+  "H2",
+  "CO",
+  "H2O2",
+  "HONO",
+  "HNO3",
+  "HO2NO2",
+  "SO2",
+  "SO3",
+  "HSO3",
+  "NA",
+  "SA",
+  "CH4",
+  "CH3O2",
+  "CH3O",
+  "CH3NO3",
+  "HCHO",
+  "CH3O2NO2",
+  "CH3OOH",
+  "CH3OH",
+  "CL"
+ ],
+ "sulfur_reactions": [
+  "<30> O + SO2 = SO3",
+  "<31> OH + SO2 = HSO3",
+  "<32> HSO3 = HO2 + SO3",
+  "<35> SO3 = SA"
+ ],
+ "unbalanced_by_element": {
+  "O": 41,
+  "H": 18,
+  "C": 1,
+  "N": 2,
+  "S": 1,
+  "Cl": 1
+ },
+ "unbalanced_examples": {
+  "16": {
+   "C": -1.0
+  },
+  "33": {
+   "H": -1.0,
+   "N": -1.0,
+   "O": -3.0
+  },
+  "34": {
+   "N": -2.0,
+   "O": -5.0
+  },
+  "35": {
+   "O": -3.0,
+   "S": -1.0
+  },
+  "2676": {
+   "H": -1.0,
+   "Cl": -1.0,
+   "O": 2.0
+  }
+ },
+ "excluded_criegee_so2": [
+  "<14334>",
+  "<14644>",
+  "<13924>",
+  "<16538>",
+  "<2752>",
+  "<4223>",
+  "<4229>",
+  "<4254>",
+  "<4259>",
+  "<13864>"
+ ]
+}

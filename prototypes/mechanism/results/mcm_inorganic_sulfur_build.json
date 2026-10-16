@@ -1,0 +1,530 @@
+{
+ "source": "limonene_mcm.eqn",
+ "seeds": [
+  "CH4",
+  "CO",
+  "H2",
+  "H2O",
+  "H2O2",
+  "HNO3",
+  "HONO",
+  "N2O5",
+  "NO",
+  "NO2",
+  "O3",
+  "SO2"
+ ],
+ "species": 28,
+ "reactions": 67,
+ "photolysis_reactions": 12,
+ "species_list": [
+  "O",
+  "O3",
+  "NO",
+  "NO2",
+  "NO3",
+  "O1D",
+  "N2O5",
+  "OH",
+  "HO2",
+  "H2",
+  "CO",
+  "H2O2",
+  "HONO",
+  "HNO3",
+  "HO2NO2",
+  "SO2",
+  "SO3",
+  "HSO3",
+  "NA",
+  "SA",
+  "CH4",
+  "CH3O2",
+  "CH3O",
+  "CH3NO3",
+  "HCHO",
+  "CH3O2NO2",
+  "CH3OOH",
+  "CH3OH"
+ ],
+ "ro2_members": [
+  "CH3O2"
+ ],
+ "j_names": [
+  "J_CH3NO3",
+  "J_CH3OOH",
+  "J_H2O2",
+  "J_HCHO_H",
+  "J_HCHO_H2",
+  "J_HNO3",
+  "J_HONO",
+  "J_NO2",
+  "J_NO3_NO",
+  "J_NO3_NO2",
+  "J_O3_O1D",
+  "J_O3_O3P"
+ ],
+ "sulfur_reactions": [
+  "<30> O + SO2 = SO3",
+  "<31> OH + SO2 = HSO3",
+  "<32> HSO3 = HO2 + SO3",
+  "<35> SO3 = SA"
+ ],
+ "criegee_so2_reactions_not_reachable": [
+  "<14334> LIMBOO + SO2",
+  "<14644> LMKBOO + SO2",
+  "<13924> NC4OO + SO2",
+  "<16538> M3FOO + SO2",
+  "<2752> CH2OO + SO2",
+  "<4223> GAOO + SO2",
+  "<4229> MGLYOO + SO2",
+  "<4254> ACLOO + SO2",
+  "<4259> GLYOO + SO2",
+  "<13864> NC3OO + SO2"
+ ],
+ "atom_balance": {
+  "balanced": 26,
+  "explained_by_omitted_O2_H2O_CO2_or_IGNORE": 41,
+  "unexplained": 0,
+  "per_reaction": [
+   {
+    "reaction": "<1> O = O3",
+    "imbalance": {
+     "O": 2.0
+    },
+    "explained_by": "-1 O2 consumed (in k)"
+   },
+   {
+    "reaction": "<2> O + O3 = PROD",
+    "imbalance": {
+     "O": -4.0
+    },
+    "explained_by": "+2 O2 omitted"
+   },
+   {
+    "reaction": "<3> NO + O = NO2",
+    "imbalance": {},
+    "explained_by": "balanced"
+   },
+   {
+    "reaction": "<4> NO2 + O = NO",
+    "imbalance": {
+     "O": -2.0
+    },
+    "explained_by": "+1 O2 omitted"
+   },
+   {
+    "reaction": "<5> NO2 + O = NO3",
+    "imbalance": {},
+    "explained_by": "balanced"
+   },
+   {
+    "reaction": "<6> O1D = O",
+    "imbalance": {},
+    "explained_by": "balanced"
+   },
+   {
+    "reaction": "<7> NO + O3 = NO2",
+    "imbalance": {
+     "O": -2.0
+    },
+    "explained_by": "+1 O2 omitted"
+   },
+   {
+    "reaction": "<8> NO2 + O3 = NO3",
+    "imbalance": {
+     "O": -2.0
+    },
+    "explained_by": "+1 O2 omitted"
+   },
+   {
+    "reaction": "<9> NO + NO = 2NO2",
+    "imbalance": {
+     "O": 2.0
+    },
+    "explained_by": "-1 O2 consumed (in k)"
+   },
+   {
+    "reaction": "<10> NO + NO3 = 2NO2",
+    "imbalance": {},
+    "explained_by": "balanced"
+   },
+   {
+    "reaction": "<11> NO2 + NO3 = NO + NO2",
+    "imbalance": {
+     "O": -2.0
+    },
+    "explained_by": "+1 O2 omitted"
+   },
+   {
+    "reaction": "<12> NO2 + NO3 = N2O5",
+    "imbalance": {},
+    "explained_by": "balanced"
+   },
+   {
+    "reaction": "<13> O1D = 2OH",
+    "imbalance": {
+     "O": 1.0,
+     "H": 2.0
+    },
+    "explained_by": "-1 H2O consumed (in k)"
+   },
+   {
+    "reaction": "<14> O3 + OH = HO2",
+    "imbalance": {
+     "O": -2.0
+    },
+    "explained_by": "+1 O2 omitted"
+   },
+   {
+    "reaction": "<15> H2 + OH = HO2",
+    "imbalance": {
+     "H": -2.0,
+     "O": 1.0
+    },
+    "explained_by": "+1 H2O omitted, -1 O2 consumed (in k)"
+   },
+   {
+    "reaction": "<16> CO + OH = HO2",
+    "imbalance": {
+     "C": -1.0
+    },
+    "explained_by": "1 CO2 omitted, -1 O2 consumed (in k)"
+   },
+   {
+    "reaction": "<17> H2O2 + OH = HO2",
+    "imbalance": {
+     "H": -2.0,
+     "O": -1.0
+    },
+    "explained_by": "+1 H2O omitted"
+   },
+   {
+    "reaction": "<18> HO2 + O3 = OH",
+    "imbalance": {
+     "O": -4.0
+    },
+    "explained_by": "+2 O2 omitted"
+   },
+   {
+    "reaction": "<19> HO2 + OH = PROD",
+    "imbalance": {
+     "H": -2.0,
+     "O": -3.0
+    },
+    "explained_by": "+1 H2O omitted, +1 O2 omitted"
+   },
+   {
+    "reaction": "<20> HO2 + HO2 = H2O2",
+    "imbalance": {
+     "O": -2.0
+    },
+    "explained_by": "+1 O2 omitted"
+   },
+   {
+    "reaction": "<21> NO + OH = HONO",
+    "imbalance": {},
+    "explained_by": "balanced"
+   },
+   {
+    "reaction": "<22> NO2 + OH = HNO3",
+    "imbalance": {},
+    "explained_by": "balanced"
+   },
+   {
+    "reaction": "<23> NO3 + OH = HO2 + NO2",
+    "imbalance": {},
+    "explained_by": "balanced"
+   },
+   {
+    "reaction": "<24> HO2 + NO = NO2 + OH",
+    "imbalance": {},
+    "explained_by": "balanced"
+   },
+   {
+    "reaction": "<25> HO2 + NO2 = HO2NO2",
+    "imbalance": {},
+    "explained_by": "balanced"
+   },
+   {
+    "reaction": "<26> HO2NO2 + OH = NO2",
+    "imbalance": {
+     "H": -2.0,
+     "O": -3.0
+    },
+    "explained_by": "+1 H2O omitted, +1 O2 omitted"
+   },
+   {
+    "reaction": "<27> HO2 + NO3 = NO2 + OH",
+    "imbalance": {
+     "O": -2.0
+    },
+    "explained_by": "+1 O2 omitted"
+   },
+   {
+    "reaction": "<28> HONO + OH = NO2",
+    "imbalance": {
+     "H": -2.0,
+     "O": -1.0
+    },
+    "explained_by": "+1 H2O omitted"
+   },
+   {
+    "reaction": "<29> HNO3 + OH = NO3",
+    "imbalance": {
+     "H": -2.0,
+     "O": -1.0
+    },
+    "explained_by": "+1 H2O omitted"
+   },
+   {
+    "reaction": "<30> O + SO2 = SO3",
+    "imbalance": {},
+    "explained_by": "balanced"
+   },
+   {
+    "reaction": "<31> OH + SO2 = HSO3",
+    "imbalance": {},
+    "explained_by": "balanced"
+   },
+   {
+    "reaction": "<32> HSO3 = HO2 + SO3",
+    "imbalance": {
+     "O": 2.0
+    },
+    "explained_by": "-1 O2 consumed (in k)"
+   },
+   {
+    "reaction": "<33> HNO3 = NA",
+    "imbalance": {
+     "H": -1.0,
+     "N": -1.0,
+     "O": -3.0
+    },
+    "explained_by": "product declared IGNORE (MCM aerosol sink NA or SA)"
+   },
+   {
+    "reaction": "<34> N2O5 = 2NA",
+    "imbalance": {
+     "N": -2.0,
+     "O": -5.0
+    },
+    "explained_by": "product declared IGNORE (MCM aerosol sink NA or SA)"
+   },
+   {
+    "reaction": "<35> SO3 = SA",
+    "imbalance": {
+     "O": -3.0,
+     "S": -1.0
+    },
+    "explained_by": "product declared IGNORE (MCM aerosol sink NA or SA)"
+   },
+   {
+    "reaction": "<36> O3 + hv = O1D",
+    "imbalance": {
+     "O": -2.0
+    },
+    "explained_by": "+1 O2 omitted"
+   },
+   {
+    "reaction": "<37> O3 + hv = O",
+    "imbalance": {
+     "O": -2.0
+    },
+    "explained_by": "+1 O2 omitted"
+   },
+   {
+    "reaction": "<38> H2O2 + hv = 2OH",
+    "imbalance": {},
+    "explained_by": "balanced"
+   },
+   {
+    "reaction": "<39> NO2 + hv = NO + O",
+    "imbalance": {},
+    "explained_by": "balanced"
+   },
+   {
+    "reaction": "<40> NO3 + hv = NO",
+    "imbalance": {
+     "O": -2.0
+    },
+    "explained_by": "+1 O2 omitted"
+   },
+   {
+    "reaction": "<41> NO3 + hv = NO2 + O",
+    "imbalance": {},
+    "explained_by": "balanced"
+   },
+   {
+    "reaction": "<42> HONO + hv = NO + OH",
+    "imbalance": {},
+    "explained_by": "balanced"
+   },
+   {
+    "reaction": "<43> HNO3 + hv = NO2 + OH",
+    "imbalance": {},
+    "explained_by": "balanced"
+   },
+   {
+    "reaction": "<44> N2O5 = NO2 + NO3",
+    "imbalance": {},
+    "explained_by": "balanced"
+   },
+   {
+    "reaction": "<45> HO2NO2 = HO2 + NO2",
+    "imbalance": {},
+    "explained_by": "balanced"
+   },
+   {
+    "reaction": "<46> CH4 + OH = CH3O2",
+    "imbalance": {
+     "H": -2.0,
+     "O": 1.0
+    },
+    "explained_by": "+1 H2O omitted, -1 O2 consumed (in k)"
+   },
+   {
+    "reaction": "<47> CH3O2 + NO = CH3O + NO2",
+    "imbalance": {},
+    "explained_by": "balanced"
+   },
+   {
+    "reaction": "<48> CH3O2 + NO = CH3NO3",
+    "imbalance": {},
+    "explained_by": "balanced"
+   },
+   {
+    "reaction": "<49> CH3O = HCHO + HO2",
+    "imbalance": {
+     "O": 2.0
+    },
+    "explained_by": "-1 O2 consumed (in k)"
+   },
+   {
+    "reaction": "<50> CH3O2 + NO2 = CH3O2NO2",
+    "imbalance": {},
+    "explained_by": "balanced"
+   },
+   {
+    "reaction": "<51> CH3O2NO2 = CH3O2 + NO2",
+    "imbalance": {},
+    "explained_by": "balanced"
+   },
+   {
+    "reaction": "<52> CH3O2 + NO3 = CH3O + NO2",
+    "imbalance": {
+     "O": -2.0
+    },
+    "explained_by": "+1 O2 omitted"
+   },
+   {
+    "reaction": "<53> CH3O2 + HO2 = CH3OOH",
+    "imbalance": {
+     "O": -2.0
+    },
+    "explained_by": "+1 O2 omitted"
+   },
+   {
+    "reaction": "<54> CH3O2 = CH3O",
+    "imbalance": {
+     "O": -1.0
+    },
+    "explained_by": "RO2 pseudo-first-order (the partner peroxy radical is not written)"
+   },
+   {
+    "reaction": "<55> CH3O2 = HCHO",
+    "imbalance": {
+     "H": -1.0,
+     "O": -1.0
+    },
+    "explained_by": "RO2 pseudo-first-order (the partner peroxy radical is not written)"
+   },
+   {
+    "reaction": "<56> CH3O2 = CH3OH",
+    "imbalance": {
+     "H": 1.0,
+     "O": -1.0
+    },
+    "explained_by": "RO2 pseudo-first-order (the partner peroxy radical is not written)"
+   },
+   {
+    "reaction": "<57> CH3NO3 + OH = HCHO + NO2",
+    "imbalance": {
+     "H": -2.0,
+     "O": -1.0
+    },
+    "explained_by": "+1 H2O omitted"
+   },
+   {
+    "reaction": "<58> CH3NO3 + hv = CH3O + NO2",
+    "imbalance": {},
+    "explained_by": "balanced"
+   },
+   {
+    "reaction": "<59> CH3OOH + OH = CH3O2",
+    "imbalance": {
+     "H": -2.0,
+     "O": -1.0
+    },
+    "explained_by": "+1 H2O omitted"
+   },
+   {
+    "reaction": "<60> CH3OOH + OH = HCHO + OH",
+    "imbalance": {
+     "H": -2.0,
+     "O": -1.0
+    },
+    "explained_by": "+1 H2O omitted"
+   },
+   {
+    "reaction": "<61> CH3OOH + hv = CH3O + OH",
+    "imbalance": {},
+    "explained_by": "balanced"
+   },
+   {
+    "reaction": "<3778> CH3O2 + HO2 = HCHO",
+    "imbalance": {
+     "H": -2.0,
+     "O": -3.0
+    },
+    "explained_by": "+1 H2O omitted, +1 O2 omitted"
+   },
+   {
+    "reaction": "<4278> HCHO + OH = CO + HO2",
+    "imbalance": {
+     "H": -2.0,
+     "O": 1.0
+    },
+    "explained_by": "+1 H2O omitted, -1 O2 consumed (in k)"
+   },
+   {
+    "reaction": "<4279> HCHO + hv = CO + 2HO2",
+    "imbalance": {
+     "O": 4.0
+    },
+    "explained_by": "-2 O2 consumed (in k)"
+   },
+   {
+    "reaction": "<4280> HCHO + hv = CO + H2",
+    "imbalance": {},
+    "explained_by": "balanced"
+   },
+   {
+    "reaction": "<4281> HCHO + NO3 = CO + HNO3 + HO2",
+    "imbalance": {
+     "O": 2.0
+    },
+    "explained_by": "-1 O2 consumed (in k)"
+   },
+   {
+    "reaction": "<5168> CH3OH + OH = HCHO + HO2",
+    "imbalance": {
+     "H": -2.0,
+     "O": 1.0
+    },
+    "explained_by": "+1 H2O omitted, -1 O2 consumed (in k)"
+   }
+  ]
+ },
+ "limonene_file_species_excluded": 697
+}

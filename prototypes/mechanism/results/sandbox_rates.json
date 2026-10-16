@@ -1,0 +1,944 @@
+{
+ "conditions": {
+  "surface_298K": [
+   298.15,
+   101325.0,
+   0.0155
+  ],
+  "upper_trop_240K": [
+   240.0,
+   30000.0,
+   0.0001
+  ],
+  "strat_220K": [
+   220.0,
+   5000.0,
+   5e-06
+  ]
+ },
+ "reactions": [
+  {
+   "R": "R1",
+   "klabel": "k1",
+   "equation": "ClO + NO -> NO2 + Cl",
+   "reactants": {
+    "ClO": 1,
+    "NO": 1
+   },
+   "products": {
+    "NO2": 1,
+    "Cl": 1
+   },
+   "note": "JPL 19-5 (F130)",
+   "k": {
+    "surface_298K": 1.6927893366582613e-11,
+    "upper_trop_240K": 2.1426561065552173e-11,
+    "strat_220K": 2.391437657792003e-11
+   }
+  },
+  {
+   "R": "R2",
+   "klabel": "k2",
+   "equation": "ClO + ClO + M -> ClOOCl + M",
+   "reactants": {
+    "ClO": 2
+   },
+   "products": {
+    "ClOOCl": 1
+   },
+   "note": "JPL 19-5 (F10), 298 K ref",
+   "k": {
+    "surface_298K": 3.1245883628471123e-13,
+    "upper_trop_240K": 2.804794901227631e-13,
+    "strat_220K": 8.148597724932969e-14
+   }
+  },
+  {
+   "R": "R3",
+   "klabel": "k3",
+   "equation": "ClOOCl + M -> ClO + ClO + M",
+   "reactants": {
+    "ClOOCl": 1
+   },
+   "products": {
+    "ClO": 2
+   },
+   "note": "JPL 19-5 (k2 / Keq, Table 3-1 #20)",
+   "k": {
+    "surface_298K": 53.09842824882303,
+    "upper_trop_240K": 0.046262673274968434,
+    "strat_220K": 0.0005296990127743836
+   }
+  },
+  {
+   "R": "R4",
+   "klabel": "k4",
+   "equation": "ClO + NO2 + M -> ClONO2 + M",
+   "reactants": {
+    "ClO": 1,
+    "NO2": 1
+   },
+   "products": {
+    "ClONO2": 1
+   },
+   "note": "JPL 19-5 (F8), 298 K ref",
+   "k": {
+    "surface_298K": 2.2919270862366713e-12,
+    "upper_trop_240K": 2.1808845820173747e-12,
+    "strat_220K": 6.897214012471855e-13
+   }
+  },
+  {
+   "R": "R5",
+   "klabel": "k5",
+   "equation": "ClONO2 + M -> ClO + NO2 + M",
+   "reactants": {
+    "ClONO2": 1
+   },
+   "products": {
+    "ClO": 1,
+    "NO2": 1
+   },
+   "note": "Fahey (not in JPL; kept)",
+   "k": {
+    "surface_298K": 0.00218605902781683,
+    "upper_trop_240K": 1.1354867171140328e-07,
+    "strat_220K": 3.3130579064254985e-10
+   }
+  },
+  {
+   "R": "R6",
+   "klabel": "k6",
+   "equation": "Cl + O3 -> ClO + O2",
+   "reactants": {
+    "Cl": 1,
+    "O3": 1
+   },
+   "products": {
+    "ClO": 1,
+    "O2": 1
+   },
+   "note": "JPL 19-5 (F68)",
+   "k": {
+    "surface_298K": 1.1759846962501115e-11,
+    "upper_trop_240K": 9.9957587956628e-12,
+    "strat_220K": 9.26647739517006e-12
+   }
+  },
+  {
+   "R": "R7",
+   "klabel": "k7",
+   "equation": "Cl + CH4 -> HCl + CH3",
+   "reactants": {
+    "Cl": 1,
+    "CH4": 1
+   },
+   "products": {
+    "HCl": 1,
+    "CH3": 1
+   },
+   "note": "JPL 19-5 (F75)",
+   "k": {
+    "surface_298K": 1.0030837500016427e-13,
+    "upper_trop_240K": 3.5736886703815136e-14,
+    "strat_220K": 2.208995080275548e-14
+   }
+  },
+  {
+   "R": "R25",
+   "klabel": "k21",
+   "equation": "NO2 + NO3 + M -> N2O5 + M",
+   "reactants": {
+    "NO2": 1,
+    "NO3": 1
+   },
+   "products": {
+    "N2O5": 1
+   },
+   "note": "JPL 19-5 (C7), 298 K ref",
+   "k": {
+    "surface_298K": 1.3436731573937596e-12,
+    "upper_trop_240K": 1.274746886484964e-12,
+    "strat_220K": 9.819164512618718e-13
+   }
+  },
+  {
+   "R": "R26",
+   "klabel": "k22",
+   "equation": "OH + HNO3 -> H2O + NO3",
+   "reactants": {
+    "OH": 1,
+    "HNO3": 1
+   },
+   "products": {
+    "H2O": 1,
+    "NO3": 1
+   },
+   "note": "JPL 19-5 (K2), chemical-activation form",
+   "k": {
+    "surface_298K": 1.4116698287053915e-13,
+    "upper_trop_240K": 3.7372907286202956e-13,
+    "strat_220K": 4.765122106120318e-13
+   }
+  },
+  {
+   "R": "R27",
+   "klabel": "k23",
+   "equation": "OH + NO2 + M -> HNO3 + M",
+   "reactants": {
+    "OH": 1,
+    "NO2": 1
+   },
+   "products": {
+    "HNO3": 1
+   },
+   "note": "JPL 19-5 (C4), 298 K ref",
+   "k": {
+    "surface_298K": 1.0489856825938342e-11,
+    "upper_trop_240K": 8.863621209241454e-12,
+    "strat_220K": 3.978453912520436e-12
+   }
+  },
+  {
+   "R": "R28",
+   "klabel": "k24",
+   "equation": "O + NO + M -> NO2 + M",
+   "reactants": {
+    "O": 1,
+    "NO": 1
+   },
+   "products": {
+    "NO2": 1
+   },
+   "note": "JPL 19-5 (C1), 298 K ref",
+   "k": {
+    "surface_298K": 1.663247035434528e-12,
+    "upper_trop_240K": 9.271475444130916e-13,
+    "strat_220K": 2.1325933596486813e-13
+   }
+  },
+  {
+   "R": "R29",
+   "klabel": "k25",
+   "equation": "O + NO2 + M -> NO3 + M",
+   "reactants": {
+    "O": 1,
+    "NO2": 1
+   },
+   "products": {
+    "NO3": 1
+   },
+   "note": "JPL 19-5 (K1), association channel",
+   "k": {
+    "surface_298K": 3.996520820140325e-12,
+    "upper_trop_240K": 2.6502367980520018e-12,
+    "strat_220K": 7.413695965461248e-13
+   }
+  },
+  {
+   "R": "R30",
+   "klabel": "k26",
+   "equation": "O + NO2 -> NO + O2",
+   "reactants": {
+    "O": 1,
+    "NO2": 1
+   },
+   "products": {
+    "NO": 1,
+    "O2": 1
+   },
+   "note": "JPL 19-5 (K1), chemical-activation channel",
+   "k": {
+    "surface_298K": 8.56442333235905e-12,
+    "upper_trop_240K": 1.084948608866079e-11,
+    "strat_220K": 1.2755885816107284e-11
+   }
+  },
+  {
+   "R": "R31",
+   "klabel": "k27",
+   "equation": "NO + O3 -> NO2 + O2",
+   "reactants": {
+    "NO": 1,
+    "O3": 1
+   },
+   "products": {
+    "NO2": 1,
+    "O2": 1
+   },
+   "note": "JPL 19-5 (C19)",
+   "k": {
+    "surface_298K": 1.959634198949797e-14,
+    "upper_trop_240K": 5.791362408683128e-15,
+    "strat_220K": 3.281123025007358e-15
+   }
+  },
+  {
+   "R": "R32",
+   "klabel": "k28",
+   "equation": "NO2 + O3 -> NO3 + O2",
+   "reactants": {
+    "NO2": 1,
+    "O3": 1
+   },
+   "products": {
+    "NO3": 1,
+    "O2": 1
+   },
+   "note": "JPL 19-5 (C21)",
+   "k": {
+    "surface_298K": 3.239184704750813e-17,
+    "upper_trop_240K": 4.4234223704216866e-18,
+    "strat_220K": 1.748718764811189e-18
+   }
+  },
+  {
+   "R": "R33",
+   "klabel": "k29",
+   "equation": "OH + NO + M -> HONO + M",
+   "reactants": {
+    "OH": 1,
+    "NO": 1
+   },
+   "products": {
+    "HONO": 1
+   },
+   "note": "JPL 19-5 (C3), 298 K ref",
+   "k": {
+    "surface_298K": 7.384357287286875e-12,
+    "upper_trop_240K": 5.763730402268909e-12,
+    "strat_220K": 1.934682365215097e-12
+   }
+  },
+  {
+   "R": "R34",
+   "klabel": "k30",
+   "equation": "OH + HONO -> H2O + NO2",
+   "reactants": {
+    "OH": 1,
+    "HONO": 1
+   },
+   "products": {
+    "H2O": 1,
+    "NO2": 1
+   },
+   "note": "JPL 19-5 (C7-bimol)",
+   "k": {
+    "surface_298K": 6.93871360160567e-12,
+    "upper_trop_240K": 8.501808923082508e-12,
+    "strat_220K": 9.346256838651366e-12
+   }
+  },
+  {
+   "R": "R35",
+   "klabel": "k31",
+   "equation": "NO + NO3 -> 2 NO2",
+   "reactants": {
+    "NO": 1,
+    "NO3": 1
+   },
+   "products": {
+    "NO2": 2
+   },
+   "note": "JPL 19-5 (C20)",
+   "k": {
+    "surface_298K": 2.5854001823470442e-11,
+    "upper_trop_240K": 2.8618308701312432e-11,
+    "strat_220K": 3.000593400407239e-11
+   }
+  },
+  {
+   "R": "R36",
+   "klabel": "k32",
+   "equation": "OH + HNO4 -> H2O + NO2 + O2",
+   "reactants": {
+    "OH": 1,
+    "HNO4": 1
+   },
+   "products": {
+    "H2O": 1,
+    "NO2": 1,
+    "O2": 1
+   },
+   "note": "JPL 19-5 (C8)",
+   "k": {
+    "surface_298K": 3.4814272149095154e-12,
+    "upper_trop_240K": 5.715369619302224e-12,
+    "strat_220K": 7.200997632619587e-12
+   }
+  },
+  {
+   "R": "R37",
+   "klabel": "k33",
+   "equation": "HO2 + NO -> NO2 + OH",
+   "reactants": {
+    "HO2": 1,
+    "NO": 1
+   },
+   "products": {
+    "NO2": 1,
+    "OH": 1
+   },
+   "note": "JPL 19-5 (C10), main OH prod",
+   "k": {
+    "surface_298K": 8.227775976097509e-12,
+    "upper_trop_240K": 1.0163519653196846e-11,
+    "strat_220K": 1.1215420404748659e-11
+   }
+  },
+  {
+   "R": "R38",
+   "klabel": "k34",
+   "equation": "HO2 + NO2 + M -> HNO4 + M",
+   "reactants": {
+    "HO2": 1,
+    "NO2": 1
+   },
+   "products": {
+    "HNO4": 1
+   },
+   "note": "JPL 19-5 (C6), 298 K ref",
+   "k": {
+    "surface_298K": 1.2954531778159432e-12,
+    "upper_trop_240K": 1.1734753673210826e-12,
+    "strat_220K": 5.186658970602736e-13
+   }
+  },
+  {
+   "R": "R39",
+   "klabel": "k35",
+   "equation": "O + O2 + M -> O3 + M",
+   "reactants": {
+    "O": 1,
+    "O2": 1
+   },
+   "products": {
+    "O3": 1
+   },
+   "note": "JPL 19-5 (A1), 298 K ref",
+   "k": {
+    "surface_298K": 1.4996980680780303e-14,
+    "upper_trop_240K": 9.284715890853015e-15,
+    "strat_220K": 2.0801683088372497e-15
+   }
+  },
+  {
+   "R": "R40",
+   "klabel": "k36",
+   "equation": "O + O3 -> 2 O2",
+   "reactants": {
+    "O": 1,
+    "O3": 1
+   },
+   "products": {
+    "O2": 2
+   },
+   "note": "JPL 19-5",
+   "k": {
+    "surface_298K": 7.98786060795232e-15,
+    "upper_trop_240K": 1.4975994916958492e-15,
+    "strat_220K": 6.863006081260035e-16
+   }
+  },
+  {
+   "R": "R41",
+   "klabel": "k37",
+   "equation": "OH + O3 -> HO2 + O2",
+   "reactants": {
+    "OH": 1,
+    "O3": 1
+   },
+   "products": {
+    "HO2": 1,
+    "O2": 1
+   },
+   "note": "JPL 19-5",
+   "k": {
+    "surface_298K": 7.264670840683649e-14,
+    "upper_trop_240K": 3.3842481532147264e-14,
+    "strat_220K": 2.370429504660918e-14
+   }
+  },
+  {
+   "R": "R42",
+   "klabel": "k38",
+   "equation": "OH + HO2 -> H2O + O2",
+   "reactants": {
+    "OH": 1,
+    "HO2": 1
+   },
+   "products": {
+    "H2O": 1,
+    "O2": 1
+   },
+   "note": "JPL 19-5",
+   "k": {
+    "surface_298K": 1.1101941762569073e-10,
+    "upper_trop_240K": 1.3602894276932012e-10,
+    "strat_220K": 1.4954010941842185e-10
+   }
+  },
+  {
+   "R": "R43",
+   "klabel": "k39",
+   "equation": "HO2 + O3 -> OH + 2 O2",
+   "reactants": {
+    "HO2": 1,
+    "O3": 1
+   },
+   "products": {
+    "OH": 1,
+    "O2": 2
+   },
+   "note": "JPL 19-5",
+   "k": {
+    "surface_298K": 1.9330847441414683e-15,
+    "upper_trop_240K": 1.29812176855438e-15,
+    "strat_220K": 1.078220897536238e-15
+   }
+  },
+  {
+   "R": "R44",
+   "klabel": "k40",
+   "equation": "O1D + O2 -> O + O2",
+   "reactants": {
+    "O1D": 1,
+    "O2": 1
+   },
+   "products": {
+    "O": 1,
+    "O2": 1
+   },
+   "note": "JPL 19-5 (off if opt=1)",
+   "k": {
+    "surface_298K": 3.968520568118404e-11,
+    "upper_trop_240K": 4.149920324485303e-11,
+    "strat_220K": 4.237283875069547e-11
+   }
+  },
+  {
+   "R": "R45",
+   "klabel": "k41",
+   "equation": "O1D -> O",
+   "reactants": {
+    "O1D": 1
+   },
+   "products": {
+    "O": 1
+   },
+   "note": "O1D + N2 -> O + N2; JPL 19-5 (off if opt=1)",
+   "k": {
+    "surface_298K": 604635244.0939984,
+    "upper_trop_240K": 243188995.6166714,
+    "strat_220K": 46097442.682986036
+   }
+  },
+  {
+   "R": "R46",
+   "klabel": "k42",
+   "equation": "O1D + H2O -> 2 OH",
+   "reactants": {
+    "O1D": 1,
+    "H2O": 1
+   },
+   "products": {
+    "OH": 2
+   },
+   "note": "JPL 19-5 (OH source)",
+   "k": {
+    "surface_298K": 1.9933586918940778e-10,
+    "upper_trop_240K": 2.0929614292010184e-10,
+    "strat_220K": 2.1410733903239373e-10
+   }
+  },
+  {
+   "R": "R47",
+   "klabel": "k43",
+   "equation": "O1D + CH4 -> CH3 + OH",
+   "reactants": {
+    "O1D": 1,
+    "CH4": 1
+   },
+   "products": {
+    "CH3": 1,
+    "OH": 1
+   },
+   "note": "JPL 19-5",
+   "k": {
+    "surface_298K": 1.31e-10,
+    "upper_trop_240K": 1.31e-10,
+    "strat_220K": 1.31e-10
+   }
+  },
+  {
+   "R": "R48",
+   "klabel": "k44",
+   "equation": "O + ClO -> Cl + O2",
+   "reactants": {
+    "O": 1,
+    "ClO": 1
+   },
+   "products": {
+    "Cl": 1,
+    "O2": 1
+   },
+   "note": "JPL 19-5",
+   "k": {
+    "surface_298K": 3.723673995625898e-11,
+    "upper_trop_240K": 3.989979463307602e-11,
+    "strat_220K": 4.120535182312153e-11
+   }
+  },
+  {
+   "R": "R49",
+   "klabel": "k45",
+   "equation": "OH + ClO -> Cl + HO2",
+   "reactants": {
+    "OH": 1,
+    "ClO": 1
+   },
+   "products": {
+    "Cl": 1,
+    "HO2": 1
+   },
+   "note": "JPL 19-5",
+   "k": {
+    "surface_298K": 1.830299005664248e-11,
+    "upper_trop_240K": 2.279360468199343e-11,
+    "strat_220K": 2.524814600504606e-11
+   }
+  },
+  {
+   "R": "R50",
+   "klabel": "k46",
+   "equation": "OH + ClO -> HCl + O2",
+   "reactants": {
+    "OH": 1,
+    "ClO": 1
+   },
+   "products": {
+    "HCl": 1,
+    "O2": 1
+   },
+   "note": "JPL 19-5",
+   "k": {
+    "surface_298K": 1.2977060855128635e-12,
+    "upper_trop_240K": 1.5644083627855603e-12,
+    "strat_220K": 1.7068147627861104e-12
+   }
+  },
+  {
+   "R": "R51",
+   "klabel": "k47",
+   "equation": "OH + HCl -> Cl + H2O",
+   "reactants": {
+    "OH": 1,
+    "HCl": 1
+   },
+   "products": {
+    "Cl": 1,
+    "H2O": 1
+   },
+   "note": "JPL 19-5",
+   "k": {
+    "surface_298K": 7.78242237689476e-13,
+    "upper_trop_240K": 6.351589466259281e-13,
+    "strat_220K": 5.777714108677547e-13
+   }
+  },
+  {
+   "R": "R52",
+   "klabel": "k48",
+   "equation": "HO2 + ClO -> HOCl + O2",
+   "reactants": {
+    "HO2": 1,
+    "ClO": 1
+   },
+   "products": {
+    "HOCl": 1,
+    "O2": 1
+   },
+   "note": "JPL 19-5",
+   "k": {
+    "surface_298K": 6.876956680174186e-12,
+    "upper_trop_240K": 8.70454043288057e-12,
+    "strat_220K": 9.715215484780011e-12
+   }
+  },
+  {
+   "R": "R54",
+   "klabel": "k50",
+   "equation": "O + BrO -> Br + O2",
+   "reactants": {
+    "O": 1,
+    "BrO": 1
+   },
+   "products": {
+    "Br": 1,
+    "O2": 1
+   },
+   "note": "JPL 19-5",
+   "k": {
+    "surface_298K": 4.1094026041240674e-11,
+    "upper_trop_240K": 4.9539598154876075e-11,
+    "strat_220K": 5.4049134154893493e-11
+   }
+  },
+  {
+   "R": "R55",
+   "klabel": "k51",
+   "equation": "Br + O3 -> BrO + O2",
+   "reactants": {
+    "Br": 1,
+    "O3": 1
+   },
+   "products": {
+    "BrO": 1,
+    "O2": 1
+   },
+   "note": "JPL 19-5",
+   "k": {
+    "surface_298K": 1.1693591961705974e-12,
+    "upper_trop_240K": 6.203873253075522e-13,
+    "strat_220K": 4.616880542462115e-13
+   }
+  },
+  {
+   "R": "R56",
+   "klabel": "k52",
+   "equation": "BrO + NO -> NO2 + Br",
+   "reactants": {
+    "BrO": 1,
+    "NO": 1
+   },
+   "products": {
+    "NO2": 1,
+    "Br": 1
+   },
+   "note": "JPL 19-5",
+   "k": {
+    "surface_298K": 2.1047799008621533e-11,
+    "upper_trop_240K": 2.5999701438410535e-11,
+    "strat_220K": 2.8690610337729126e-11
+   }
+  },
+  {
+   "R": "R57",
+   "klabel": "k53",
+   "equation": "BrO + ClO -> Br + Cl + O2",
+   "reactants": {
+    "BrO": 1,
+    "ClO": 1
+   },
+   "products": {
+    "Br": 1,
+    "Cl": 1,
+    "O2": 1
+   },
+   "note": "JPL 19-5",
+   "k": {
+    "surface_298K": 5.501129286344265e-12,
+    "upper_trop_240K": 6.795376512311844e-12,
+    "strat_220K": 7.498682247361021e-12
+   }
+  },
+  {
+   "R": "R58",
+   "klabel": "k54",
+   "equation": "BrO + ClO -> BrCl + O2",
+   "reactants": {
+    "BrO": 1,
+    "ClO": 1
+   },
+   "products": {
+    "BrCl": 1,
+    "O2": 1
+   },
+   "note": "JPL 19-5",
+   "k": {
+    "surface_298K": 1.0844431687966985e-12,
+    "upper_trop_240K": 1.3726390682619361e-12,
+    "strat_220K": 1.532014749523002e-12
+   }
+  },
+  {
+   "R": "R59",
+   "klabel": "k55",
+   "equation": "BrO + ClO -> Br + OClO",
+   "reactants": {
+    "BrO": 1,
+    "ClO": 1
+   },
+   "products": {
+    "Br": 1,
+    "OClO": 1
+   },
+   "note": "JPL 19-5",
+   "k": {
+    "surface_298K": 6.0099458870427585e-12,
+    "upper_trop_240K": 9.396839151782967e-12,
+    "strat_220K": 1.15733692626683e-11
+   }
+  },
+  {
+   "R": "R60",
+   "klabel": "k56",
+   "equation": "BrO + NO2 + M -> BrONO2 + M",
+   "reactants": {
+    "BrO": 1,
+    "NO2": 1
+   },
+   "products": {
+    "BrONO2": 1
+   },
+   "note": "JPL 19-5 (G2), 298 K ref",
+   "k": {
+    "surface_298K": 2.7814055493913362e-12,
+    "upper_trop_240K": 3.2868325453161264e-12,
+    "strat_220K": 1.4988382897042204e-12
+   }
+  },
+  {
+   "R": "R70",
+   "klabel": "k64",
+   "equation": "HNO3aq -> HNO3",
+   "reactants": {
+    "HNO3aq": 1
+   },
+   "products": {
+    "HNO3": 1
+   },
+   "note": "re-evaporation from aerosol",
+   "k": {
+    "surface_298K": 1e-05,
+    "upper_trop_240K": 1e-05,
+    "strat_220K": 1e-05
+   }
+  },
+  {
+   "R": "R74",
+   "klabel": "k68",
+   "equation": "SO2 + OH -> HO2",
+   "reactants": {
+    "SO2": 1,
+    "OH": 1
+   },
+   "products": {
+    "HO2": 1
+   },
+   "note": "reference-only lump (sulfur dropped); JPL 19-5 I4",
+   "k": {
+    "surface_298K": 0.0,
+    "upper_trop_240K": 0.0,
+    "strat_220K": 0.0
+   }
+  },
+  {
+   "R": "R75",
+   "klabel": "k69",
+   "equation": "CH4 + OH -> HO2",
+   "reactants": {
+    "CH4": 1,
+    "OH": 1
+   },
+   "products": {
+    "HO2": 1
+   },
+   "note": "JPL 19-5 (D14, OH+CH4); product lumped to HO2",
+   "k": {
+    "surface_298K": 6.3627720033519555e-15,
+    "upper_trop_240K": 1.5038221545111934e-15,
+    "strat_220K": 7.677136133649707e-16
+   }
+  },
+  {
+   "R": "R76",
+   "klabel": "k70",
+   "equation": "HO2 + HO2 -> H2O2",
+   "reactants": {
+    "HO2": 2
+   },
+   "products": {
+    "H2O2": 1
+   },
+   "note": "JPL 19-5 (B13): bimol + termol[M] + H2O enhancement",
+   "k": {
+    "surface_298K": 4.702917682160133e-12,
+    "upper_trop_240K": 2.9535876348356835e-12,
+    "strat_220K": 2.654726770552494e-12
+   }
+  },
+  {
+   "R": "R78",
+   "klabel": "k72",
+   "equation": "SO2 + HO2 ->",
+   "reactants": {
+    "SO2": 1,
+    "HO2": 1
+   },
+   "products": {},
+   "note": "reference-only null sink; UPPER LIMIT (JPL 19-5 I34)",
+   "k": {
+    "surface_298K": 0.0,
+    "upper_trop_240K": 0.0,
+    "strat_220K": 0.0
+   }
+  },
+  {
+   "R": "R79",
+   "klabel": "k73",
+   "equation": "SO2 + OH -> SO3 + HO2",
+   "reactants": {
+    "SO2": 1,
+    "OH": 1
+   },
+   "products": {
+    "SO3": 1,
+    "HO2": 1
+   },
+   "note": "net of JPL 19-5 I4 (SO2+OH+M->HOSO2, rate-limiting) + I92 (HOSO2+O2->HO2+SO3)",
+   "k": {
+    "surface_298K": 9.497425905953212e-13,
+    "upper_trop_240K": 8.887464869330722e-13,
+    "strat_220K": 4.88381405209204e-13
+   }
+  },
+  {
+   "R": "R80",
+   "klabel": "k74",
+   "equation": "SO2 + HO2 -> SO3 + OH",
+   "reactants": {
+    "SO2": 1,
+    "HO2": 1
+   },
+   "products": {
+    "SO3": 1,
+    "OH": 1
+   },
+   "note": "JPL 19-5 I34 rate (upper limit); PRODUCTS ARE AN ASSUMPTION -- JPL recommends none",
+   "k": {
+    "surface_298K": 1e-18,
+    "upper_trop_240K": 1e-18,
+    "strat_220K": 1e-18
+   }
+  },
+  {
+   "R": "R81",
+   "klabel": "k75",
+   "equation": "SO3 + H2O -> H2SO4",
+   "reactants": {
+    "SO3": 1,
+    "H2O": 1
+   },
+   "products": {
+    "H2SO4": 1
+   },
+   "note": "JPL 19-5 I79: kI = 8.5e-41 exp(6540/T) [H2O]^2",
+   "k": {
+    "surface_298K": 1.0897196112563212e-13,
+    "upper_trop_240K": 5.257391127842762e-14,
+    "strat_220K": 5.6917193609011444e-15
+   }
+  }
+ ]
+}

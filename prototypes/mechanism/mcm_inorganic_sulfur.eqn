@@ -1,0 +1,110 @@
+// MCM v3.3.1 inorganic + methane + sulfur subset. PROTOTYPING ONLY.
+// Derived from MCM v3.3.1 (http://mcm.york.ac.uk) via the limonene subset Shantanu Jathar
+// sent (tomas_jax/gaschem/mechanisms/limonene_mcm.eqn, SCENTS 04272022 export), not from
+// a fresh MCM export. Extracted by prototypes/mechanism/build_mcm_inorganic_sulfur.py as
+// the closure of {O3, NO, NO2, CO, CH4, SO2, H2O2, HONO, HNO3, N2O5, H2, H2O}: every reaction
+// whose reactants are all reachable from these seeds. Labels, rate expressions and J()
+// references are verbatim. <33> HNO3 = NA and <34> N2O5 = NA + NA are MCM's fixed
+// first-order aerosol sinks; the box comparison sets them to zero (no aerosol).
+
+O = O  ;
+O3 = 3O  ;
+NO = N + O  ;
+NO2 = N + 2O  ;
+NO3 = N + 3O  ;
+O1D = O  ;
+N2O5 = 2N + 5O  ;
+OH = H + O  ;
+HO2 = H + 2O  ;
+H2 = 2H  ;
+CO = C + O  ;
+H2O2 = 2H + 2O  ;
+HONO = H + N + 2O  ;
+HNO3 = H + N + 3O  ;
+HO2NO2 = H + N + 4O  ;
+SO2 = 2O + S  ;
+SO3 = 3O + S  ;
+HSO3 = H + 3O + S  ;
+NA = IGNORE  ;
+SA = IGNORE  ;
+CH4 = C + 4H  ;
+CH3O2 = C + 3H + 2O  ;
+CH3O = C + 3H + O  ;
+CH3NO3 = C + 3H + N + 3O  ;
+HCHO = C + 2H + O  ;
+CH3O2NO2 = C + 3H + N + 4O  ;
+CH3OOH = C + 4H + 2O  ;
+CH3OH = C + 4H + O  ;
+
+#INLINE F90_RCONST
+  USE constants_mcm
+  RO2 = C(ind_CH3O2)
+#ENDINLINE
+
+<1> O = O3 : 5.6E-34*N2*(TEMP/300.)**(-2.6)*O2+6.0E-34*O2*(TEMP/300.)**(-2.6)*O2 ;
+<2> O + O3 = PROD : 8.0E-12*EXP(-2060./TEMP) ;
+<3> NO + O = NO2 : KMT01 ;
+<4> NO2 + O = NO : 5.5E-12*EXP(188./TEMP) ;
+<5> NO2 + O = NO3 : KMT02 ;
+<6> O1D = O : 3.2E-11*EXP(67./TEMP)*O2+2.0E-11*EXP(130./TEMP)*N2 ;
+<7> NO + O3 = NO2 : 1.4E-12*EXP(-1310./TEMP) ;
+<8> NO2 + O3 = NO3 : 1.4E-13*EXP(-2470./TEMP) ;
+<9> NO + NO = 2NO2 : 3.3E-39*EXP(530./TEMP)*O2 ;
+<10> NO + NO3 = 2NO2 : 1.8E-11*EXP(110./TEMP) ;
+<11> NO2 + NO3 = NO + NO2 : 4.50E-14*EXP(-1260./TEMP) ;
+<12> NO2 + NO3 = N2O5 : KMT03 ;
+<13> O1D = 2OH : 2.14E-10*H2O ;
+<14> O3 + OH = HO2 : 1.70E-12*EXP(-940./TEMP) ;
+<15> H2 + OH = HO2 : 7.7E-12*EXP(-2100./TEMP) ;
+<16> CO + OH = HO2 : KMT05 ;
+<17> H2O2 + OH = HO2 : 2.9E-12*EXP(-160./TEMP) ;
+<18> HO2 + O3 = OH : 2.03E-16*(TEMP/300.)**(4.57)*EXP(693./TEMP) ;
+<19> HO2 + OH = PROD : 4.8E-11*EXP(250./TEMP) ;
+<20> HO2 + HO2 = H2O2 : 2.20E-13*KMT06*EXP(600./TEMP)+1.90E-33*M*KMT06*EXP(980./TEMP) ;
+<21> NO + OH = HONO : KMT07 ;
+<22> NO2 + OH = HNO3 : KMT08 ;
+<23> NO3 + OH = HO2 + NO2 : 2.0E-11 ;
+<24> HO2 + NO = NO2 + OH : 3.45E-12*EXP(270./TEMP) ;
+<25> HO2 + NO2 = HO2NO2 : KMT09 ;
+<26> HO2NO2 + OH = NO2 : 3.2E-13*EXP(690./TEMP)*1.0 ;
+<27> HO2 + NO3 = NO2 + OH : 4.0E-12 ;
+<28> HONO + OH = NO2 : 2.5E-12*EXP(260./TEMP) ;
+<29> HNO3 + OH = NO3 : KMT11 ;
+<30> O + SO2 = SO3 : 4.0E-32*EXP(-1000./TEMP)*M ;
+<31> OH + SO2 = HSO3 : KMT12 ;
+<32> HSO3 = HO2 + SO3 : 1.3E-12*EXP(-330./TEMP)*O2 ;
+<33> HNO3 = NA : 6.00E-06 ;
+<34> N2O5 = 2NA : 4.00E-04 ;
+<35> SO3 = SA : 1.20E-15*H2O ;
+<36> O3 + hv = O1D : J(J_O3_O1D) ;
+<37> O3 + hv = O : J(J_O3_O3P) ;
+<38> H2O2 + hv = 2OH : J(J_H2O2) ;
+<39> NO2 + hv = NO + O : J(J_NO2) ;
+<40> NO3 + hv = NO : J(J_NO3_NO) ;
+<41> NO3 + hv = NO2 + O : J(J_NO3_NO2) ;
+<42> HONO + hv = NO + OH : J(J_HONO) ;
+<43> HNO3 + hv = NO2 + OH : J(J_HNO3) ;
+<44> N2O5 = NO2 + NO3 : KMT04 ;
+<45> HO2NO2 = HO2 + NO2 : KMT10 ;
+<46> CH4 + OH = CH3O2 : 1.85E-12*EXP(-1690./TEMP) ;
+<47> CH3O2 + NO = CH3O + NO2 : 2.3E-12*EXP(360./TEMP)*0.999 ;
+<48> CH3O2 + NO = CH3NO3 : 2.3E-12*EXP(360./TEMP)*0.001 ;
+<49> CH3O = HCHO + HO2 : 7.2E-14*EXP(-1080./TEMP)*O2 ;
+<50> CH3O2 + NO2 = CH3O2NO2 : KMT13 ;
+<51> CH3O2NO2 = CH3O2 + NO2 : KMT14 ;
+<52> CH3O2 + NO3 = CH3O + NO2 : 1.2E-12 ;
+<53> CH3O2 + HO2 = CH3OOH : 3.8E-13*EXP(780./TEMP)*(1.-1./(1.+498.*EXP(-1160./TEMP))) ;
+<54> CH3O2 = CH3O : 2.*KCH3O2*RO2*7.18*EXP(-885./TEMP) ;
+<55> CH3O2 = HCHO : 2.*KCH3O2*RO2*0.5*(1.-7.18*EXP(-885./TEMP)) ;
+<56> CH3O2 = CH3OH : 2.*KCH3O2*RO2*0.5*(1.-7.18*EXP(-885./TEMP)) ;
+<57> CH3NO3 + OH = HCHO + NO2 : 4.0E-13*EXP(-845./TEMP) ;
+<58> CH3NO3 + hv = CH3O + NO2 : J(J_CH3NO3) ;
+<59> CH3OOH + OH = CH3O2 : 5.3E-12*EXP(190./TEMP)*0.6 ;
+<60> CH3OOH + OH = HCHO + OH : 5.3E-12*EXP(190./TEMP)*0.4 ;
+<61> CH3OOH + hv = CH3O + OH : J(J_CH3OOH) ;
+<3778> CH3O2 + HO2 = HCHO : 3.8E-13*EXP(780./TEMP)*(1./(1.+498.*EXP(-1160./TEMP))) ;
+<4278> HCHO + OH = CO + HO2 : 5.4E-12*EXP(135./TEMP) ;
+<4279> HCHO + hv = CO + 2HO2 : J(J_HCHO_H) ;
+<4280> HCHO + hv = CO + H2 : J(J_HCHO_H2) ;
+<4281> HCHO + NO3 = CO + HNO3 + HO2 : 5.5E-16 ;
+<5168> CH3OH + OH = HCHO + HO2 : 2.85E-12*EXP(-345./TEMP) ;

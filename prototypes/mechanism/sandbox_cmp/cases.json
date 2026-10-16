@@ -1,0 +1,55 @@
+{
+ "_doc": "Box cases for the MCM-subset vs SANDBOX comparison. Mixing ratios in ppb; H2O for trop is set from RH with the Buck formula of tomas_jax.gaschem.environment. Both models start from the same species; species one model lacks start at zero in the other. 'mcm_background' is added only in the MCM 'background' variant (SANDBOX has no CO or H2). hold_NOx_ppb: NO and NO2 rescaled after every 300 s so NO + NO2 stays at this value (null = NOx free). Without it the troposphere case loses 90 % of its NOx to HNO3 by noon (OH about 2e7 cm-3 with no VOC), so the 1 ppb NOx condition would hold only at sunrise.",
+ "trop": {
+  "label": "(a) troposphere: 298.15 K, 1013.25 hPa, RH 50 %, 40 N, 1 July",
+  "T": 298.15,
+  "P_hPa": 1013.25,
+  "RH": 0.5,
+  "H2O_ppm": null,
+  "lat": 40.0,
+  "lon": 0.0,
+  "start_utc": "2026-07-01T00:00:00",
+  "days": 3,
+  "analysis_day": 1,
+  "ppb": {
+   "O3": 40.0,
+   "NO": 0.2,
+   "NO2": 0.8,
+   "SO2": 1.0,
+   "CH4": 1900.0
+  },
+  "mcm_background": {
+   "CO": 100.0,
+   "H2": 500.0
+  },
+  "hold_NOx_ppb": 1.0
+ },
+ "strat": {
+  "label": "(b) lower stratosphere, SAI-like: 220 K, 50 hPa, 4 ppm H2O, 30 N, 21 June, 10 ppb SO2",
+  "T": 220.0,
+  "P_hPa": 50.0,
+  "RH": null,
+  "H2O_ppm": 4.0,
+  "lat": 30.0,
+  "lon": 0.0,
+  "start_utc": "2026-06-21T00:00:00",
+  "days": 5,
+  "analysis_day": 5,
+  "ppb": {
+   "O3": 1670.0,
+   "NO": 0.5,
+   "NO2": 0.5,
+   "HNO3": 4.55,
+   "N2O5": 0.02,
+   "CH4": 1600.0,
+   "SO2": 10.0,
+   "OH": 0.0005,
+   "HO2": 0.003
+  },
+  "mcm_background": {
+   "CO": 15.0,
+   "H2": 500.0
+  },
+  "hold_NOx_ppb": null
+ }
+}

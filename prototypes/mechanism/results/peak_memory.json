@@ -1,0 +1,2 @@
+{"method": "/usr/bin/time -l on 'python scaling.py <name> ...' (dense and sparse pieces in one process), macOS, jax 0.11.2",
+ "max_rss_bytes": {"limonene_725": 521453568, "copies4_2606": 1615577088, "copies9_5741": 5911019520}}
