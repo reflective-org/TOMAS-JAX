@@ -76,9 +76,9 @@ unit round trip.
   to 1e-12 per step, including particles at the top of the grid).
 - `geometry_fn` hook: `calc_wet_diameters` (`condensation_sink.py`), the
   same wet diameter and density as the H₂SO₄ condensation sink, from each
-  bin's actual mean mass. A bin counts as populated if Nk >
-  `NEPS_CONDSINK` = 1e10 #/cell, which is 1 cm⁻³ at the tutorial boxvol
-  of 1e10 cm³.
+  bin's actual mean mass. A bin uses its own mean mass if Nk >
+  `NEPS_CONDSINK` = 1e10 #/cell (1 cm⁻³ at the tutorial boxvol of
+  1e10 cm³), else a default size; it still takes part (n_tiny below).
 - `n_tiny` = 1e-10 #/cell, the value of the tomas-jax solver vbs-jax was
   extracted from.
 

@@ -25,6 +25,10 @@ from typing import Tuple
 from .config import ICOMP_NODIAG
 
 
+# Number MNFIX leaves in an empty bin [#/cell] (Fortran mnfix.f: parameter(Neps=1E-5))
+MNFIX_N_EMPTY = 1.0e-5
+
+
 def mnfix_jax(
     Nk: jnp.ndarray,
     Mk: jnp.ndarray,
@@ -52,7 +56,7 @@ def mnfix_jax(
 
     # Constants matching Fortran mnfix.f
     EPS = 1.0e-40
-    NEPS = 1.0e-5  # Fortran: parameter(Neps=1E-5)
+    NEPS = MNFIX_N_EMPTY
 
     # Enforce physical positivity
     Nk = jnp.maximum(Nk, 0.0)

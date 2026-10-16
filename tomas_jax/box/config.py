@@ -15,10 +15,13 @@ class AerosolStepConfig:
     """Settings of box.aerosol_step.aerosol_outer_step.
 
     Number-threshold policy: TOMAS thresholds are per grid cell (e.g.
-    NEPS_CONDSINK = 1e10 #/cell decides whether a bin is populated for
-    sink geometry, SOA geometry and nitrate placement). The tutorial box
-    volume of 1e10 cm^3 makes that 1 #/cm^3; smaller boxes treat real
-    bins as empty.
+    NEPS_CONDSINK = 1e10 #/cell decides whether a bin uses its own
+    particle size or a default one for sink and SOA geometry). The
+    tutorial box volume of 1e10 cm^3 makes that 1 #/cm^3; smaller boxes
+    treat real bins as empty there. Nitrate placement uses 2e-5 #/cell
+    (aerosol_step.NITRATE_N_MIN, just above MNFIX's empty-bin floor), SOA
+    partitioning and the PPM remap 1e-10 #/cell (SOA_N_TINY_CELL,
+    REMAP_N_MIN).
     """
     micro_dt: float = 60.0             # [s] micro-step inside an outer step
     boxvol_cm3: float = 1.0e10         # [cm^3] tutorial box volume

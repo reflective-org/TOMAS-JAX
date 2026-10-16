@@ -4,6 +4,35 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-10-16 (Fri) — Nitrate goes to thin tail bins too (Level 3 band at 40–90 nm)
+
+**Branch**: `feat/aaar-tutorial-ppm-soa` (not committed)
+
+- Audit finding: in Level 3 a band of a few particles cm⁻³ stayed behind at 40–90 nm
+  after sunset and grew with resolution (N at 40–70 nm at 24 h: 3.1 / 3.2 / 4.3 / 6.6 cm⁻³
+  at 40 / 80 / 160 / 320 bins). Cause: `aerosol_step` put N₂O₅-uptake nitrate only on
+  bins with Nk > NEPS_CONDSINK = 1e10 #/cell (1 cm⁻³ in the tutorial box), so thin tail
+  bins stopped growing at night while their neighbours moved on.
+- Fix (`box/aerosol_step.py`): gate `NITRATE_N_MIN` = 2e-5 #/cell, just above MNFIX's
+  empty-bin floor (1e-5), and each bin's share scaled by Nk/Nk(start of the outer step).
+  The driver's weights are frozen per coupling interval; with only a lower gate, a bin
+  that empties inside the outer step piles its start-of-step share onto MNFIX's floor
+  particles (MNFIX then trims it: −0.4 % nitrate in
+  `test_nitrate_injection_conserved[mnfix]`, 1 h step). The remap's 1e-10 was tried first
+  and failed that test and `test_nitrate_injection_mass_and_slot`.
+- Level 3 after the fix: band gone (N at 40–70 nm 2.7 / 0.93 / 0.35 / 0.10 cm⁻³; 0.1 %
+  quantile diameter 68 / 69 / 62 / 60 → 73 / 83 / 82 / 83 nm). Nitrate total −0.01 to
+  −0.03 % (5.160 / 5.151 / 5.148 / 5.148 µg m⁻³), N ≤ +0.02 %, median diameter −0.05 to
+  −0.17 %. MNFIX setting: nitrate −0.02 to −0.04 % (40 to 320 bins). Particle nitrate vs `nitrate_added`
+  ≤ 3e-15 every outer step, no driver warnings. Level 1 and 2 bit-identical (no nitrate).
+- Tests: `tests/test_aaar_nitrate_gate.py` (unit test, both bin-transfer settings: a
+  0.5 cm⁻³ bin gets its share, N = 0 / MNFIX-floor / below-gate bins get none, exact
+  nitrate budget; slow Level 3 test at 80 bins for the band).
+- Re-measured for ASSUMPTIONS: A12 coupling sensitivity (Level 3, 40 bins, vs 900 s):
+  600 s nitrate +3.5 %, SOA +2.4 %; 300 s +6.6 %, +4.7 % (was "≤ 3 % vs 600 s"). A8: 98.1 %
+  of the Level 2 SOA is nitrogen-containing with all 245 condensed species tracked (was
+  "99 %").
+
 ## 2026-10-15 (Thu) — PPM bin transfer: final fixes after the last verification round
 
 **Time**: ~03:00 PDT 2026-10-15

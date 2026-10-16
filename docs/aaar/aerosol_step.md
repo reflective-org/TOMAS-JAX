@@ -73,10 +73,28 @@ The outer step is split into n = ceil(dt_outer/micro_dt) equal micro-steps
 
 1. **Sources.** `Gc[SRTSO4] += h2so4_rate·dt` and `Gc[classes] += org_rate·dt`.
    `Mk[:, SRTNIT] += nitrate_rate·dt·w`, where w is `nitrate_weights` over
-   bins with Nk > 1e10 #/cell, renormalised. The particles that gained
+   the bins with particles (Nk > `NITRATE_N_MIN` = 2e-5 #/cell, just
+   above MNFIX's empty-bin floor of 1e-5 #/cell), each scaled by
+   Nk/Nk(start of the outer step), renormalised: the weights are shares
+   of the outer step's initial number, so a bin keeps its weight per
+   particle as particles move in or out during the outer step. An empty
+   bin (N = 0 or the MNFIX floor) gets none. The particles that gained
    nitrate then move between bins by the PPM remap (see
    [Bin transfer](#bin-transfer-of-soa-and-nitrate-growth_bin_transfer)).
-   Then MNFIX.
+   Then MNFIX. Until 2026-10-16 the gate was 1e10 #/cell (1 cm⁻³) and
+   the shares were not scaled: tail bins below 1 cm⁻³ got no nitrate,
+   stopped growing at night while their neighbours moved on, and left a
+   band of a few cm⁻³ at 40–90 nm in Level 3 that grew with resolution
+   (N at 40–70 nm at 24 h: 3.1 / 3.2 / 4.3 / 6.6 cm⁻³ at 40 / 80 / 160 /
+   320 bins; now 2.7 / 0.93 / 0.35 / 0.10, and the 0.1 % quantile
+   diameter 68 / 69 / 62 / 60 nm → 73 / 83 / 82 / 83 nm). Nitrate total,
+   N and median diameter changed by ≤ 0.03 %, ≤ 0.02 % and ≤ 0.17 %. A
+   lower gate alone (e.g. the remap's 1e-10) also removes the band, but
+   then MNFIX floor bins take nitrate, and a bin that empties inside a
+   long outer step piles its start-of-step share onto the floor particles
+   (MNFIX then trims it: −0.4 % nitrate in
+   `test_nitrate_injection_conserved[mnfix]`, 1 h outer step); the
+   floor-aware gate and the per-particle scaling prevent both.
 2. **Nucleation → coagulation → H₂SO₄ condensation**:
    `solvers.condensation.make_step` with the enabled subset, `jit=False`,
    PPM-JIT condensation and `cfg.water_scheme`/`cfg.water_every_process`.
@@ -94,7 +112,7 @@ of this step; the driver owns them.
 | Field | Default | Meaning |
 |---|---|---|
 | `micro_dt` | 60 s | default micro-step |
-| `boxvol_cm3` | 1e10 | tutorial box volume. TOMAS thresholds are per cell (NEPS_CONDSINK = 1e10 #/cell), so this makes "populated" mean ≥ 1 cm⁻³ |
+| `boxvol_cm3` | 1e10 | tutorial box volume. TOMAS thresholds are per cell (NEPS_CONDSINK = 1e10 #/cell picks a bin's own or a default size for sink geometry), so this makes that threshold 1 cm⁻³. Nitrate placement uses 2e-5 #/cell, SOA partitioning and the remap 1e-10 #/cell |
 | `alpha_h2so4` | 1.0 | H₂SO₄ accommodation |
 | `water_scheme` | bisulfate | `equilibrate_water` scheme |
 | `water_every_process` | False | `make_step` option |
@@ -267,9 +285,12 @@ End-of-run totals, PPM vs MNFIX: SOA within 0.21 % in all presets at 40,
 | PPM | 5.160 | 5.152 | 5.149 | 5.149 µg m⁻³ |
 | MNFIX (the previous code) | 4.962 | 5.075 | 5.139 | 5.149 |
 | PPM vs MNFIX | +4.0 % | +1.5 % | +0.20 % | −0.01 % |
+| PPM, nitrate gate fix (2026-10-16) | 5.160 | 5.151 | 5.148 | 5.148 |
+| MNFIX, nitrate gate fix | 4.961 | 5.075 | 5.138 | 5.148 |
 
-Both converge to 5.149 µg m⁻³. At 40 bins PPM is 0.21 % above the 320-bin
-value and the previous code 3.6 % below it. N₂O₅ uptake follows the
+Both converge to 5.149 µg m⁻³ (5.148 with the 2026-10-16 nitrate gate,
+see Micro-step). At 40 bins PPM was 0.21 % above the 320-bin
+value before the gate fix (0.23 % after) and the previous code 3.6 % below it. N₂O₅ uptake follows the
 particle surface, which the bin transfer changes; the +4.0 % at 40 bins
 is the old scheme's resolution error, not a new one. The 2 % acceptance
 limit against the old code is not met at 40 bins (it is at 80 bins and
@@ -328,7 +349,7 @@ processes, cfg).
 - One remap per 60 s micro-step: within a micro-step vbs-jax sees the
   particles at their in-place mean mass, which is the bin they started in.
 
-## Verified behaviour (`tests/test_aaar_aerosol.py`, `tests/test_aaar_soa_ppm.py`)
+## Verified behaviour (`tests/test_aaar_aerosol.py`, `tests/test_aaar_soa_ppm.py`, `tests/test_aaar_nitrate_gate.py`)
 
 - 12 h with no sources: no NaN, dry mass (particles + gas) conserved to
   1e-10, and N(t) identical to a coagulation-only run.
@@ -365,6 +386,12 @@ processes, cfg).
   step with both settings; with PPM the top-bin mean stays inside the
   grid and no sulfate is lost. Nitrate pushed onto top-bin particles is
   partly not added, and `nitrate_added` equals the particle nitrate.
+- Nitrate placement (`tests/test_aaar_nitrate_gate.py`): one micro-step
+  with both settings; a 0.5 cm⁻³ bin and a 1e-13 cm⁻³ bin get their
+  shares to 1e-10, bins with N = 0, at the MNFIX floor or below the gate
+  get none whatever their weight, `nitrate_added` equals the particle
+  nitrate to 1e-12, no non-finite values. Slow: Level 3 at 80 bins has
+  < 1.5 cm⁻³ at 40–70 nm at 24 h (3.2 with the old gate).
 - +30 K after 6 h of growth (40 and 160 bins with PPM, 40 with MNFIX):
   class budget 1e-12 every step, mean diameter falls monotonically with
   both settings; PPM conserves number and keeps one extremum at every step.

@@ -46,15 +46,29 @@ driver computes the mass source, with N₂O₅ in kg/cell:
 
 It passes this and `weights` to `aerosol_outer_step` as
 `AerosolForcing.nitrate_rate` and `.nitrate_weights`. In each micro-step,
-`rate·dt` is split by the weights over **populated** bins only
-(Nk > `NEPS_CONDSINK` = 1e10 #/cell = 1 cm⁻³ at the tutorial boxvol). The
-weights are renormalised over those bins. The particles that gained
+`rate·dt` is split over every bin with particles (Nk >
+`aerosol_step.NITRATE_N_MIN` = 2e-5 #/cell, just above MNFIX's empty-bin
+floor of 1e-5 #/cell) by the weights scaled by Nk/Nk(start of the outer
+step), renormalised over those bins. The weights are computed once per
+coupling interval, so this keeps each bin's weight per particle while
+particles move in or out of it. The particles that gained
 nitrate then move between bins with the PPM remap
 (`AerosolStepConfig.growth_bin_transfer = 'ppm'`, default; see
 [aerosol_step.md](aerosol_step.md#bin-transfer-of-soa-and-nitrate-growth_bin_transfer)),
-and MNFIX follows. Weight on
-empty bins is dropped, so no mass goes into a bin MNFIX would wipe. If no
-populated bin has weight, nothing is added. With the PPM remap, nitrate
+and MNFIX follows. Weight on empty bins (N = 0 or the MNFIX floor) is
+dropped, so no mass goes into a bin MNFIX would wipe. If no bin with
+particles has weight, nothing is added. Until 2026-10-16 the gate was
+`NEPS_CONDSINK` = 1e10 #/cell (1 cm⁻³ at the tutorial boxvol): thin tail
+bins got no nitrate, stopped growing at night and stayed behind as a band
+of a few cm⁻³ at 40–90 nm in Level 3 that grew with resolution (see
+[aerosol_step.md](aerosol_step.md#micro-step)). The weights themselves
+are not gated: `calc_condensation_sink` gives every bin a weight
+∝ Nk·Dp·β, using a default size (1.4·xk, 1500 kg m⁻³) for bins with
+Nk ≤ 1e10 #/cell, so a thin bin's share per particle is 0.5–0.8 times
+the value for its own particle size at 40 bins (0.7–1.0 at 160 bins;
+Level 3, measured 2026-10-16). This changes nitrate by under 0.01 % and
+was the same before the gate fix; computing these weights with each
+bin's own size is a possible follow-up. With the PPM remap, nitrate
 that would push the top bin's mean past the top of the grid (17.5 µm) is
 not added either (`cap_top_bin`), instead of MNFIX trimming that bin's
 sulfate along with it. `AerosolDiag.nitrate_added` always reports the

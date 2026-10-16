@@ -5,7 +5,8 @@
 
     1. sources: H2SO4 vapour -> Gc[SRTSO4], SOA class vapour ->
        Gc[SRTSOA1:SRTSOA1+K], particle nitrate -> Mk[:, SRTNIT]
-       (by forcing.nitrate_weights over populated bins), then MNFIX
+       (by forcing.nitrate_weights over bins with Nk > NITRATE_N_MIN),
+       then MNFIX
     2. nucleation -> coagulation -> H2SO4 condensation
        (solvers.condensation.make_step components)
     3. SOA partitioning (physics.soa_partitioning, vbs-jax)
@@ -30,8 +31,8 @@ import jax.numpy as jnp
 from ..core.config import (
     ICOMP_NODIAG, SRTSO4, SRTSOA1, SRTNIT, MW_H2SO4, SV_H2SO4,
 )
-from ..core.mnfix_jax import mnfix_jax
-from ..physics.condensation_sink import NEPS_CONDSINK, calc_condensation_sink
+from ..core.mnfix_jax import MNFIX_N_EMPTY, mnfix_jax
+from ..physics.condensation_sink import calc_condensation_sink
 from ..physics.nucleation import ricco_dunne_nucleation_rate
 from ..physics.ppm_remap import (
     BIN_TRANSFER_PPM, cap_top_bin, remap_mass_change,
@@ -54,6 +55,17 @@ _MAKE_STEP_PROCESS = {
 
 _DEFAULT_CFG = AerosolStepConfig()
 
+# Nitrate placement gate [#/cell]: N2O5-uptake nitrate goes to every bin
+# with particles, as SOA and the PPM remap do (they use 1e-10 #/cell).
+# It sits just above MNFIX's empty-bin floor (1e-5 #/cell, mnfix.f Neps)
+# so the floor's placeholder particles get none. Inside the outer step a
+# bin's share follows its number (see micro), so a bin that empties does
+# not pile its start-of-step share onto the particles left. The gate was
+# NEPS_CONDSINK (1e10 #/cell = 1 cm^-3 in the tutorial box): thin tail
+# bins then got no nitrate, stopped growing at night and left a band of a
+# few cm^-3 at 40-90 nm in Level 3 that grew with resolution.
+NITRATE_N_MIN = 2.0 * MNFIX_N_EMPTY   # 2e-5 #/cell
+
 
 class AerosolState(NamedTuple):
     """Box aerosol state (TOMAS conventions)."""
@@ -72,7 +84,9 @@ class AerosolForcing(NamedTuple):
     h2so4_rate: jnp.ndarray       # H2SO4 vapour source [kg/cell/s]
     org_rate: jnp.ndarray         # (K,) SOA class vapour sources [kg/cell/s]
     nitrate_rate: jnp.ndarray     # particle NO3 source (as NO3) [kg/cell/s]
-    nitrate_weights: jnp.ndarray  # (nbins,) per-bin share, e.g. n2o5_uptake
+    nitrate_weights: jnp.ndarray  # (nbins,) per-bin share at state.Nk, e.g.
+                                  # n2o5_uptake; scaled by Nk/state.Nk as
+                                  # bins fill or empty within the step
     nh3_conc: jnp.ndarray = 0.0   # nucleation NH3 [molec/cm^3]
     fion: jnp.ndarray = 0.0       # ion-pair production [pairs/cm^3/s]
     org_conc: jnp.ndarray = 0.0   # Riccobono organic vapour [molec/cm^3]
@@ -144,14 +158,22 @@ def _aerosol_outer_step(state, forcing, soa_params, dt_outer, *,
         state.xk, state.temp, state.pres, state.rh, state.boxvol)
     nucl_kw = dict(nh3_conc=forcing.nh3_conc, fion=forcing.fion,
                    org_conc=forcing.org_conc)
+    # nitrate weight per particle of each bin at the start of the step
+    # (the weights are per-bin shares of state.Nk; N2O5 uptake per
+    # particle depends on size, not on how many particles a bin holds)
+    n0_ok = state.Nk > NITRATE_N_MIN
+    nit_w_pp = jnp.where(
+        n0_ok, forcing.nitrate_weights / jnp.where(n0_ok, state.Nk, 1.0), 0.0)
 
     def micro(_, carry):
         Nk, Mk, Gc, j_sum, soa_ok, soa_cs, nit_sum = carry
 
-        # 1. Sources. Nitrate only goes to bins TOMAS treats as populated.
+        # 1. Sources. Nitrate goes to every bin with particles
+        # (Nk > NITRATE_N_MIN), by weight per particle x Nk, renormalised;
+        # an empty bin (N = 0 or MNFIX's floor) gets none.
         Gc = Gc.at[SRTSO4].add(forcing.h2so4_rate * dt)
         Gc = Gc.at[s0:s1].add(forcing.org_rate * dt)
-        w = jnp.where(Nk > NEPS_CONDSINK, forcing.nitrate_weights, 0.0)
+        w = jnp.where(Nk > NITRATE_N_MIN, nit_w_pp * Nk, 0.0)
         w_sum = jnp.sum(w)
         w = jnp.where(w_sum > 0.0, w / jnp.where(w_sum > 0.0, w_sum, 1.0), 0.0)
         d_nit = forcing.nitrate_rate * dt * w

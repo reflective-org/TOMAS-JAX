@@ -45,9 +45,14 @@ is assumed, why, where it is implemented and how to change it.
   k_het = condensation sink with α = γ (`physics/heterogeneous.py`).
 - Nitrate is irreversible and non-volatile. There is no NH₄NO₃ / HNO₃
   thermodynamics, and `eznh3eqm` neutralises sulfate only.
-- It is stored as NO₃ mass (MW 62) in slot 40 (`SRTNIT`) and added to
-  populated bins (≥ 1e10 #/cell) in proportion to the per-bin uptake
-  weights. The driver computes the weights once per outer step.
+- It is stored as NO₃ mass (MW 62) in slot 40 (`SRTNIT`) and added to every
+  bin with particles (Nk > `NITRATE_N_MIN` = 2e-5 #/cell, twice MNFIX's
+  empty-bin floor) in proportion to the per-bin uptake weights. The driver
+  computes the weights once per coupling interval; within it each bin keeps
+  its weight per particle (share scaled by Nk / Nk at the interval start).
+  Until 2026-10-16 only bins with ≥ 1e10 #/cell (1 cm⁻³ in the tutorial box)
+  got nitrate, which left a band of a few cm⁻³ at 40–90 nm in Level 3 that
+  grew with resolution.
 - Existing TOMAS routines treat slot 40 like the organic block: sulfate-like
   density (`density.py`) and the ammonium-bisulfate water ratio
   (`water_equilibrium.py`). For SOA partitioning it is inorganic (it does
@@ -139,8 +144,9 @@ is assumed, why, where it is implemented and how to change it.
   nitrates, which then dominate "top contributors" — a known artefact; PANs are
   thermally labile gases. A per-species table (`cstar_table`, CSV `species,cstar_ugm3`)
   overrides the estimate species by species; the result reports its provenance.
-- Measured consequence (Level 2 preset, 2026-10-13): 99 % of the particle SOA is
-  nitrogen-containing; limononic acid, limonaldehyde and most hydroperoxides get
+- Measured consequence (Level 2 preset, 2026-10-13; re-measured 2026-10-16 with all
+  245 species that hold particle mass tracked, not just the top 15): 98.1 % of the
+  particle SOA (15.86 µg/m³ at 6 h) is nitrogen-containing; limononic acid, limonaldehyde and most hydroperoxides get
   c* > 10^4.25 µg/m³ and never condense. NOx = 0 gives ~0 SOA (0.01 µg/m³), and SOA
   saturates near 16 µg/m³ for limonene 5 → 20 ppb (NOx-limited). These are artefacts
   of the placeholder, not limonene chemistry; Level 2 conclusions about yields or
@@ -184,9 +190,15 @@ is assumed, why, where it is implemented and how to change it.
 
 - All k (MCM complex rates, J at the interval midpoint, RO2 sum, k_het) are held
   fixed while the stiff solver integrates one coupling interval (300 s Level 1–2,
-  900 s Level 3; ≤ 3 % difference vs 600 s in the Level 3 benchmark). Gas and
-  aerosol are operator-split at the same interval; H2SO4 (from the SA counter) and
-  nitrate (from NA_HET) are passed to TOMAS as constant rates over the interval.
+  900 s Level 3). Gas and aerosol are operator-split at the same interval; H2SO4
+  (from the SA counter) and nitrate (from NA_HET) are passed to TOMAS as constant
+  rates over the interval.
+- Coupling-interval sensitivity, Level 3 preset at 40 bins (re-measured 2026-10-16,
+  final values at 24 h, against the preset 900 s: nitrate 5.160 µg/m³, SOA
+  7.850 µg/m³, N 2620 cm⁻³): 600 s gives nitrate +3.5 %, SOA +2.4 %, N +0.09 %;
+  300 s gives nitrate +6.6 %, SOA +4.7 %, N +0.19 %. The totals are not converged in
+  the coupling interval (the difference roughly doubles from 600 to 300 s); this
+  replaces the earlier "≤ 3 % vs 600 s".
 - Small negative concentrations from the implicit solver are clipped to zero.
 - Measured against PyCHAM (benchmark case G2, Level 2 gas phase,
   `benchmarks/pycham/README.md`): at 300 s coupling the RO2 sum is frozen at its t = 0
@@ -198,8 +210,8 @@ is assumed, why, where it is implemented and how to change it.
   convention (A14). The rest: the interval that contains sunset or sunrise uses the J
   of its midpoint (light 2 min early at 05:45–06:00; N2O5 +120 % at 06:00), and RO2 is
   0 for the first 900 s while half of the limonene reacts, so RO2+RO2 products are
-  50–60 % low early on. The "≤ 3 % vs 600 s" figure above understates the effect of
-  900 s against a continuous solution.
+  50–60 % low early on. The 600 s and 300 s numbers above show the same: 900 s is
+  several percent away from a continuous solution.
 
 ### A13 — Nucleation uses H2SO4 only
 

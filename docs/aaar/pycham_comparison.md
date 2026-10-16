@@ -446,7 +446,8 @@ More figures: [all gas-phase species with particles present](figures/pycham/S2_g
   interval instead of held inside the solver, and 900 s intervals (J step at sunset and
   sunrise, RO2 frozen). **Decision needed:** hold NO2 inside the gas solver (a
   prototype is in `benchmarks/pycham/cases/G3/hold.py`), and/or shorten the Level 3
-  coupling. ASSUMPTIONS A12 ("≤ 3 % vs 600 s") understates the effect.
+  coupling. ASSUMPTIONS A12 has the coupling sensitivity of the totals (600 s: nitrate
+  +3.5 %, SOA +2.4 %; 300 s: +6.6 %, +4.7 %, re-measured 2026-10-16).
 - **Condensation / evaporation.** Mass partitioning is right (≤ 0.7 % at 12 h,
   equilibrium within 0.03 % with Kelvin off). The approach to equilibrium is faster than
   PyCHAM's because the vbs-jax transfer coefficient is up to 1.5× larger and exceeds the
