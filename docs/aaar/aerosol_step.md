@@ -103,6 +103,18 @@ The outer step is split into n = ceil(dt_outer/micro_dt) equal micro-steps
    followed by the PPM remap of the particles whose SOA changed.
 4. **Water**: `equilibrate_water(Mk, rh, temp, cfg.water_scheme)`.
 
+**Micro-step length with nucleation.** Step 1 adds the whole micro-step's H₂SO₄,
+C ← C + P·Δt_m (C the H₂SO₄ concentration, P its production rate, Δt_m the
+micro-step), before step 2 nucleates at J_nuc(C, T), which rises roughly as C^k with
+k about 3 to 8. At Δt_m = 60 s this lifts C above its smooth path and overshoots a
+burst: peak N +5.5 % (Level 1, 265 K), +30 % (Level 2, 265 K, SO2 50 ppb) and +78 %
+(Level 3, 265 K, SO2 20 ppb) at 60 s coupling, against +1.6 %, +2.6 % and +3.5 % at
+5 s. The error remains with coagulation off (+14 % at 60 s), so it comes from the
+split between vapour source, nucleation and condensation. The driver therefore uses
+Δt_m ≤ 5 s whenever nucleation is on; the step itself has no such rule, so code that
+calls `aerosol_outer_step` in its own loop (tutorial notebook 04) has to pass the
+coupling interval and `micro_dt` from `driver.time_steps` itself.
+
 `processes` toggles steps 2–3. The order is fixed. With all processes off,
 only sources, MNFIX and water run. SO₂ chemistry and dilution are not part
 of this step; the driver owns them.
@@ -111,7 +123,7 @@ of this step; the driver owns them.
 
 | Field | Default | Meaning |
 |---|---|---|
-| `micro_dt` | 60 s | default micro-step |
+| `micro_dt` | 60 s | default micro-step; with nucleation on the driver uses at most 5 s (`driver.NUCLEATION_MAX_MICRO_DT_S`, [coupling.md](coupling.md#time-steps-with-nucleation)) |
 | `boxvol_cm3` | 1e10 | tutorial box volume. TOMAS thresholds are per cell (NEPS_CONDSINK = 1e10 #/cell picks a bin's own or a default size for sink geometry), so this makes that threshold 1 cm⁻³. Nitrate placement uses 2e-5 #/cell, SOA partitioning and the remap 1e-10 #/cell |
 | `alpha_h2so4` | 1.0 | H₂SO₄ accommodation |
 | `water_scheme` | bisulfate | `equilibrate_water` scheme |

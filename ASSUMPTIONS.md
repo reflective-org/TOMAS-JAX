@@ -256,6 +256,10 @@ is assumed, why, where it is implemented and how to change it.
   900 s Level 3). Gas and aerosol are operator-split at the same interval; H2SO4
   (from the SA counter) and nitrate (from NA_HET) are passed to TOMAS as constant
   rates over the interval.
+- With nucleation on, the interval used is at most 60 s and the aerosol micro-step
+  at most 5 s, whatever the scenario asks for (A13). The requested interval is split
+  into equal parts, so output times and the run's end do not move. Runs without
+  nucleation keep the requested interval and the 60 s micro-step.
 - Coupling-interval sensitivity, Level 3 preset at 40 bins with the Jathar c* table
   (measured 2026-10-16, final values at 24 h, against the preset 900 s: nitrate
   3.137 µg/m³, SOA 0.060 µg/m³, N 2552 cm⁻³): 600 s gives nitrate +2.6 %, SOA −10.5 %,
@@ -277,11 +281,68 @@ is assumed, why, where it is implemented and how to change it.
   50–60 % low early on. The 600 s and 300 s numbers above show the same: 900 s is
   several percent away from a continuous solution.
 
-### A13 — Nucleation uses H2SO4 only
+### A13 — Nucleation uses H2SO4 only, with short time steps
 
 - When nucleation is on, the Riccobono/Dunne scheme gets NH3 = 0, ions = 0 and
   organic vapour = 0, so it is pure binary/neutral H2SO4–H2O nucleation; organic
-  (HOM) nucleation is not represented. Off by default in all presets.
+  (HOM) nucleation is not represented. Off by default in all presets. At the preset
+  temperatures (298 K Levels 1–2, 293 K Level 3) the presets do not nucleate even with
+  it on; bursts need colder air (265–270 K) or much more SO2.
+- **Time steps (2026-10-16, for Shantanu).** With nucleation on the driver uses a
+  coupling interval of at most 60 s and an aerosol micro-step of at most 5 s
+  (`box/driver.py`: `NUCLEATION_MAX_COUPLING_DT_S`, `NUCLEATION_MAX_MICRO_DT_S`,
+  applied in `time_steps`). A requested interval Δt_req is split into
+  m = ⌈Δt_req / 60 s⌉ equal parts of Δt_req / m (300, 600 and 900 s all give 60 s), so
+  output times stay the same. The run adds a warning line and records
+  `requested_coupling_dt_s`, `coupling_dt_s`, `requested_micro_dt_s` and `micro_dt_s`
+  in its diagnostics.
+- Why: each micro-step of length Δt_m first adds the H2SO4 produced over it,
+  C ← C + P·Δt_m (C the H2SO4 concentration, P its production rate), and then
+  nucleates at J_nuc(C, T), which rises roughly as C^k with k about 3 to 8. A long
+  micro-step therefore lifts C above its smooth path and overshoots the burst. The
+  coupling interval matters through the chemistry: OH, and so P, changes within
+  minutes but is frozen per interval (A12).
+- Measured (40 bins; reference 30 s coupling with a 1 s micro-step, itself about 1 %
+  from converged; peak N / final N / GMD deviation):
+
+  | case | old steps (coupling / micro-step) | old | 60 s / 5 s |
+  |---|---|---|---|
+  | Level 1, 265 K, P = 1e6 cm⁻³ s⁻¹ | 300 s / 60 s | +5.5 / +3.0 / −1.1 % | +1.6 / +0.8 / −0.3 % |
+  | Level 1, 270 K, P = 1e6 cm⁻³ s⁻¹ | 300 s / 60 s | +6.7 / +6.0 / −3.1 % | +1.5 / +1.2 / −1.2 % |
+  | Level 2, 265 K, SO2 50 ppb | 300 s / 60 s | +15.7 / +8.6 / −3.4 % | +2.6 / +1.6 / −0.6 % |
+  | Level 2, 265 K, SO2 20 ppb | 300 s / 60 s | +19.4 / +17.5 / −8.8 % | +0.8 / +0.7 / −0.2 % |
+  | Level 3, 265 K, SO2 20 ppb | 900 s / 60 s | +57.6 / +28.1 / −14.5 % | +3.5 / +2.0 / −1.1 % |
+
+  A 60 s coupling interval alone does not help (Level 3 at 60 s / 60 s: +77.8 %
+  peak N); a 10 s micro-step still gives +8 to +9 % in Levels 2 and 3; 2 s is needed
+  for 2 %. 120 s / 5 s is also within 5 % (largest +2.6 %) and is the fallback if run
+  time matters, but only because errors cancel: with a 2 s micro-step, 120 s coupling
+  alone is −4.3 % in Level 2 (SO2 50 ppb), against −0.7 % at 60 s. Long coupling and
+  long micro-steps err in opposite directions in Levels 2 and 3, so the old defaults
+  could look better than either change alone.
+- Bins: the table is for 40 bins. At 80 bins (tutorial notebook 01), Level 1 at 265 K
+  with 60 s / 5 s is peak N +5.9 %, final N
+  +2.8 % and GMD −1.0 % against 30 s / 0.5 s (60 s / 2 s: +4.5 %, +2.1 %, −0.7 %;
+  30 s / 1 s: +2.0 %, +0.9 %, −0.3 %). The 80-bin reference is not converged (0.5 s
+  and 1 s still differ by 2 %), so at 80 bins 5 s is outside 5 % on peak N and 2 s
+  is marginal. The web API allows only 40 bins. Run time at 80 bins: 52 s (5 s) and
+  138 s (2 s) for the 12 h Level 1 run, against 14 s at 40 bins.
+- Level 3 side effect: turning nucleation on also moves the coupling interval from
+  900 s to 60 s, so SOA and nitrate change even without new particles. Level 3 preset
+  at 293 K (no burst, peak N 3000 cm⁻³ either way), final values at 24 h, on against
+  off: SOA −27 %, nitrate +6.6 %, sulfate +1.0 %, GMD +1.0 %. The 60 s run agrees with
+  30 s / 2.5 s within 0.8 %, so this is the A12 coupling error of the 900 s run, not
+  nucleation. Levels 1 and 2 move only in GMD (−1.3 %, −1.2 %). To isolate nucleation
+  in Level 3, run the off case at 60 s coupling as well.
+- Cost (warm, laptop): Level 1 with nucleation 1.3 → 14 s, Level 2 5.4 → 25 s,
+  Level 3 11.5 → 112 s for the preset durations (also 112 s on one thread, as in the
+  API workers, whose job limit is 120 s). The cost does not depend on whether a burst
+  happens and grows in proportion to the run length, so the longest run the API
+  allows, 48 h, would take about 225 s in Level 3 and 200 s in Level 2 (estimated).
+- Not tried: adding the H2SO4 production gradually within the micro-step instead of
+  all at its start might remove most of the micro-step error at lower cost.
+- `driver.run(..., nucleation_caps=False)` turns the caps off, for convergence
+  studies only.
 
 ### A14 — Seed and box conventions
 
@@ -338,3 +399,10 @@ is assumed, why, where it is implemented and how to change it.
    Level 3 coupling (A12)? Use mfp = 3D/c̄ (or a matching Fuchs–Sutugin form) and a
    per-class diffusion volume in vbs-jax (A6)? Report SOA by class rather than by
    species (A6 tracker)?
+7. Nucleation time steps (A13): with nucleation on, runs now use 60 s coupling and a
+   5 s aerosol micro-step (5 % accuracy on the burst at 40 bins; Level 3 takes about
+   2 minutes for 24 h, about 4 minutes for the API's longest run of 48 h, so the API
+   job limit has to rise to about 400 s or the run length be limited when nucleation
+   is on). Acceptable, or would you rather have a cheaper scheme (production spread
+   through the micro-step) or ternary/organic nucleation for the tutorial's
+   nucleation case?

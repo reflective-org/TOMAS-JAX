@@ -4,6 +4,56 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-10-16 (Fri) — Short time steps whenever nucleation is on
+
+**Branch**: `aaar-nucleation-dt` (from `feat/aaar-tutorial` 5227ddd; not committed)
+
+- Prompted by Ali: a 15 min interval is far too long for nucleation; 1–2 min at most.
+  A convergence study (Levels 1–3 with bursts at 265–270 K, 40 bins, reference 30 s
+  coupling with a 1 s micro-step) found that the aerosol micro-step matters more than
+  the coupling interval: at 60 s coupling and the 60 s micro-step, peak N is +30 % in
+  Level 2 (265 K, SO2 50 ppb) and +78 % in Level 3 (265 K, SO2 20 ppb). 60 s coupling
+  with a 5 s micro-step is within 5 % on peak N, final N and GMD in every nucleating
+  case (largest +3.5 %). Details: ASSUMPTIONS A13, `docs/aaar/coupling.md` ("Time
+  steps with nucleation").
+- `box/driver.py`: `NUCLEATION_MAX_COUPLING_DT_S = 60.0`, `NUCLEATION_MAX_MICRO_DT_S =
+  5.0` and `time_steps(scenario, aerosol_cfg, nucleation_caps)`, used once at the start
+  of `run`. With nucleation on, the requested interval is split into
+  m = ⌈Δt_req / 60 s⌉ equal parts (300/600/900 s → 60 s) and the micro-step is
+  min(requested, 5 s); output times and the end time are unchanged. One warning line
+  says what was shortened; `diagnostics` gains `requested_coupling_dt_s`,
+  `requested_micro_dt_s` and `micro_dt_s` (`coupling_dt_s` is now the value used).
+  `run(..., nucleation_caps=False)` turns the caps off for convergence studies.
+  `warmup(nucleation=True)` also compiles each preset with nucleation on at 60 s
+  (warmup 8 → 11 s).
+- Runs without nucleation are bit-identical: all three presets at full length give
+  the same `RunResult` (every field and diagnostic except the three new keys,
+  runtime and code version) as 5227ddd.
+- Cost with nucleation on (warm, laptop): Level 1 1.3 → 14 s, Level 2 5.4 → 25 s,
+  Level 3 11.5 → 112 s for the preset durations, whether or not a burst happens. The
+  API allows runs up to 48 h, which would take about 225 s (Level 3) and 200 s
+  (Level 2; both estimated in proportion to duration). Decision for the API: raise the
+  tutorial job limit (`JOB_TIMEOUT_S`, now 120 s) to about 400 s, or limit the run
+  length when nucleation is on. The 60 s cap stays: the 120 s fallback is within 5 %
+  only because its −4 % coupling error (Level 2) cancels part of the micro-step error.
+- The 5 % accuracy is for 40 bins. At 80 bins (notebook 01): Level 1 at 265 K with 60 s / 5 s is
+  +5.9 % on peak N (final N +2.8 %, GMD −1.0 %) against a 30 s / 0.5 s reference that
+  is itself not converged (1 s differs by 2 %); 60 s / 2 s is +4.5 %. So the cap is
+  not within 5 % at 80 bins; the web API uses only 40 bins. Level 1 takes 52 s at
+  80 bins (5 s) and 138 s (2 s) for 12 h.
+- Level 3 with nucleation on but no burst still changes SOA (−27 %) and nitrate
+  (+6.6 %) at 24 h, because the coupling interval drops from 900 s to 60 s; the 60 s
+  values are the accurate ones (A12, A13). Noted in A13 and `docs/aaar/coupling.md`.
+- The warning names no repository file, since the web app shows it to students.
+  `micro_dt_s` is documented as the micro-step target.
+- Tests: `tests/test_aaar_nucleation_dt.py`, 14 tests (caps per preset, splitting
+  rule, warning and diagnostics, observer sees 60 s intervals, nucleation off
+  unchanged, Level 1 265 K burst within 5 % of a 30 s / 1 s reference and the uncapped
+  run more than twice as far off, and no new aerosol-step compile for a capped preset
+  run after `warmup()`).
+
+---
+
 ## 2026-10-16 (Fri) — Per-species c* table from Shantanu Jathar is the Level 2/3 default
 
 **Branch**: `aaar-cstar` (from `feat/aaar-tutorial` 2faa391; not committed)

@@ -11,16 +11,20 @@ Operator split per coupling interval dt_c (``Scenario.numerics.coupling_dt_s``):
 5. scatter the class gas change back to species; reset "hold constant" species
 
 Level 1 (no chemistry) skips 1-3 and 5: one surrogate class with a production rate.
+
+With nucleation on, the coupling interval and the aerosol micro-step are shortened to
+NUCLEATION_MAX_COUPLING_DT_S and NUCLEATION_MAX_MICRO_DT_S (``time_steps``).
 """
 from __future__ import annotations
 
 import dataclasses
 import functools
 import hashlib
+import math
 import time
 from importlib import metadata
 from pathlib import Path
-from typing import Callable
+from typing import Callable, NamedTuple
 
 import jax.numpy as jnp
 import numpy as np
@@ -50,6 +54,68 @@ from .scenario import Scenario, load_preset, list_presets
 
 ACCOMMODATION_ORGANIC = 1.0     # SOA mass accommodation coefficient [-] (vbs-jax default)
 COUNTER_SPECIES = ("SA", NA_HET)   # read and reset by the driver; not user inputs
+
+# Time-step caps with nucleation on (ASSUMPTIONS A12/A13; docs/aaar/coupling.md, "Time
+# steps with nucleation"). Nucleation convergence study, 2026-10-16 (Levels 1-3 with
+# nucleation bursts at 265-270 K; reference 30 s coupling with a 1 s micro-step): a 60 s
+# coupling interval with a 5 s micro-step keeps peak N, final N and GMD within 5 % in
+# every nucleating case (largest +3.5 %, Level 3 at 265 K and SO2 20 ppb). The 60 s
+# default micro-step overshoots the burst (peak N +30 % in Level 2, +78 % in Level 3,
+# because H2SO4 production is added at the start of each micro-step and binary J rises
+# steeply with H2SO4); 10 s still gives +8 to +9 %. Coupling intervals longer than 60 s
+# freeze OH, and so the H2SO4 production rate, for too long (Level 2 at 900 s: -26 %;
+# at 120 s with a 2 s micro-step still -4 %, so 120 s / 5 s passes only because the two
+# errors partly cancel).
+# Runs without nucleation are not changed.
+NUCLEATION_MAX_COUPLING_DT_S = 60.0   # [s]
+NUCLEATION_MAX_MICRO_DT_S = 5.0       # [s]
+
+
+class TimeSteps(NamedTuple):
+    """Coupling interval and micro-step a run uses (see :func:`time_steps`)."""
+    coupling_dt_s: float            # coupling interval used [s]
+    micro_dt_s: float               # aerosol micro-step target [s]; the step takes
+                                    # ceil(coupling_dt_s / micro_dt_s) equal micro-steps
+    split: int                      # used intervals per requested coupling interval
+    requested_coupling_dt_s: float  # Scenario.numerics.coupling_dt_s [s]
+    requested_micro_dt_s: float     # AerosolStepConfig.micro_dt [s]
+
+
+def time_steps(scenario: Scenario, aerosol_cfg: AerosolStepConfig | None = None,
+               nucleation_caps: bool = True) -> TimeSteps:
+    """The coupling interval and aerosol micro-step ``run`` uses for ``scenario``.
+
+    Without nucleation they are the requested values. With nucleation on (and
+    ``nucleation_caps``), the requested coupling interval is cut into the smallest whole
+    number m of equal parts that are at most NUCLEATION_MAX_COUPLING_DT_S long (300, 600
+    and 900 s all give 60 s; 90 s gives 45 s). Because each part is an exact fraction of
+    the requested interval, the run still ends at the requested duration and writes output
+    at the same times as without the cap. The micro-step is at most
+    NUCLEATION_MAX_MICRO_DT_S; a shorter requested micro-step is kept.
+    """
+    cfg = AerosolStepConfig() if aerosol_cfg is None else aerosol_cfg
+    dt_req, micro_req = float(scenario.numerics.coupling_dt_s), float(cfg.micro_dt)
+    if not (nucleation_caps and scenario.processes.nucleation):
+        return TimeSteps(dt_req, micro_req, 1, dt_req, micro_req)
+    split = max(1, math.ceil(dt_req / NUCLEATION_MAX_COUPLING_DT_S - 1e-9))
+    return TimeSteps(dt_req / split, min(micro_req, NUCLEATION_MAX_MICRO_DT_S), split,
+                     dt_req, micro_req)
+
+
+def _time_step_warning(ts: TimeSteps) -> list[str]:
+    """One warning line when the nucleation caps shortened a time step."""
+    parts = []
+    if ts.coupling_dt_s != ts.requested_coupling_dt_s:
+        parts.append(f"the coupling interval is {ts.coupling_dt_s:g} s instead of "
+                     f"{ts.requested_coupling_dt_s:g} s")
+    if ts.micro_dt_s != ts.requested_micro_dt_s:
+        parts.append(f"the aerosol micro-step is {ts.micro_dt_s:g} s instead of "
+                     f"{ts.requested_micro_dt_s:g} s")
+    if not parts:
+        return []
+    # shown to students in the web app, so no reference to repository files here
+    return [f"Nucleation is on, so {' and '.join(parts)}, to follow the nucleation burst. "
+            f"Output times are unchanged."]
 
 
 @functools.lru_cache(maxsize=1)
@@ -133,8 +199,18 @@ def _processes(s: Scenario, has_organics: bool) -> tuple[str, ...]:
 def run(scenario: Scenario, progress_cb: Callable[[float], None] | None = None,
         cancel: Callable[[], bool] | None = None,
         observer: Callable[[float, dict], None] | None = None,
-        aerosol_cfg: AerosolStepConfig | None = None) -> RunResult:
+        aerosol_cfg: AerosolStepConfig | None = None,
+        nucleation_caps: bool = True) -> RunResult:
     """Run one scenario.
+
+    With nucleation on, the coupling interval and the aerosol micro-step are shortened
+    to at most NUCLEATION_MAX_COUPLING_DT_S and NUCLEATION_MAX_MICRO_DT_S
+    (:func:`time_steps`); a warning says so and ``diagnostics`` records the requested
+    and the used values (``requested_coupling_dt_s``, ``coupling_dt_s``,
+    ``requested_micro_dt_s``, ``micro_dt_s``). ``micro_dt_s`` is the target length: the
+    aerosol step splits each coupling interval into ceil(coupling_dt_s / micro_dt_s)
+    equal micro-steps, which can be slightly shorter. ``nucleation_caps=False`` turns
+    the caps off; it exists for time-step convergence studies only.
 
     ``aerosol_cfg`` (optional) replaces the default ``AerosolStepConfig()``, e.g.
     ``AerosolStepConfig(growth_bin_transfer="mnfix")`` to compare with the previous (MNFIX)
@@ -156,13 +232,16 @@ def run(scenario: Scenario, progress_cb: Callable[[float], None] | None = None,
     cfg = AerosolStepConfig() if aerosol_cfg is None else aerosol_cfg
     boxvol = cfg.boxvol_cm3
     env = s.environment
-    dt_c = float(s.numerics.coupling_dt_s)
-    n_int = int(round(s.duration_h * 3600.0 / dt_c))
-    if n_int < 1 or abs(n_int * dt_c - s.duration_h * 3600.0) > 1e-6:
+    ts = time_steps(s, cfg, nucleation_caps)
+    dt_req = ts.requested_coupling_dt_s
+    n_req = int(round(s.duration_h * 3600.0 / dt_req))
+    if n_req < 1 or abs(n_req * dt_req - s.duration_h * 3600.0) > 1e-6:
         raise ValueError(f"duration ({s.duration_h} h) must be a positive multiple of the "
-                         f"coupling interval ({dt_c:.0f} s)")
-    out_every = max(1, int(round(s.numerics.output_dt_s / dt_c)))
-    warnings: list[str] = []
+                         f"coupling interval ({dt_req:.0f} s)")
+    # output times follow the requested interval; the caps only split each interval
+    dt_c, n_int = ts.coupling_dt_s, n_req * ts.split
+    out_every = max(1, int(round(s.numerics.output_dt_s / dt_req))) * ts.split
+    warnings: list[str] = _time_step_warning(ts)
     if s.processes.chemistry and s.surrogate is not None:
         raise ValueError("a scenario uses either the surrogate organic or chemistry, not both")
 
@@ -281,7 +360,7 @@ def run(scenario: Scenario, progress_cb: Callable[[float], None] | None = None,
             state = state._replace(Gc=jnp.asarray(gc_new))
         forcing = AerosolForcing(jnp.float64(h2so4_rate), jnp.asarray(org_rate, dtype=jnp.float64),
                                  jnp.float64(nitrate_rate), jnp.asarray(weights, dtype=jnp.float64))
-        state, diag = aerosol_outer_step(state, forcing, soa, dt_c, micro_dt=cfg.micro_dt,
+        state, diag = aerosol_outer_step(state, forcing, soa, dt_c, micro_dt=ts.micro_dt_s,
                                          processes=processes, cfg=cfg)
         soa_bad += int(not bool(diag.soa_time_integrated))
         nitrate_expected += nitrate_rate * dt_c
@@ -310,7 +389,10 @@ def run(scenario: Scenario, progress_cb: Callable[[float], None] | None = None,
     return _assemble(s, rec, xk, boxvol, air, chem, k_cls, cstar, cstar_source,
                      bridge if chem else None, j_names, warnings,
                      {"gas_solver_steps": gas_steps, "runtime_s": time.perf_counter() - t_wall,
-                      "code_version": code_version(), "coupling_dt_s": dt_c,
+                      "code_version": code_version(),
+                      "requested_coupling_dt_s": dt_req, "coupling_dt_s": dt_c,
+                      "requested_micro_dt_s": ts.requested_micro_dt_s,
+                      "micro_dt_s": ts.micro_dt_s,
                       "processes": list(processes),
                       "aerosol_cfg": _cfg_changes(cfg)})
 
@@ -394,10 +476,20 @@ def _scenario_dict(s: Scenario) -> dict:
     return d
 
 
-def warmup() -> None:
-    """Build the mechanism, the TUV-x J table and compile every preset's step shapes."""
+def warmup(nucleation: bool = True) -> None:
+    """Build the mechanism, the TUV-x J table and compile every preset's step shapes.
+
+    With ``nucleation`` (default) each preset is also compiled with nucleation on, whose
+    shorter time steps (NUCLEATION_MAX_COUPLING_DT_S, NUCLEATION_MAX_MICRO_DT_S) are
+    separate compiles. 300, 600 and 900 s all split into 60 s intervals, so one 60 s
+    variant per preset covers them.
+    """
     for name in list_presets():
         s = load_preset(name)
-        short = s.replace(duration_h=2 * s.numerics.coupling_dt_s / 3600.0,
-                          numerics={"output_dt_s": s.numerics.coupling_dt_s})
-        run(short)
+        variants = [s]
+        if nucleation:
+            variants.append(s.replace(processes={"nucleation": True},
+                                      numerics={"coupling_dt_s": NUCLEATION_MAX_COUPLING_DT_S}))
+        for v in variants:
+            dt = v.numerics.coupling_dt_s
+            run(v.replace(duration_h=2 * dt / 3600.0, numerics={"output_dt_s": dt}))
