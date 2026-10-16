@@ -336,9 +336,12 @@ is assumed, why, where it is implemented and how to change it.
   in Level 3, run the off case at 60 s coupling as well.
 - Cost (warm, laptop): Level 1 with nucleation 1.3 → 14 s, Level 2 5.4 → 25 s,
   Level 3 11.5 → 112 s for the preset durations (also 112 s on one thread, as in the
-  API workers, whose job limit is 120 s). The cost does not depend on whether a burst
-  happens and grows in proportion to the run length, so the longest run the API
-  allows, 48 h, would take about 225 s in Level 3 and 200 s in Level 2 (estimated).
+  API workers). The cost does not depend on whether a burst happens and grows in
+  proportion to the run length: the longest run the API allows, 48 h, takes 235 s in
+  Level 3 and 204 s in Level 2 (measured 2026-10-17 through the API worker's job path,
+  one thread, laptop under load). The API's tutorial job limit was raised from 120 s
+  to 480 s for these runs (tomas-api ADR-15); a worker core more than about 2 times
+  slower than the laptop would hit it on the 48 h Level 3 run.
 - Not tried: adding the H2SO4 production gradually within the micro-step instead of
   all at its start might remove most of the micro-step error at lower cost.
 - `driver.run(..., nucleation_caps=False)` turns the caps off, for convergence

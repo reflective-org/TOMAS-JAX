@@ -4,6 +4,13 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-10-17 (Sat) — Measured 48 h nucleation run times
+
+- ASSUMPTIONS A13 and docs/aaar/coupling.md: the 48 h nucleation run times are now
+  measured (Level 3 235 s, Level 2 204 s, one thread through the tomas-api worker job
+  path) instead of estimated, and the API's tutorial job limit is 480 s (was 120 s).
+  Docs only; `code_version()` is unchanged.
+
 ## 2026-10-17 (Sat) — Input checks on the scenario
 
 **Branch**: `aaar-input-checks` (from `feat/aaar-tutorial` 49011b4)

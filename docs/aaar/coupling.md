@@ -128,8 +128,9 @@ Cost (warm process, laptop): with nucleation on, Level 1 takes about 14 s (1.3 s
 without the caps), Level 2 about 25 s (5.4 s), Level 3 about 112 s (11.5 s; the same on
 one thread, as in the API workers). The cost is the same whether or not a burst
 happens, and it grows in proportion to the run length: at the API's longest allowed
-run, 48 h, Level 3 would take about 225 s and Level 2 about 200 s (estimated, not
-measured). Any job time limit for runs with nucleation has to allow for that.
+run, 48 h, Level 3 takes 235 s and Level 2 204 s (measured 2026-10-17 through the API
+worker's job path, one thread). The API's tutorial job limit is 480 s for this reason
+(raised from 120 s; tomas-api ADR-15).
 
 Units: gas state molec/cm³; hand-off kg/cell; TOMAS #/cell and kg/cell with
 boxvol = 1e10 cm³ (so per-cell thresholds mean 1 #/cm³); outputs µg/m³, ppb, cm⁻³.
