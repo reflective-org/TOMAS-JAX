@@ -9,7 +9,17 @@ c*-class SOA partitioning and N2O5 uptake (`aerosol_step.md`, `soa_partitioning.
 
 - `box/scenario.py`: `Scenario` (frozen dataclasses, units in field names), TOML
   presets in `box/presets/` (`load_preset`, `list_presets`), nested overrides via
-  `Scenario.replace(environment={"rh": 0.8})`.
+  `Scenario.replace(environment={"rh": 0.8})`. Every class checks its values when it is
+  built and raises `ValueError` naming the field: wrong types (a process switch must be
+  `True` or `False`, so `"off"` is refused instead of counting as on; `numerics.nbins` a
+  whole number) and values outside what the model accepts (RH and the seed organic
+  fraction 0–1, with "did you mean 0.8?" for a percentage; temperature 100–400 K, with
+  the kelvin value for a Celsius slip; pressure up to 120 kPa; seed GSD above 1;
+  photolysis mode, latitude, solar zenith angle; non-negative amounts and rates; γ 0–1;
+  positive duration and time steps). A single species name for `hold_constant` counts as
+  one species (`"NO2"`, not N, O and 2). The checks only raise, so valid scenarios give
+  bit-identical results. The web API's narrower limits (`tomas-api` `limits.py`) apply
+  on top.
 - `box/result.py`: `RunResult` (JSON via `to_dict()`): size distributions
   (dN/dlog10Dp, dry dM/dlog10Dp; diameters at ρ = 1400 kg/m³ as in tomas-api),
   composition totals (N, SO4, NIT, SOA, POA, NH4, H2O, dry), gases [ppb], radicals

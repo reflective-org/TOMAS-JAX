@@ -4,9 +4,27 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-10-17 (Sat) — Input checks on the scenario
+
+**Branch**: `aaar-input-checks` (from `feat/aaar-tutorial` 49011b4)
+
+- Prompted by Ali's go-ahead ("Fix now, small patch") after a check through the tutorial
+  helpers showed three silent mistakes: RH 80 ran as RH = 80, `hold_constant="NO2"` held
+  N, O and 2, and `coagulation="off"` stayed on.
+- `box/scenario.py`: each class (`SeedMode`, `Seed`, `Environment`, `Photolysis`,
+  `Surrogate`, `Processes`, `Numerics`, `Scenario`) checks its fields in `__post_init__`
+  and raises `ValueError` naming the field, with hints for a percentage given as a
+  fraction ("did you mean 0.8?") and a Celsius temperature. Process switches must be
+  `True`/`False` (numpy bools allowed). A string `hold_constant` is one species.
+- Valid inputs are unchanged: short Level 1 and Level 2 runs are bit-identical to 49011b4
+  (only `code_version` and the runtime differ).
+- Tests: `tests/test_aaar_scenario_checks.py` (15).
+- Docs: `docs/aaar/coupling.md` (Inputs and outputs), CLAUDE.md.
+
 ## 2026-10-16 (Fri) — Short time steps whenever nucleation is on
 
-**Branch**: `aaar-nucleation-dt` (from `feat/aaar-tutorial` 5227ddd; not committed)
+**Branch**: `aaar-nucleation-dt` (from `feat/aaar-tutorial` 5227ddd; committed as 49011b4,
+tag `aaar-stable-2026-10-17`)
 
 - Prompted by Ali: a 15 min interval is far too long for nucleation; 1–2 min at most.
   A convergence study (Levels 1–3 with bursts at 265–270 K, 40 bins, reference 30 s
