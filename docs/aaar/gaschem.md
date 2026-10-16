@@ -14,7 +14,7 @@ frequencies). `gaschem` does not import TOMAS so it can be split out later.
 | `solver.py` | `integrate_interval(mech, y, k, dt)` — diffrax Kvaerno3 |
 | `environment.py` | `air_environment(T, P, RH)` -> M, O2, N2, H2O [molec/cm³] |
 | `photolysis.py` | `JProvider` — TUV-x / MCM / constant / off |
-| `volatility.py` | Li et al. (2016) c*, closed-shell filter, `assign_classes` |
+| `volatility.py` | c* table loader, Li et al. (2016) c* fallback, closed-shell filter, `assign_classes` |
 
 ## Rate constants (KPP semantics)
 
@@ -80,13 +80,27 @@ The tuvx-jax `data/` directory is found via `TUVX_JAX_ROOT` or the installed
 
 ## Volatility
 
-`assign_classes(parsed, log10_cstar=None)` keeps closed-shell organics (even
-H + N + Cl + Br) with c*(298 K) ≤ 10^4.25 µg/m³ (245 species with the placeholder
-c*) and lumps them into 15 half-decade classes (log10 c* = −3 … 4). Class c* = centre,
-ΔHvap = 131 − 11·log10 c* kJ/mol (Epstein et al., 2010), class MW = mean member MW.
-c* comes from a per-species table when given (`cstar_table`, CSV
-`species,cstar_ugm3`) and otherwise from Li et al. (2016), Table 1 coefficients
-transcribed from the paper.
+`assign_classes(parsed, log10_cstar=None, table_source="table")` keeps closed-shell
+organics (even H + N + Cl + Br) with c*(298 K) ≤ 10^4.25 µg/m³ and lumps them into 15
+half-decade classes (log10 c* = −3 … 4). Class c* = centre, ΔHvap = 131 − 11·log10 c*
+kJ/mol (Epstein et al., 2010), class MW = mean member MW.
+
+c* comes from a per-species table (`Scenario.cstar_table`, a CSV file name in
+`gaschem/mechanisms/`, read by `load_cstar_table`: columns `species` and
+`cstar_ugm3` or `cstar_ug_m3_298.15K`, `#` comment lines skipped, duplicates and
+non-positive values rejected). The Level 2 and 3 presets use
+`mcm_limonene_cstar_298K.csv` (`config.DEFAULT_CSTAR_TABLE`), sent by Shantanu Jathar
+on 2026-10-16: Nannoolal et al. (2008) vapour pressures from PyCHAM 5.8.0 at 298.15 K
+converted to C* (provenance and sha256 in `mechanisms/mcm_limonene_cstar_298K.provenance.md`,
+ASSUMPTIONS A8). It lists 458 of the mechanism's 462 closed-shell organics and 242
+radicals (ignored); 228 species condense. Closed-shell organics missing from a table
+(here LIMONENE, D9, CO, CH4, all gas-only) get the Li et al. (2016) estimate (Table 1
+coefficients transcribed from the paper) and are listed in `ClassMap.fallback` and the
+run's `diagnostics["cstar_fallback"]`. If any of them is condensable (a partial table,
+e.g. a few user values written without the rest of the default table), the run adds a
+`diagnostics["warnings"]` entry; to change a few c* values, merge them into the full
+table. `cstar_table = None` (the `Scenario` default) uses Li et al. (2016) for every
+species (245 condense).
 
 ## Tests
 
@@ -94,7 +108,9 @@ transcribed from the paper.
 mechanism quirks), K values at 298 K, J parameterization, k decomposition and the
 expression allowlist, RHS vs a naive loop (1e-12), dark-ozonolysis initial rate,
 a 1 h daytime integration, photolysis modes vs direct TUV-x (1 %), Li et al. examples,
-closed-shell rule, class assignment and table override.
+closed-shell rule, class assignment and table override, the c* table loader (comments,
+both column names, validation), the default table's sha256, coverage (every
+condensable species from the table or a recorded fallback) and class counts.
 
 ## References
 

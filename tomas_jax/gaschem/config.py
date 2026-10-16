@@ -37,6 +37,15 @@ MECHANISM_DIR = Path(__file__).parent / "mechanisms"
 # MCM v3.3.1 limonene subset (SCENTS 04272022) supplied by S. Jathar, kept
 # byte-identical; tutorial-specific edits are applied in code (see ASSUMPTIONS.md).
 LIMONENE_EQN = MECHANISM_DIR / "limonene_mcm.eqn"
+# Per-species c* (298.15 K) of the limonene mechanism supplied by S. Jathar, kept
+# byte-identical (provenance and sha256 in mechanisms/*.provenance.md; ASSUMPTIONS A8).
+# Default `cstar_table` of the Level 2 and 3 presets.
+DEFAULT_CSTAR_TABLE = "mcm_limonene_cstar_298K.csv"
+# Provenance label reported in ClassMap.source for known tables (file name -> label).
+CSTAR_TABLE_SOURCES = {
+    DEFAULT_CSTAR_TABLE: ("Shantanu Jathar (2026-10-16) table: Nannoolal et al. (2008) "
+                          "vapour pressures via PyCHAM 5.8.0, c* at 298.15 K"),
+}
 
 # Product names that carry no chemical meaning and are dropped at parse time.
 DROPPED_PRODUCTS = frozenset({"PROD"})

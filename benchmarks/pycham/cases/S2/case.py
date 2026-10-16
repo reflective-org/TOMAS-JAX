@@ -55,7 +55,9 @@ def scenario(coupling_dt_s: float | None = None, partitioning: bool = True) -> S
     processes = dict(S2["processes"], chemistry=True)
     if not partitioning:
         processes.update(soa_partitioning=False, h2so4_condensation=False)
-    return s.replace(name=f"benchmark {CASE}", processes=processes,
+    # S2 was run (2026-10-14) and its PyCHAM inputs are built with the Li et al. (2016) c*
+    # (inputs.py); the presets now default to the Jathar table, so pin Li here (A8).
+    return s.replace(name=f"benchmark {CASE}", processes=processes, cstar_table=None,
                      gamma_n2o5=0.0, numerics={"coupling_dt_s": dt, "output_dt_s": dt})
 
 

@@ -28,7 +28,8 @@ import numpy as np
 from .. import __version__
 from ..core.config import (MW_H2SO4, MW_NO3, N_GAS_SPECIES, N_SOA_CLASSES, SRTH2O, SRTNH4,
                            SRTNIT, SRTORG_NUC, SRTSO4, SRTSOA1, SV_H2SO4)
-from ..gaschem.config import DHVAP_A_KJ, DHVAP_B_KJ, MECHANISM_DIR, TUVX_CONFIG
+from ..gaschem.config import (CSTAR_TABLE_SOURCES, DHVAP_A_KJ, DHVAP_B_KJ, MECHANISM_DIR,
+                              TUVX_CONFIG)
 from ..gaschem.environment import air_environment
 from ..gaschem.mechanism import EnvRates, Mechanism, RateModel
 from ..gaschem.photolysis import SOURCES as J_SOURCES
@@ -62,8 +63,29 @@ def _class_map(cstar_table: str | None):
     parsed = _chemistry()[0]
     if cstar_table and Path(cstar_table).name != cstar_table:
         raise ValueError(f"cstar_table must be a file name in {MECHANISM_DIR.name}/: {cstar_table!r}")
-    table = load_cstar_table(MECHANISM_DIR / cstar_table) if cstar_table else None
-    return assign_classes(parsed, table)
+    if not cstar_table:
+        return assign_classes(parsed)
+    # MECHANISM_DIR is read at call time (the tutorial points it at its own table folder)
+    return assign_classes(parsed, load_cstar_table(MECHANISM_DIR / cstar_table),
+                          CSTAR_TABLE_SOURCES.get(cstar_table, f"table {cstar_table}"))
+
+
+def _cstar_fallback_warnings(class_map, cstar_table: str | None) -> list[str]:
+    """Warn when a c* table leaves condensable species on the Li et al. (2016) estimate.
+
+    A partial table (e.g. a few user values written without the rest of the default
+    table) silently mixes two c* sources; the shipped table leaves none (ASSUMPTIONS A8).
+    """
+    if not cstar_table:
+        return []
+    condensable = set(class_map.species)
+    mixed = [n for n in class_map.fallback if n in condensable]
+    if not mixed:
+        return []
+    shown = ", ".join(mixed[:5]) + (", ..." if len(mixed) > 5 else "")
+    return [f"c* table {cstar_table!r} does not list {len(mixed)} of {len(condensable)} "
+            f"condensable species ({shown}); they use the Li et al. (2016) estimate. "
+            f"To change a few c* values, merge them into the full table."]
 
 
 @functools.lru_cache(maxsize=1)
@@ -157,6 +179,7 @@ def run(scenario: Scenario, progress_cb: Callable[[float], None] | None = None,
         class_map = _class_map(s.cstar_table)
         cstar, dhvap, mw_cls = class_map.class_cstar, class_map.class_dhvap, class_map.class_mw
         cstar_source = class_map.source
+        warnings.extend(_cstar_fallback_warnings(class_map, s.cstar_table))
     elif s.surrogate is not None:
         cstar = np.array([s.surrogate.cstar_ugm3])
         dhvap = DHVAP_A_KJ - DHVAP_B_KJ * np.log10(cstar)
@@ -351,6 +374,8 @@ def _assemble(s, rec, xk, boxvol, air, chem, k_cls, cstar, cstar_source, bridge,
                 "species": name, "formula": _formula(parsed.atoms[name]),
                 "particle_ugm3": float(kg_cell_to_ugm3(bridge.particle[o], boxvol)),
                 "log10_cstar": float(class_map.log10_cstar[o])})
+        # closed-shell organics missing from the c* table (Li et al. 2016 c* used)
+        result.diagnostics["cstar_fallback"] = list(class_map.fallback)
         result.diagnostics["j_sources"] = {n: J_SOURCES[n] for n in j_names}
         js = np.array(rec["j"])
         result.photolysis = {n: js[:, j_names.index(n)] for n in REPORTED_J}

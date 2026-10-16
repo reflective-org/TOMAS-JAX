@@ -7,6 +7,8 @@ duration_h = 24.0
 start_utc = "2026-07-01T16:00:00+00:00"   # 12:00 local (EDT) in Buffalo, NY
 hold_constant = ["NO2"]
 gamma_n2o5 = 0.02
+# per-species c* (S. Jathar, Nannoolal via PyCHAM; ASSUMPTIONS A8); omit for Li et al. (2016)
+cstar_table = "mcm_limonene_cstar_298K.csv"
 
 [gases_ppb]
 LIMONENE = 2.0

@@ -28,8 +28,9 @@ tomas_fortran/output/
 # Egg/install metadata
 *.egg-info/
 
-# CSV files
+# CSV files (except c* tables shipped as package data)
 *.csv
+!tomas_jax/gaschem/mechanisms/*.csv
 
 # PNG files
 *.png

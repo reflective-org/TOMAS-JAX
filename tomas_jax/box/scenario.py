@@ -84,7 +84,10 @@ class Scenario:
     h2so4_production_cm3_s: float = 0.0    # Level 1 (no chemistry) H2SO4 source [molec/cm3/s]
     surrogate: Surrogate | None = None
     gamma_n2o5: float = 0.0                # N2O5 reactive uptake coefficient
-    cstar_table: str | None = None         # CSV in gaschem/mechanisms (None = Li et al. 2016)
+    # c* table: CSV file name in gaschem/mechanisms; closed-shell organics it does not list
+    # get the Li et al. (2016) estimate. None = Li et al. (2016) for all. The Level 2/3
+    # presets use gaschem.config.DEFAULT_CSTAR_TABLE (ASSUMPTIONS A8).
+    cstar_table: str | None = None
     processes: Processes = field(default_factory=Processes)
     numerics: Numerics = field(default_factory=Numerics)
 

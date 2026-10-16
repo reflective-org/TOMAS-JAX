@@ -5,13 +5,41 @@ import numpy as np
 import pytest
 
 from tomas_jax.box.coupling import ClassBridge, tutorial_mechanism
-from tomas_jax.box.driver import _class_map, code_version, run
+from tomas_jax.box.driver import _class_map, _cstar_fallback_warnings, code_version, run
 from tomas_jax.box.scenario import Scenario, list_presets, load_preset
 
 
 def test_presets_load():
     assert list_presets() == ["level1_volatility", "level2_limonene_soa", "level3_day_night"]
     assert [load_preset(n).level for n in list_presets()] == [1, 2, 3]
+
+
+def test_presets_use_the_jathar_cstar_table():
+    from tomas_jax.gaschem.config import DEFAULT_CSTAR_TABLE, MECHANISM_DIR
+    assert DEFAULT_CSTAR_TABLE == "mcm_limonene_cstar_298K.csv"
+    assert (MECHANISM_DIR / DEFAULT_CSTAR_TABLE).is_file()
+    assert load_preset("level1_volatility").cstar_table is None          # no chemistry
+    for name in ("level2_limonene_soa", "level3_day_night"):
+        assert load_preset(name).cstar_table == DEFAULT_CSTAR_TABLE
+    cm = _class_map(DEFAULT_CSTAR_TABLE)
+    assert cm.source.startswith("Shantanu Jathar (2026-10-16) table: Nannoolal et al. (2008) "
+                                "vapour pressures via PyCHAM 5.8.0")
+    assert Scenario().cstar_table is None                                # Li et al. (2016)
+    assert _class_map(None).source.startswith("Li et al. (2016)") and not _class_map(None).fallback
+
+
+def test_partial_cstar_table_warns():
+    """A table that lists only a few species leaves the rest on Li et al. (2016): the run
+    warns. The shipped table leaves no condensable species on Li, and Li runs never warn."""
+    from tomas_jax.gaschem.volatility import assign_classes
+    parsed = tutorial_mechanism()
+    partial = assign_classes(parsed, {"C822PAN": 5.0, "LIMANO3": 5.0})
+    (msg,) = _cstar_fallback_warnings(partial, "cstar_user.csv")
+    assert f"does not list {len(partial.species)} of {len(partial.species)}" in msg
+    assert "merge them into the full table" in msg
+    assert _cstar_fallback_warnings(_class_map("mcm_limonene_cstar_298K.csv"),
+                                    "mcm_limonene_cstar_298K.csv") == []
+    assert _cstar_fallback_warnings(_class_map(None), None) == []
 
 
 def test_level1_volatility_controls_growth():
@@ -39,9 +67,10 @@ def test_level1_zero_vapor_only_coagulates():
     assert np.all(np.diff(n) <= 0)                                      # coagulation only
 
 
-def test_class_bridge_conserves_mass():
+@pytest.mark.parametrize("table", [None, "mcm_limonene_cstar_298K.csv"])
+def test_class_bridge_conserves_mass(table):
     parsed = tutorial_mechanism()
-    cm = _class_map(None)
+    cm = _class_map(table)
     bridge = ClassBridge(cm, boxvol_cm3=1e10)
     rng = np.random.default_rng(0)
     y = np.zeros(len(parsed.species))
@@ -67,10 +96,27 @@ def test_level2_limonene_forms_soa():
     assert g["LIMONENE"][-1] < 0.5 * g["LIMONENE"][0]
     assert r.totals["SOA_ugm3"][-1] > 0.5
     assert len(r.top_contributors) > 0
-    assert r.diagnostics["cstar_source"].startswith("Li et al.")
+    assert r.diagnostics["cstar_source"].startswith("Shantanu Jathar (2026-10-16) table")
+    assert r.diagnostics["cstar_fallback"] == ["CO", "CH4", "LIMONENE", "D9"]
     # per-class tracker agrees with the size-resolved SOA mass
     total_tracker = sum(c["particle_ugm3"] for c in r.top_contributors)
     assert total_tracker <= r.totals["SOA_ugm3"][-1] * (1 + 1e-9)
+
+
+@pytest.mark.slow
+def test_level2_soa_with_the_jathar_table():
+    """Level 2 preset, 6 h, Jathar c* (A8): ~8.7 ug/m3 of mostly hydroperoxide SOA
+    (Li et al. 2016 gave 15.9 ug/m3, 98 % nitrogen-containing). PyCHAM with the same
+    Nannoolal volatilities: 7.96 ug/m3, 5 % N."""
+    r = run(load_preset("level2_limonene_soa"))
+    assert 6.0 < r.totals["SOA_ugm3"][-1] < 12.0
+    atoms = tutorial_mechanism().atoms
+    top = r.top_contributors
+    n_share = (sum(c["particle_ugm3"] for c in top if atoms[c["species"]].get("N"))
+               / sum(c["particle_ugm3"] for c in top))
+    assert n_share < 0.2
+    assert top[0]["species"] == "LIMALOOH"
+    assert r.diagnostics["warnings"] == []
 
 
 @pytest.mark.slow

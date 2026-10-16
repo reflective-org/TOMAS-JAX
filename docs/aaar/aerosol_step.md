@@ -288,6 +288,11 @@ End-of-run totals, PPM vs MNFIX: SOA within 0.21 % in all presets at 40,
 | PPM, nitrate gate fix (2026-10-16) | 5.160 | 5.151 | 5.148 | 5.148 |
 | MNFIX, nitrate gate fix | 4.961 | 5.075 | 5.138 | 5.148 |
 
+These numbers were measured with the Li et al. (2016) c\*. With the Jathar c\* table
+that the presets use since 2026-10-16 (ASSUMPTIONS A8), Level 3 nitrate (PPM, nitrate
+gate fix) is 3.137 / 3.134 / 3.134 µg m⁻³ at 40 / 80 / 160 bins (less SOA, so less
+surface for N2O5 uptake).
+
 Both converge to 5.149 µg m⁻³ (5.148 with the 2026-10-16 nitrate gate,
 see Micro-step). At 40 bins PPM was 0.21 % above the 320-bin
 value before the gate fix (0.23 % after) and the previous code 3.6 % below it. N₂O₅ uptake follows the

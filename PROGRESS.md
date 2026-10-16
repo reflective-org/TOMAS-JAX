@@ -4,6 +4,84 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-10-16 (Fri) — Per-species c* table from Shantanu Jathar is the Level 2/3 default
+
+**Branch**: `aaar-cstar` (from `feat/aaar-tutorial` 2faa391; not committed)
+
+- New input: `tomas_jax/gaschem/mechanisms/mcm_limonene_cstar_298K.csv`, sent by Shantanu
+  Jathar on 2026-10-16, kept byte-identical (sha256 `598273949d8d…2b49`; provenance in
+  `mcm_limonene_cstar_298K.provenance.md`). Nannoolal et al. (2008) vapour pressures from
+  PyCHAM 5.8.0 at 298.15 K, C* = 1e6·MW·Psat/(R·298.15). `.gitignore` ignored `*.csv`
+  (it would have been left out of git and of the wheel): `!tomas_jax/gaschem/mechanisms/*.csv`
+  added; `.gitattributes` marks those files `-text` (the file mixes LF and CRLF).
+- `gaschem/volatility.py`: `load_cstar_table` skips `#` lines, accepts `cstar_ugm3` or
+  `cstar_ug_m3_298.15K`, rejects duplicates, missing columns and non-positive values
+  (return type unchanged). `assign_classes(..., table_source=)` records closed-shell
+  organics missing from the table in `ClassMap.fallback` (Li et al. 2016 c*); the driver
+  reports them as `diagnostics["cstar_fallback"]` and labels the default table
+  "Shantanu Jathar (2026-10-16) table: Nannoolal et al. (2008) vapour pressures via
+  PyCHAM 5.8.0, c* at 298.15 K" in `cstar_source` (`gaschem/config.py`:
+  `DEFAULT_CSTAR_TABLE`, `CSTAR_TABLE_SOURCES`).
+- Presets `level2_limonene_soa` and `level3_day_night` set `cstar_table`; `Scenario`
+  still defaults to `None` (Li et al. 2016). S2 benchmark pins `cstar_table=None` (its
+  PyCHAM inputs are built from Li c*; it would raise with the table).
+- Coverage: the table has 700 rows, all mechanism species (726 with NA_HET): 458 of the
+  462 closed-shell organics and 242 of the 243 organic radicals (radicals ignored). Missing
+  closed-shell organics: LIMONENE, D9, CO, CH4 (excluded by the table on purpose; Li
+  log10 c* 6.7–11.1, gas-only). Missing radical: D9PROD. 228 species condense (Li: 245);
+  per class 0, 1, 2, 2, 5, 7, 14, 11, 23, 16, 23, 31, 15, 35, 43.
+- Partial c* tables: when a table leaves condensable species on Li et al. (2016), the
+  run adds a `diagnostics["warnings"]` entry (`driver._cstar_fallback_warnings`); the
+  shipped table leaves none, Li runs (`cstar_table=None`) never warn. Prompted by the
+  tutorial's `run(cstar_ugm3=...)`, which writes only the user rows, so all other
+  species silently fell back to Li (2-row table: 243 of 244 condensable species Li).
+- Measured impact (ASSUMPTIONS A8, A12; 40 bins, each preset run with the table and
+  with Li):
+  - Level 2 at 6 h: SOA 8.66 µg/m³ (Li 15.86), yield 0.156 (0.285), GMD 159 nm (203),
+    5.0 % N-containing (98.1 %); -OOH species 90 % of the SOA, PANs 1 % (Li 3 % / 84 %);
+    top contributor LIMALOOH 3.71 µg/m³ (Li: C822PAN, now gas-only at 10^4.85).
+  - NOx dependence reversed: NOx 0 / 0.5 / 1 / 2.5 / 5 / 10 / 20 ppb → SOA 8.54 / 8.15 /
+    8.19 / 8.66 / 6.54 / 1.02 / 0.16 µg/m³ (Li 0.01 → 65). No NOx-sink feedback (NO
+    +1.3 %, OH +6.4 % vs no partitioning; Li −78 %, −35 %).
+  - Limonene 1 / 2 / 5 / 10 / 20 / 40 ppb → SOA 0.04 / 0.23 / 2.99 / 8.66 / 17.84 /
+    38.4 µg/m³, yield 0.008 → 0.175 (Li saturated near 16–17). O3 10 → 160 ppb → SOA
+    6.4 → 17.1 (Li 13.7 → 18.0). One decade up in c* removes 73 % of the SOA (Li 64 %).
+  - Level 3 at 24 h: SOA 0.060 µg/m³ (Li 7.85; peak 0.39 at 2 h, then decline as OH
+    and photolysis destroy the gas-phase hydroperoxides), nitrate 3.137 µg/m³ (Li 5.160)
+    at 40 bins, 3.134/3.134 at 80/160; γ 0.002 / 0.02 / 0.1 → 0.39 / 3.14 / 6.81
+    (Li 0.98 / 5.16 / 7.71). k_het ×1.22 over the first 4 h (Li ×2.76), ends 23 % below
+    4e-4 s⁻¹ (Li +20 %). Day-1 OH peak 1.18e7 (Li 1.72e7). Coupling 600/300 s: nitrate
+    +2.6/+4.7 %, SOA −10.5/−20 % (Li +2.4/+4.7 %).
+  - Level 1 and the Li runs of Levels 2 and 3 are bit-identical to 2faa391 (67 arrays).
+    Run times unchanged (Level 2 median 5.8 s, Level 3 12.8 s).
+  - vs PyCHAM `native` (S2 set-up, same Nannoolal volatilities): 8.66 vs 7.96 µg/m³ at
+    6 h (+9 %), +39 % at 30 min, mostly from lumping into class centres;
+    N share 5.0 vs 4.9 %, same leading species.
+  - Full report: the session scratch `cstar/impact.md` (not in the repo).
+- Tests: loader (comments, CRLF, both columns, duplicates, missing column), sha256 of the
+  shipped table, coverage and fallback, class counts, presets use the table,
+  `ClassBridge` mass conservation with both c* sources, Level 2 `cstar_source` and
+  `cstar_fallback`, partial-table warning, Level 2 6-h science check (SOA 6–12 µg/m³,
+  N share of the top contributors < 0.2, LIMALOOH first, no warnings). Changed expected
+  values: Level 3 80-bin nitrate 5.151 → 3.134
+  (same rel 2e-3; band 0.93 → 1.35 cm⁻³ still < 1.5); Level 2 `cstar_source` prefix
+  "Li et al." → "Shantanu Jathar (2026-10-16) table". Li-based tests (245 species, Li
+  examples) unchanged.
+- Docs: ASSUMPTIONS A8 rewritten, A6/A12 numbers annotated or re-measured, question 1
+  for Shantanu closed with follow-ups (PAN decomposition, Level 3 SOA, NOx dependence,
+  boiling-point method); `docs/aaar/gaschem.md`, `soa_partitioning.md`, `coupling.md`
+  (Level 3 SOA peak/decline and its coupling sensitivity), `aerosol_step.md`,
+  `pycham_comparison.md` (early-time gap from lumping), S2 README, CLAUDE.md.
+- Next (aaar-tutorial repo, after the pin moves to this commit): notebooks 02–04,
+  README and INSTRUCTORS.md describe the Li placeholder (98 % nitrates, C822PAN as top
+  contributor, "wait for the curated table"); `write_cstar_table` / `run(cstar_ugm3=...)`
+  must merge the user values into the Jathar table (`load_cstar_table(MECHANISM_DIR /
+  DEFAULT_CSTAR_TABLE)`, update, write all rows as 10**v), otherwise the run now warns;
+  nb02 cells 22/24/38 and nb04 cell 43 must load the table; the PAN experiment
+  (−1 % merged) needs replacing (e.g. hydroperoxides → 1e5: 8.66 → 0.16 µg/m³);
+  `tests/test_results.py:93` (`nitrogen_share > 0.95`) must change; cached examples
+  need regenerating.
+
 ## 2026-10-16 (Fri) — Nitrate goes to thin tail bins too (Level 3 band at 40–90 nm)
 
 **Branch**: `feat/aaar-tutorial-ppm-soa` (not committed)

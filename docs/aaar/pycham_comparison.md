@@ -31,6 +31,31 @@ particles with a PPM remap; S1 and S2 below were re-run with it). Separately, th
 NOx-sink feedback seen in Level 2 SOA comes from the Li et al. (2016) placeholder c*
 (A8): with PyCHAM's own vapour pressures it disappears.
 
+> **Update 2026-10-16.** The Level 2 and 3 presets now use the per-species c* table
+> from Shantanu Jathar (Nannoolal et al. 2008 via PyCHAM 5.8.0, the same method as the
+> PyCHAM `native` run below; ASSUMPTIONS A8). This comparison was run before that,
+> with the Li et al. (2016) c*, and S2 keeps `cstar_table=None` so it reproduces. With
+> the table, TOMAS-JAX Level 2 gives 8.66 µg m⁻³ SOA at 6 h, 5 % N-containing, and no
+> NOx sink (NO +1.3 %, OH +6 % vs no particles), close to the PyCHAM `native` run
+> (7.96 µg m⁻³, 5 %, NO +1 %, OH +6 %). The two are not an exact comparison: `native`
+> used PyCHAM's own c* for the 245 Li-condensable species only, the table run lumps the
+> 228 table-condensable species into classes.
+>
+> Early on the gap is larger. In the S2 set-up (coagulation, nucleation and N2O5 uptake
+> off, 300 s coupling) TOMAS-JAX with the table is above `native` by +39 % at 30 min,
+> +32 % at 1 h, +20 % at 2 h, +11 % at 4 h and +9 % at 6 h (0.25 vs 0.18, 0.89 vs 0.67,
+> 2.70 vs 2.25, 6.00 vs 5.38, 8.66 vs 7.96 µg m⁻³). The largest term is lumping into
+> class centres: the equilibrium SOA of PyCHAM's own species totals is +17 % at
+> 0.5–1 h, +8 % at 3 h and +4.5 % at 6 h with class-centre instead of exact c*,
+> because the main species move down (LIMALOOH 10^0.14 → 10^0, C728OOH 10^−0.26 →
+> 10^−0.5). PyCHAM also lags its own equilibrium (−25 % at 30 min, −2.6 % at 6 h);
+> our faster transfer coefficient (finding 2) and the 300 vs 60 s split, and the 57
+> extra table-condensable species, each add only a few percent. The SOA shape (slow,
+> nearly linear growth after a lag), the 5 % N share and the leading species
+> (LIMALOOH 3.71 vs 3.46, C826OOH, C728OOH, C825OOH) agree. No new PyCHAM run was made:
+> Shantanu's own PyCHAM output is not on this machine, and the `native` vapour pressures
+> agree with the table to within 0.03 decades.
+
 ## Models and versions
 
 | | TOMAS-JAX (ours) | PyCHAM (reference) |
@@ -523,7 +548,8 @@ More figures: [all gas-phase species with particles present](figures/pycham/S2_g
   the obvious next step.
 - **Volatility is not tested.** S2 gives PyCHAM our c*; it checks the partitioning
   code, not the Li et al. (2016) estimate (A8). The native-vapour-pressure run is a
-  sensitivity, not a validation.
+  sensitivity, not a validation. (Since 2026-10-16 the presets use the Nannoolal-based
+  table; S2 has not been re-run with it.)
 - **One condition per case.** One temperature (293–298 K), one RH, one seed; no
   temperature dependence of c* was exercised (PyCHAM's `volP` is constant in T).
 - **Water and density are matched only in bulk.** PyCHAM keeps its Kelvin term on

@@ -4,6 +4,8 @@ name = "Level 2 - Limonene SOA"
 level = 2
 duration_h = 6.0
 hold_constant = []
+# per-species c* (S. Jathar, Nannoolal via PyCHAM; ASSUMPTIONS A8); omit for Li et al. (2016)
+cstar_table = "mcm_limonene_cstar_298K.csv"
 
 [gases_ppb]
 LIMONENE = 10.0

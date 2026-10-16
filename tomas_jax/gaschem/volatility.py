@@ -1,8 +1,10 @@
 """Volatility (c*) of mechanism species and their lumping into c* classes.
 
-c* (saturation mass concentration at 298 K, ug/m3) comes either from a user table
-(e.g. values supplied for each MCM species) or, as a placeholder, from the elemental
-composition with the Li et al. (2016) parameterization:
+c* (saturation mass concentration at 298 K, ug/m3) comes from a per-species table
+(the Level 2/3 presets use ``config.DEFAULT_CSTAR_TABLE``: Nannoolal et al. (2008)
+vapour pressures via PyCHAM, supplied by S. Jathar) and, for closed-shell organics
+the table does not list (or when no table is given), from the elemental composition
+with the Li et al. (2016) parameterization:
 
     log10 c* = (n0C - nC) bC - nO bO - 2 nC nO/(nC + nO) bCO - nN bN - nS bS
 
@@ -54,15 +56,39 @@ def is_closed_shell(atoms: dict[str, int]) -> bool:
     return (atoms.get("H", 0) + atoms.get("N", 0) + atoms.get("Cl", 0) + atoms.get("Br", 0)) % 2 == 0
 
 
+# accepted c* columns [ug/m3 at 298 K]: our own format and the PyCHAM-derived table
+CSTAR_COLUMNS = ("cstar_ugm3", "cstar_ug_m3_298.15K")
+
+
 def load_cstar_table(path: str | Path) -> dict[str, float]:
-    """CSV with columns ``species,cstar_ugm3`` (c* at 298 K) -> {species: log10 c*}."""
-    out = {}
+    """c* table CSV -> {species: log10 c*} (c* in ug/m3 at 298 K).
+
+    Columns ``species`` and one of :data:`CSTAR_COLUMNS`; other columns are ignored.
+    Lines starting with ``#`` are comments.
+    """
     with open(path, newline="") as f:
-        for row in csv.DictReader(f):
-            value = float(row["cstar_ugm3"])
-            if not np.isfinite(value) or value <= 0.0:
-                raise ValueError(f"c* must be positive and finite: {row}")
-            out[row["species"].strip()] = float(np.log10(value))
+        lines = [line for line in f if not line.lstrip().startswith("#")]
+    reader = csv.DictReader(lines)
+    fields = [name.strip() for name in reader.fieldnames or ()]
+    reader.fieldnames = fields
+    column = next((c for c in CSTAR_COLUMNS if c in fields), None)
+    if "species" not in fields or column is None:
+        raise ValueError(f"{path}: need a 'species' column and one of {CSTAR_COLUMNS}; "
+                         f"got {fields}")
+    out = {}
+    for row in reader:
+        name = (row["species"] or "").strip()
+        if not name:
+            raise ValueError(f"{path}: row without a species name: {row}")
+        if name in out:
+            raise ValueError(f"{path}: species {name!r} listed twice")
+        raw = (row[column] or "").strip()
+        if not raw:
+            raise ValueError(f"{path}: no c* for {name!r}")
+        value = float(raw)
+        if not np.isfinite(value) or value <= 0.0:
+            raise ValueError(f"c* must be positive and finite: {row}")
+        out[name] = float(np.log10(value))
     return out
 
 
@@ -78,22 +104,34 @@ class ClassMap:
     class_dhvap: np.ndarray           # class enthalpy of vaporization [kJ/mol]
     class_mw: np.ndarray              # mean member MW [g/mol]
     source: str                       # provenance of the c* values
+    # closed-shell organics missing from the c* table whose c* is the Li et al. (2016)
+    # estimate (condensable or not); empty when no table is given (then all are Li 2016)
+    fallback: tuple[str, ...] = ()
 
 
-def assign_classes(parsed: ParsedMechanism, log10_cstar: dict[str, float] | None = None) -> ClassMap:
+def assign_classes(parsed: ParsedMechanism, log10_cstar: dict[str, float] | None = None,
+                   table_source: str = "table") -> ClassMap:
     """Lump the closed-shell organics of ``parsed`` into the configured c* classes.
 
-    ``log10_cstar`` overrides the Li et al. (2016) estimate for the species it lists.
+    ``log10_cstar`` (a c* table) gives the c* of the species it lists; closed-shell
+    organics it does not list fall back to the Li et al. (2016) estimate and are recorded
+    in ``ClassMap.fallback``. Table rows for radicals or non-organics are ignored.
+    ``table_source`` labels the table in ``ClassMap.source``.
     """
     centers = np.asarray(VOLATILITY_LOG10_CSTAR_CENTERS)
     top_edge = centers[-1] + VOLATILITY_CLASS_HALF_WIDTH
     table = log10_cstar or {}
-    names, idx, cls, lc, mw = [], [], [], [], []
+    names, idx, cls, lc, mw, fallback = [], [], [], [], [], []
     for i, name in enumerate(parsed.species):
         atoms = parsed.atoms[name]
         if not atoms.get("C") or not is_closed_shell(atoms):
             continue
-        value = table[name] if name in table else log10_cstar_li2016(atoms)
+        if name in table:
+            value = table[name]
+        else:
+            value = log10_cstar_li2016(atoms)
+            if table:
+                fallback.append(name)
         if value > top_edge:
             continue
         names.append(name)
@@ -106,8 +144,11 @@ def assign_classes(parsed: ParsedMechanism, log10_cstar: dict[str, float] | None
                          for k in range(centers.size)])
     if table:
         n_table = sum(1 for n in names if n in table)
+        n_fb_cond = len(names) - n_table
         unmatched = len(set(table) - set(names))
-        source = (f"table ({n_table} of {len(names)} condensable species; rest Li et al. 2016; "
+        source = (f"{table_source} ({n_table} of {len(names)} condensable species; "
+                  f"Li et al. 2016 for {len(fallback)} closed-shell organics not in the table, "
+                  f"{n_fb_cond} of them condensable; "
                   f"{unmatched} table rows not condensable or not in the mechanism)")
     else:
         source = "Li et al. (2016) composition-based estimate"
@@ -115,4 +156,5 @@ def assign_classes(parsed: ParsedMechanism, log10_cstar: dict[str, float] | None
         species=tuple(names), species_idx=np.asarray(idx, dtype=int), class_idx=cls_arr,
         log10_cstar=np.asarray(lc), mw=mw_arr, class_cstar=10.0 ** centers,
         class_dhvap=DHVAP_A_KJ - DHVAP_B_KJ * centers, class_mw=class_mw, source=source,
+        fallback=tuple(fallback),
     )

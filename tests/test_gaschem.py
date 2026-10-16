@@ -279,5 +279,80 @@ def test_cstar_table_validation(parsed, tmp_path):
     bad.write_text("species,cstar_ugm3\nLIMONENE,0\n")
     with pytest.raises(ValueError, match="positive"):
         load_cstar_table(bad)
+    bad.write_text("species,cstar_ugm3\nC822PAN,1\nC822PAN,2\n")
+    with pytest.raises(ValueError, match="twice"):
+        load_cstar_table(bad)
+    bad.write_text("species,cstar_ugm3\nC822PAN,\n")             # empty c*
+    with pytest.raises(ValueError, match="no c"):
+        load_cstar_table(bad)
+    bad.write_text("species,log10_cstar\nC822PAN,1\n")         # no c* column
+    with pytest.raises(ValueError, match="cstar_ug_m3_298.15K"):
+        load_cstar_table(bad)
     cm = assign_classes(parsed, {"NOT_A_SPECIES": 1.0, "LIMAO2": 1.0})   # unknown + radical
     assert "2 table rows not condensable or not in the mechanism" in cm.source
+    assert "LIMAO2" not in cm.species
+
+
+def test_cstar_table_comments_and_pycham_column(tmp_path):
+    """'#' lines are skipped; the PyCHAM-derived column name is accepted (CRLF rows)."""
+    from tomas_jax.gaschem.volatility import load_cstar_table
+    path = tmp_path / "t.csv"
+    path.write_bytes(b"# provenance\n# method\n"
+                     b"species,formula,molar_mass_g_mol,psat_Pa_298.15K,cstar_ug_m3_298.15K,"
+                     b"log10_cstar\r\nC822PAN,x,1,1,1.5e+02,2.1761\r\nLIMAL,x,1,1,1e-01,-1\r\n")
+    got = load_cstar_table(path)
+    assert got == {"C822PAN": pytest.approx(np.log10(150.0)), "LIMAL": pytest.approx(-1.0)}
+    own = tmp_path / "own.csv"                       # the tutorial's at.write_cstar_table format
+    own.write_text("species,cstar_ugm3\nA,100000\nB,2\n")
+    assert load_cstar_table(own) == {"A": pytest.approx(5.0), "B": pytest.approx(np.log10(2.0))}
+
+
+# --- the per-species c* table supplied by S. Jathar (ASSUMPTIONS A8) ----------------
+@pytest.fixture(scope="module")
+def jathar():
+    from tomas_jax.gaschem.config import DEFAULT_CSTAR_TABLE, MECHANISM_DIR
+    from tomas_jax.gaschem.volatility import load_cstar_table
+    return load_cstar_table(MECHANISM_DIR / DEFAULT_CSTAR_TABLE)
+
+
+def test_default_cstar_table_is_the_file_received():
+    import hashlib
+    from tomas_jax.gaschem.config import DEFAULT_CSTAR_TABLE, MECHANISM_DIR
+    data = (MECHANISM_DIR / DEFAULT_CSTAR_TABLE).read_bytes()
+    assert hashlib.sha256(data).hexdigest() == (
+        "598273949d8dc646e746929375ac397c45b97180f2820ffed61483d5e07d2b49")
+
+
+def test_default_cstar_table_covers_the_condensable_species(parsed, jathar):
+    """Every closed-shell organic has a table c* except the four the table excludes on
+    purpose (precursor, OH tracer, CO, CH4); those fall back to Li et al. (2016), are
+    recorded, and are too volatile to condense. Table radicals are ignored."""
+    organics = [s for s in parsed.species if parsed.atoms[s].get("C")]
+    closed = [s for s in organics if is_closed_shell(parsed.atoms[s])]
+    assert len(jathar) == 700 and set(jathar) <= set(parsed.species)
+    assert sum(s in jathar for s in closed) == 458
+    radicals_in_table = [s for s in jathar if not is_closed_shell(parsed.atoms[s])]
+    assert len(radicals_in_table) == 242
+    cm = assign_classes(parsed, jathar)
+    assert set(cm.fallback) == {"CO", "CH4", "LIMONENE", "D9"}
+    assert set(cm.fallback) == {s for s in closed if s not in jathar}
+    assert all(s in jathar or s in cm.fallback for s in cm.species)
+    assert not set(cm.fallback) & set(cm.species)            # none of them condenses
+    assert not set(radicals_in_table) & set(cm.species)
+    for s, lc in zip(cm.species, cm.log10_cstar):
+        assert lc == jathar[s] and lc <= 4.25                 # table value, below the top edge
+    # closed-shell species above the top class edge stay gas-only
+    assert sum(jathar[s] > 4.25 for s in closed if s in jathar) == 458 - 228
+    assert "228 of 228 condensable species" in cm.source
+    assert "Li et al. 2016 for 4 closed-shell organics not in the table, 0 of them" in cm.source
+
+
+def test_default_cstar_table_class_counts(parsed, jathar):
+    cm = assign_classes(parsed, jathar)
+    assert len(cm.species) == 228
+    counts = np.bincount(cm.class_idx, minlength=15)
+    #                 log10 c* = -3 ... 4 in half decades; the least volatile is 10^-2.64
+    np.testing.assert_array_equal(counts, [0, 1, 2, 2, 5, 7, 14, 11, 23, 16, 23, 31, 15, 35, 43])
+    assert cm.log10_cstar.min() == pytest.approx(-2.638, abs=1e-3)
+    assert cm.class_mw[0] == 200.0                            # empty class: default MW
+    assert sum(1 for s in cm.species if parsed.atoms[s].get("N")) == 91

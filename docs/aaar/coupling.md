@@ -50,8 +50,17 @@ boxvol = 1e10 cm³ (so per-cell thresholds mean 1 #/cm³); outputs µg/m³, ppb,
 | Preset | What it shows | Duration | Δt_c | Wall time |
 |---|---|---|---|---|
 | `level1_volatility` | growth vs c* (0.01: 54→133 nm; 100: 54→57 nm GMD) | 12 h | 300 s | ~1.7 s |
-| `level2_limonene_soa` | limonene oxidation → ~16 µg/m³ SOA, top contributors | 6 h | 300 s | ~6 s |
-| `level3_day_night` | diurnal J/OH/NO3; nitrate 0 → 5 → 8 µg/m³ for γ = 0, 0.02, 0.1 | 24 h | 900 s | ~14 s |
+| `level2_limonene_soa` | limonene oxidation → ~9 µg/m³ SOA (Jathar c* table, A8), top contributors | 6 h | 300 s | ~6 s |
+| `level3_day_night` | diurnal J/OH/NO3; nitrate 0 → 3.1 → 6.8 µg/m³ for γ = 0, 0.02, 0.1; SOA 0.06 µg/m³ | 24 h | 900 s | ~14 s |
+
+Level 3 SOA with the Jathar c* table (A8) is small and not monotonic: there is no
+dilution, yet it peaks at 0.39 µg/m³ about 2 h in, falls to ~0.14 µg/m³ by sunset,
+stays flat at night and falls to 0.060 µg/m³ on the second morning, as OH and
+photolysis destroy the gas-phase semivolatile hydroperoxides and the particles
+evaporate to follow. Because it is a small residual, it depends on the coupling
+interval much more than nitrate does: 600 s gives SOA −10.5 % and nitrate +2.6 %,
+300 s gives SOA −20 % and nitrate +4.7 % (vs 900 s; A12). Quote the Level 3 SOA as
+"a few tenths of a µg/m³ or less", not to two figures.
 
 First call in a process adds JIT compilation and the TUV-x table (~3–10 s);
 `warmup()` runs every preset for two intervals. `coupling_dt_s` is a static argument
@@ -62,5 +71,7 @@ Validation in `tests/test_aaar_driver.py`: Level 1 organic budget closes
 (gas + particle = produced, 1e-3) and low vs high c* bracket the Pankow limits;
 zero vapour gives constant dry mass and number decreasing only by coagulation;
 class gather/scatter conserves mass per class (1e-12); Level 2 consumes limonene and
-forms SOA; Level 3 nitrate is zero for γ = 0 and > 1 µg/m³ for γ = 0.02; bad species
-and surrogate+chemistry are rejected.
+forms SOA, and over 6 h gives 6–12 µg/m³ with < 20 % nitrogen-containing top
+contributors (Jathar c*); a c* table that leaves condensable species on Li et al.
+(2016) adds a run warning; Level 3 nitrate is zero for γ = 0 and > 1 µg/m³ for
+γ = 0.02; bad species and surrogate+chemistry are rejected.

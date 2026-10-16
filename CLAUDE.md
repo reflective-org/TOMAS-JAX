@@ -86,7 +86,8 @@ tomas_jax/
   box/coupling.py             — Units, seed, tutorial mechanism edits (<34> -> NA_HET), c*-class gather/scatter
   box/driver.py               — run(scenario) / warmup() / code_version(): coupled gas-chemistry + aerosol driver
   gaschem/                    — MCM gas chemistry (no TOMAS imports): kpp_parser, mcm_rates, mechanism, solver,
-                                photolysis (TUV-x/MCM J), volatility (Li 2016 c*, classes), environment, config
+                                photolysis (TUV-x/MCM J), volatility (c* table loader: Jathar/Nannoolal table default
+                                for Levels 2-3, Li 2016 fallback; classes), environment, config
   solvers/diffrax.py          — Coagulation solvers: Tsit5 adaptive (diffrax_step), forward Euler (coag_euler_step)
   solvers/condensation.py     — Process orchestrator: core helpers + thin wrappers + make_step() composable API + scan-fused loops
 

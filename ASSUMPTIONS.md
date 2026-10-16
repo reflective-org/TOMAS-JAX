@@ -108,7 +108,9 @@ is assumed, why, where it is implemented and how to change it.
     GSD at every resolution, so the rest is the Kelvin/transfer difference above, not
     the bins. S2 at 6 h: number-mean 212.3 vs 210.1 nm (+1.1 %), number median 202.6 vs
     200.9 nm, GSD −2.9 %, 0.11 % of the particles below the seed's 1st-percentile size
-    (PyCHAM 0.05 %, MNFIX 2.1 %). SOA totals change by ≤ 0.21 %. Level 3 nitrate is
+    (PyCHAM 0.05 %, MNFIX 2.1 %). SOA totals change by ≤ 0.21 %. (These numbers use the
+    Li et al. 2016 c*; with the Jathar table Level 3 nitrate is 3.137 / 3.134 / 3.134
+    µg/m³ at 40 / 80 / 160 bins.) Level 3 nitrate is
     4.0 % above the old code at 40 bins (5.16 vs 4.96 µg/m³): N2O5 uptake follows the
     particle surface, and the old 40-bin value carried the old scheme's resolution
     error. Both converge to 5.149 µg/m³ at 320 bins (PPM 5.160/5.152/5.149/5.149, MNFIX
@@ -136,30 +138,91 @@ is assumed, why, where it is implemented and how to change it.
   no aerosol radiative effects; cross sections use profile, not box, temperature.
   The surface J(SZA) table is interpolated on a 1° grid (≤ 0.4 % vs direct calls).
 
-### A8 — c* placeholder until a curated table arrives
+### A8 — c* of the mechanism species: per-species table (Jathar, Nannoolal via PyCHAM)
 
-- c* (298 K) of every closed-shell organic comes from Li et al. (2016) using its
-  C/H/O/N/S counts (`gaschem/volatility.py`). This is a composition-only estimate
-  (±1–2 decades typical). It assigns very low c* to multifunctional PAN-type
-  nitrates, which then dominate "top contributors" — a known artefact; PANs are
-  thermally labile gases. A per-species table (`cstar_table`, CSV `species,cstar_ugm3`)
-  overrides the estimate species by species; the result reports its provenance.
-- Measured consequence (Level 2 preset, 2026-10-13; re-measured 2026-10-16 with all
-  245 species that hold particle mass tracked, not just the top 15): 98.1 % of the
-  particle SOA (15.86 µg/m³ at 6 h) is nitrogen-containing; limononic acid, limonaldehyde and most hydroperoxides get
-  c* > 10^4.25 µg/m³ and never condense. NOx = 0 gives ~0 SOA (0.01 µg/m³), and SOA
-  saturates near 16 µg/m³ for limonene 5 → 20 ppb (NOx-limited). These are artefacts
-  of the placeholder, not limonene chemistry; Level 2 conclusions about yields or
-  low-NOx SOA need the curated table.
+- **Source (since 2026-10-16).** The Level 2 and 3 presets set
+  `cstar_table = "mcm_limonene_cstar_298K.csv"` (`gaschem/config.py::DEFAULT_CSTAR_TABLE`),
+  a table sent by Shantanu Jathar on 2026-10-16 and kept byte-identical in
+  `tomas_jax/gaschem/mechanisms/` (sha256 and provenance in
+  `mcm_limonene_cstar_298K.provenance.md`). Method, from its header: pure-component
+  vapour pressure at 298.15 K from PyCHAM 5.8.0 with Nannoolal et al. (2008), converted
+  as C* = 10⁶ · MW · Psat / (8.314 · 298.15) µg m⁻³ (O'Meara et al. 2014, eq. 1, as in
+  PyCHAM `cham_up.py`). `ClassMap.source` / `diagnostics["cstar_source"]` name it.
+- **Coverage.** 700 rows, every one a mechanism species: 458 closed-shell organics and
+  242 radicals. The radicals are ignored (closed-shell rule below); 26 of them have
+  c* ≤ 10^4.25 µg/m³ in the table and would condense otherwise. The mechanism's
+  other closed-shell carbon species — LIMONENE, D9, CO and CH4, which the table excludes
+  on purpose — get the Li et al. (2016) estimate and are listed in `ClassMap.fallback`
+  and `diagnostics["cstar_fallback"]`; their Li log10 c* is 6.7–11.1, so none of them
+  condenses. With the table 228 species condense (Li et al. 2016: 245); the other 230
+  closed-shell table species have c* > 10^4.25 µg/m³ and stay gas-only. Per class
+  (log10 c* = −3 … 4): 0, 1, 2, 2, 5, 7, 14, 11, 23, 16, 23, 31, 15, 35, 43 species;
+  the least volatile is 10^−2.64 µg/m³, so the bottom class is empty.
+- **What is still assumed.**
+  - One estimation method (Nannoolal vapour pressures) at one temperature; its
+    uncertainty is not carried. Other group-contribution methods can differ by a decade
+    or more for multifunctional species.
+  - Lumping into 15 half-decade classes (A6): each species condenses with the c* of its
+    class centre (±0.25 decade), with ΔHvap = 131 − 11·log10 c* kJ/mol (Epstein et al.
+    2010) for the temperature dependence; the table itself has no ΔHvap.
+  - The table's 298.15 K values are used as the model's 298 K reference c* (vbs-jax
+    `T_REF`), so the c* applied at 298.15 K is 1.8–3.3 % above the table.
+  - Raoult's law by organic mass fraction, one absorbing organic phase (A6).
+  - PAN-type species are treated like any other product: no particle-phase
+    decomposition. The table makes most of them gas-only (23 of 54 PANs condense,
+    Li et al. 2016: all 54); C822PAN, the top contributor with Li, has 10^4.85 µg/m³.
+- **Li et al. (2016) stays available**: `cstar_table = None` (the `Scenario` default,
+  used by custom scenarios that do not name a table) gives the composition-only
+  estimate for every closed-shell organic. A user table (`species,cstar_ugm3` or the
+  PyCHAM-style `cstar_ug_m3_298.15K` column, `#` comment lines allowed) replaces the
+  default table as a whole; species it does not list fall back to Li et al. (2016),
+  not to the Jathar table. When that leaves condensable species on Li, the run says so
+  in `diagnostics["warnings"]` (the shipped table leaves none). To change a few c*
+  values, merge them into the full table (`load_cstar_table` of the default, update,
+  write all rows).
+- The vapour-pressure method needs a normal boiling point; which estimate PyCHAM 5.8.0
+  used with Nannoolal for this table is not stated in the file (question 1).
+- **Measured consequence (2026-10-16, Level 2 preset, 6 h; all particle-phase species
+  tracked):** SOA 8.66 µg/m³ (Li: 15.86), mass yield 0.156 (Li: 0.285), GMD 159 nm
+  (Li: 203), 5.0 % nitrogen-containing (Li: 98.1 %; 2.8 % vs 98.7 % of the top 15).
+  Species named -OOH hold 90 % of the SOA, PANs 1 % (Li: 3 % and 84 %). The largest
+  contributors are hydroperoxides and an acid (LIMALOOH 3.71, C826OOH 1.09,
+  C728OOH 0.85, C825OOH 0.75 µg/m³; LIMONIC 0.12). SOA grows slowly and almost
+  linearly (0.25 / 0.89 / 4.45 µg/m³ at 0.5 / 1 / 3 h; Li reached 57 % of its 6-h value
+  at 1 h).
+  - **NOx dependence reversed:** SOA 8.54 / 8.15 / 8.19 / 8.66 / 6.54 / 1.02 /
+    0.16 µg/m³ at NOx 0 / 0.5 / 1 / 2.5 / 5 / 10 / 20 ppb (Li: rose from 0.01 to 65).
+    High NOx suppresses SOA (RO2 + NO competes with RO2 + HO2, fewer hydroperoxides).
+  - **Yield rises with loading, no saturation:** limonene 1 / 2 / 5 / 10 / 20 / 40 ppb →
+    SOA 0.04 / 0.23 / 2.99 / 8.66 / 17.84 / 38.4 µg/m³, yield 0.008 → 0.175 (Li:
+    saturated near 16–17, yield falling 0.72 → 0.08).
+  - O3 10 → 160 ppb: SOA 6.4 → 17.1 µg/m³ (Li: 13.7 → 18.0). Shifting every c* up one
+    decade removes 73 % of the equilibrium SOA (Li: 64 %). Oxidant shares of limonene
+    loss are unchanged (O3 60 %, OH 38 %, NO3 1 %). The NOx-sink feedback of the Li run is gone: relative to the
+  run without particles NO +1.3 %, NO2 +0.5 %, O3 −0.1 %, limonene −5.3 %, OH +6.4 %
+  (Li: −78 %, −79 %, −15 %, +167 %, −35 %). This matches the PyCHAM comparison, where
+  PyCHAM's own Nannoolal vapour pressures gave 0.51× the Li SOA and 5 % N-containing
+  (S2 `native`, `docs/aaar/pycham_comparison.md`).
+- **Level 3 preset (24 h):** SOA 0.060 µg/m³ at 24 h (Li: 7.85) and particle nitrate
+  3.14 µg/m³ (Li: 5.16). There is no dilution, yet SOA peaks at 0.39 µg/m³ about 2 h in
+  and then falls: 0.28 at 4 h, 0.18 at 6 h, about 0.14 through the night, 0.093 at 22 h
+  and 0.060 at 24 h. 2 ppb limonene gives little organic mass to absorb into, and OH
+  (up to 1.2×10⁷ cm⁻³ on day 1, 2.4×10⁷ on day 2) oxidises and photolysis destroys the
+  gas-phase semivolatile hydroperoxides, so the particles evaporate to follow the gas.
+  The table SOA is 2 % N-containing (Li: ~100 %). Nitrate drops because SOA and its
+  water no longer add surface for N2O5 uptake: k_het rises ×1.22 over the first 4 h
+  (Li ×2.76) and ends 23 % below the chamber's 4×10⁻⁴ s⁻¹ (Li +20 %); γ 0.002 / 0.02 /
+  0.1 → 0.39 / 3.14 / 6.81 µg/m³ (Li 0.98 / 5.16 / 7.71). Because the SOA is so small,
+  it is far more sensitive to the coupling interval than nitrate (A12: −10.5 % at 600 s,
+  −20 % at 300 s, vs nitrate +2.6 / +4.7 %).
+- Level 1, and Levels 2 and 3 with `cstar_table=None`, are bit-identical to 2faa391
+  (67 arrays compared). Run times are unchanged (Level 2 median 5.8 s, Level 3 12.8 s).
 - Radicals (odd H + N + Cl + Br) never partition. Species more volatile than
-  10^4.25 µg/m³ stay gas-only; less volatile than 10^−3.25 join the lowest class.
-- **Measured consequence, confirmed with PyCHAM (2026-10-14, S2) — for Shantanu:**
-  partitioning of the PAN-type nitrates is a strong NOx sink. At 6 h of Level 2, NO
-  −78 %, NO2 −79 %, OH −35 %, O3 −15 % and limonene +167 % relative to the same run
-  without particles; PyCHAM given the same c* agrees within 1 point. With PyCHAM's own
-  SMILES-based vapour pressures (Nannoolal) for the same species, SOA is 0.51× at 6 h,
-  5 % N-containing instead of 98 %, and the gas-phase feedback disappears. The NOx sink
-  is a consequence of the placeholder c*, not of the partitioning code.
+  10^4.25 µg/m³ stay gas-only; less volatile than 10^−3.25 would join the lowest class.
+- Earlier results with the Li et al. (2016) placeholder (98 % nitrogen-containing SOA,
+  PAN partitioning as a strong NOx sink, confirmed with PyCHAM in S2 on 2026-10-14) are
+  artefacts of that estimate; S2 is kept with `cstar_table=None` as a test of the
+  partitioning code at fixed c*.
 
 ### A9 — Organic water uptake
 
@@ -193,12 +256,13 @@ is assumed, why, where it is implemented and how to change it.
   900 s Level 3). Gas and aerosol are operator-split at the same interval; H2SO4
   (from the SA counter) and nitrate (from NA_HET) are passed to TOMAS as constant
   rates over the interval.
-- Coupling-interval sensitivity, Level 3 preset at 40 bins (re-measured 2026-10-16,
-  final values at 24 h, against the preset 900 s: nitrate 5.160 µg/m³, SOA
-  7.850 µg/m³, N 2620 cm⁻³): 600 s gives nitrate +3.5 %, SOA +2.4 %, N +0.09 %;
-  300 s gives nitrate +6.6 %, SOA +4.7 %, N +0.19 %. The totals are not converged in
-  the coupling interval (the difference roughly doubles from 600 to 300 s); this
-  replaces the earlier "≤ 3 % vs 600 s".
+- Coupling-interval sensitivity, Level 3 preset at 40 bins with the Jathar c* table
+  (measured 2026-10-16, final values at 24 h, against the preset 900 s: nitrate
+  3.137 µg/m³, SOA 0.060 µg/m³, N 2552 cm⁻³): 600 s gives nitrate +2.6 %, SOA −10.5 %,
+  N +0.03 %; 300 s gives nitrate +4.7 %, SOA −20.1 %, N +0.05 %. The totals are not
+  converged in the coupling interval. With the Li et al. (2016) c* (same day: nitrate
+  5.160, SOA 7.850 µg/m³, N 2620 cm⁻³) the changes were nitrate +3.5 % / +6.6 %, SOA
+  +2.4 % / +4.7 %, N +0.09 % / +0.19 %.
 - Small negative concentrations from the implicit solver are clipped to zero.
 - Measured against PyCHAM (benchmark case G2, Level 2 gas phase,
   `benchmarks/pycham/README.md`): at 300 s coupling the RO2 sum is frozen at its t = 0
@@ -256,9 +320,14 @@ is assumed, why, where it is implemented and how to change it.
 
 ## Questions for Shantanu
 
-1. **Blocking for Level 2:** c* table for the mechanism species (CSV
-   `species,cstar_ugm3` at 298 K) — replaces the Li et al. (2016) placeholder, which
-   makes SOA almost entirely organic nitrates (A8). Also: how to treat PAN-type species.
+1. ~~c* table for the mechanism species~~ — received 2026-10-16 and used by Levels 2
+   and 3 (A8). Open: is ignoring particle-phase PAN decomposition acceptable now that
+   23 PANs still condense? Is Level 3 SOA of 0.06 µg/m³ (peak 0.39 at 2 h) acceptable
+   for the tutorial, or should the Level 3 preset change (more limonene, lower NO2
+   hold)? With the table, Level 2 SOA falls with NOx (8.5 µg/m³ at NOx = 0, 1.0 at
+   10 ppb) and is 90 % hydroperoxides: does that match your expectation and your own
+   PyCHAM run (PyCHAM's Nannoolal run in S2 gives the same species ranking)? Which
+   boiling-point method did PyCHAM 5.8.0 use with Nannoolal for this table?
 2. A1–A4: confirm the chamber-to-ambient edits.
 3. A10: constant light in Level 2, or noon sun at a site?
 4. Level 3 preset: NO2 held at 1 ppb as a NOx source (A14) — acceptable, or

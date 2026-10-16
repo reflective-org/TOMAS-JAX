@@ -7,6 +7,10 @@ mass. Coagulation, nucleation and N2O5 uptake are off in both models (the preset
 coagulation on; it is not tested here). H2SO4 condensation and SOA partitioning are on.
 γ(N2O5) = 0, and `<34>` has rate 0 in PyCHAM's .eqn copy.
 
+S2 uses the Li et al. (2016) c* (`case.scenario` sets `cstar_table=None`). Since
+2026-10-16 the preset itself uses the per-species table from S. Jathar (ASSUMPTIONS A8);
+S2 was run before that and is kept as a test of the partitioning code at fixed c*.
+
 ```bash
 cd tomas-jax
 .venv/bin/python -m benchmarks.pycham.cases.S2.run       # PyCHAM x6 (~45 s each), TOMAS-JAX x5 (~2 min)
