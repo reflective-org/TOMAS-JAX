@@ -50,7 +50,8 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
   `test_warmup_covers_capped_preset_runs` now also runs each preset with nucleation off
   and checks the gas solver's compile count; the slow 80-bin Level 3 test expects nitrate
   3.281 (was 3.134 at 900 s; band 1.22 cm⁻³ < 1.5, 0.1 % quantile 78.5 nm > 75).
-  TEST_RESULT_LINE
+  Full suite (`pytest tests`, TOMAS-JAX venv with tuvx-jax 655668c): 667 passed, 650
+  skipped (the Fortran 24 h comparisons) in 255 s, exit code 0.
 - Not changed here (other repositories still say Level 3 = 900 s or 15 min): the
   tutorial's `docs/INSTRUCTORS.md` and flowchart, tomas-web `src/content/assumptions.ts`
   and `src/constants/tutorial.ts` (nucleation note: "every 15 minutes", SOA "about a
