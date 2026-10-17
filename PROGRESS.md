@@ -4,6 +4,23 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-10-17 (Sat) — tuvx-jax pin moved to 655668c (Windows folder names)
+
+- Why: the laptop app's Windows test run showed that the netCDF/HDF5 C library cannot
+  open a file whose path has non-ASCII characters (a cache folder named
+  "cache-José-データ"). tuvx-jax 655668c reads each data file's bytes in Python and
+  opens them from memory, so the folder name no longer matters. Its data files and
+  arrays are unchanged.
+- `pyproject.toml` (photolysis extra): tuvx-jax `e5d9032` -> `655668c`. No model change.
+  `docs/aaar/pycham_comparison.md` still names `e5d9032`: that is the version the
+  2026-10-15 comparison runs used.
+- Level 3 preset, 2 h, old and new tuvx-jax in otherwise identical environments: all
+  937 values in the run result are identical except `code_version` (it hashes the
+  tuvx-jax sources) and the run time; J for all 28 channels in every coupling interval,
+  the full gas vector and the particle number and mass in every bin are bit-identical.
+- Tests: `pytest tests` with tuvx-jax 655668c installed: 667 passed, 650 skipped
+  (the Fortran 24 h comparisons) in 269 s.
+
 ## 2026-10-17 (Sat) — Measured 48 h nucleation run times
 
 - ASSUMPTIONS A13 and docs/aaar/coupling.md: the 48 h nucleation run times are now
