@@ -105,9 +105,9 @@ def test_thin_bin_gets_its_nitrate_share_and_empty_bin_none(transfer):
 def test_level3_leaves_no_band_below_the_mode():
     """Level 3 at 80 bins, 24 h: the nitrate-grown mode leaves no band of
     stranded tail particles at 40-70 nm (it held 3.2 cm^-3 with the old
-    1 cm^-3 gate, and more at finer grids; now 1.35 with the Jathar c*
-    table, 0.93 with the Li et al. 2016 c*), and the nitrate total is
-    unchanged."""
+    1 cm^-3 gate, and more at finer grids; now 1.22 with the Jathar c*
+    table at the 300 s preset interval, 1.35 at 900 s, 0.93 with the Li et
+    al. 2016 c* at 900 s), and the nitrate total is unchanged."""
     from tomas_jax.box.driver import run
     from tomas_jax.box.scenario import load_preset
 
@@ -119,7 +119,8 @@ def test_level3_leaves_no_band_below_the_mode():
     assert n_bin[band].sum() < 1.5                    # cm^-3 (old gate: 3.16)
     q = np.cumsum(n_bin) / n_bin.sum()
     assert dm[np.searchsorted(q, 1e-3)] > 75.0        # 0.1 % quantile [nm]
-    # 3.134 with the Jathar c* table (2026-10-16; 5.151 with the Li et al. 2016 c*,
+    # 3.281 with the Jathar c* table at the 300 s preset interval (2026-10-17; 3.134
+    # at 900 s; 5.151 with the Li et al. 2016 c* at 900 s,
     # whose ~8 ug/m3 of nitrate SOA added surface area for N2O5 uptake)
-    assert r.totals["NIT_ugm3"][-1] == pytest.approx(3.134, rel=2e-3)
+    assert r.totals["NIT_ugm3"][-1] == pytest.approx(3.281, rel=2e-3)
     assert r.diagnostics["warnings"] == []

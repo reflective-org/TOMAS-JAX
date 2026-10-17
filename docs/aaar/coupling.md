@@ -200,7 +200,7 @@ boxvol = 1e10 cm³ (so per-cell thresholds mean 1 #/cm³); outputs µg/m³, ppb,
 |---|---|---|---|---|
 | `level1_volatility` | growth vs c* (0.01: 54→133 nm; 100: 54→57 nm GMD) | 12 h | 300 s | ~1.7 s |
 | `level2_limonene_soa` | limonene oxidation → ~9 µg/m³ SOA (Jathar c* table, A8), top contributors | 6 h | 300 s | ~6 s |
-| `level3_day_night` | diurnal J/OH/NO3; nitrate 0 → 3.3 → GAMMA01_NIT µg/m³ for γ = 0, 0.02, 0.1; SOA 0.05 µg/m³ | 24 h | 300 s | ~27 s |
+| `level3_day_night` | diurnal J/OH/NO3; nitrate 0 → 3.3 → 7.1 µg/m³ for γ = 0, 0.02, 0.1; SOA 0.05 µg/m³ | 24 h | 300 s | ~27 s |
 
 With nucleation on, every preset runs at 60 s coupling with 5 s micro-steps and takes
 about 14 s, 25 s and 112–125 s ([Time steps with nucleation](#time-steps-with-nucleation)).

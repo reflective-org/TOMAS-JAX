@@ -4,6 +4,59 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-10-17 (Sat) — Level 3 coupling interval 900 s → 300 s
+
+**Branch**: `aaar-l3-300s` (from `feat/aaar-tutorial` 44b6db2; tag `aaar-stable-2026-10-17d`)
+
+- Prompted by Ali (Figma comments 4 and 5): "15mins seems to be a bit long in my opinion,
+  it really depends how fast the chemistry is and how much emissions exist. I think that
+  should be defined in the numerics/solver." and "change "numerics" to "numerical
+  solver" or something that is clear." Decision (Ali): 300 s now, an interval chosen
+  automatically by the numerical solver after the tutorial (planned, not built).
+- `box/presets/level3_day_night.toml`: `numerics.coupling_dt_s` 900 → 300 (output every
+  1800 s, a multiple of 300, unchanged). All three presets now request 300 s.
+- Measured (Level 3 preset, 24 h, 40 bins, nucleation off; final values, deviation from a
+  30 s coupling / 2.5 s micro-step reference): 900 s SOA 0.05982 (+38 %), nitrate 3.1373
+  (−6.4 %), sulfate 5.5004 (−1.0 %) µg/m³, N 2551.8 cm⁻³ (−0.07 %), GMD 149.57 nm
+  (−1.0 %), peak OH −5.2 %, peak NO3 −2.0 %; 300 s SOA 0.04781 (+10.3 %), nitrate
+  3.2840 (−2.0 %), sulfate 5.5420 (−0.27 %), N 2553.1 (−0.02 %), GMD 150.62 (−0.31 %),
+  OH −1.5 %, NO3 −0.6 %; 60 s SOA +1.8 %, nitrate −0.2 %. The error is first order in
+  the interval, X(Δt_c) ≈ X₀ + a·Δt_c. Against 900 s, 300 s gives SOA −20.1 %, nitrate
+  +4.7 % (as measured 2026-10-16).
+- Nucleation on vs off in the Level 3 preset (no new particles at 293 K): SOA −8.6 %,
+  nitrate +1.8 %, sulfate +0.24 %, GMD +0.27 % (was −27 %, +6.6 % against 900 s). On and
+  off with the same 60 s / 5 s steps agree to 1e-6: the whole shift is the time steps.
+- New preset numbers (300 s): γ 0.002 / 0.02 / 0.1 → nitrate 0.40 / 3.28 / 7.15 µg/m³
+  (900 s: 0.39 / 3.14 / 6.81); nitrate 3.284 / 3.281 / 3.280 at 40 / 80 / 160 bins;
+  SOA peak 0.36 µg/m³ at 2 h (0.39 at 900 s).
+- Wall time, 24 h, warm, laptop with other work running: 13 s (900 s), 18 s (600 s),
+  27 s (300 s), 90 s (60 s), 157 s (30 s), 213 s (reference); one thread (as the API
+  workers) 13 / 27 / 85 s at 900 / 300 / 60 s. With nucleation on Level 3 still takes
+  112–125 s (60 s / 5 s steps whatever the request).
+- `driver.warmup()` compiles each preset at its own interval, so it now covers Level 3 at
+  300 s (and the nucleation 60 s variant as before); a run without nucleation at 600 or
+  900 s compiles once on its first call in a process (about 2–3 s). For tomas-api:
+  `code_version()` changes (it hashes the preset TOML), so every cache key changes and
+  the prewarm has to run again after deploying; the Level 3 prewarm runs (preset and
+  γ grid) take about 27 s each instead of 13 s; `limits.py` may keep {300, 600, 900}.
+- Docs: `docs/aaar/coupling.md` new section "Coupling interval (numerical solver
+  setting)" (equation, table, wall times, planned automatic interval), the nucleation
+  side-effect paragraph, presets table, Level 3 SOA paragraph and the compile note;
+  ASSUMPTIONS A8 (Level 3 numbers), A12 (choice of interval, sensitivity table), A13
+  (side effect, cost); `gaschem.md`, `aerosol_step.md`, `pycham_comparison.md` and the G3
+  README say the PyCHAM G3 runs used the 900 s preset of 2026-10-14 (the case keeps
+  900 s); CLAUDE.md.
+- Tests: `test_presets_load` checks that every preset requests 300 s;
+  `test_warmup_covers_capped_preset_runs` now also runs each preset with nucleation off
+  and checks the gas solver's compile count; the slow 80-bin Level 3 test expects nitrate
+  3.281 (was 3.134 at 900 s; band 1.22 cm⁻³ < 1.5, 0.1 % quantile 78.5 nm > 75).
+  TEST_RESULT_LINE
+- Not changed here (other repositories still say Level 3 = 900 s or 15 min): the
+  tutorial's `docs/INSTRUCTORS.md` and flowchart, tomas-web `src/content/assumptions.ts`
+  and `src/constants/tutorial.ts` (nucleation note: "every 15 minutes", SOA "about a
+  quarter lower", nitrate "about 7% higher", and a run time), tomas-api
+  `docs/aaar/INSTRUCTOR_GUIDE.md`.
+
 ## 2026-10-17 (Sat) — tuvx-jax pin moved to 655668c (Windows folder names)
 
 - Why: the laptop app's Windows test run showed that the netCDF/HDF5 C library cannot

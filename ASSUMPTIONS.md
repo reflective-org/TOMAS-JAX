@@ -110,7 +110,8 @@ is assumed, why, where it is implemented and how to change it.
     200.9 nm, GSD −2.9 %, 0.11 % of the particles below the seed's 1st-percentile size
     (PyCHAM 0.05 %, MNFIX 2.1 %). SOA totals change by ≤ 0.21 %. (These numbers use the
     Li et al. 2016 c*; with the Jathar table Level 3 nitrate is 3.137 / 3.134 / 3.134
-    µg/m³ at 40 / 80 / 160 bins.) Level 3 nitrate is
+    µg/m³ at 40 / 80 / 160 bins with 900 s coupling, 3.284 / 3.281 / 3.280 at the
+    300 s preset interval.) Level 3 nitrate is
     4.0 % above the old code at 40 bins (5.16 vs 4.96 µg/m³): N2O5 uptake follows the
     particle surface, and the old 40-bin value carried the old scheme's resolution
     error. Both converge to 5.149 µg/m³ at 320 bins (PPM 5.160/5.152/5.149/5.149, MNFIX
@@ -203,18 +204,20 @@ is assumed, why, where it is implemented and how to change it.
   (Li: −78 %, −79 %, −15 %, +167 %, −35 %). This matches the PyCHAM comparison, where
   PyCHAM's own Nannoolal vapour pressures gave 0.51× the Li SOA and 5 % N-containing
   (S2 `native`, `docs/aaar/pycham_comparison.md`).
-- **Level 3 preset (24 h):** SOA 0.060 µg/m³ at 24 h (Li: 7.85) and particle nitrate
-  3.14 µg/m³ (Li: 5.16). There is no dilution, yet SOA peaks at 0.39 µg/m³ about 2 h in
-  and then falls: 0.28 at 4 h, 0.18 at 6 h, about 0.14 through the night, 0.093 at 22 h
-  and 0.060 at 24 h. 2 ppb limonene gives little organic mass to absorb into, and OH
-  (up to 1.2×10⁷ cm⁻³ on day 1, 2.4×10⁷ on day 2) oxidises and photolysis destroys the
+- **Level 3 preset (24 h; 300 s coupling since 2026-10-17, A12):** SOA 0.048 µg/m³ at
+  24 h and particle nitrate 3.28 µg/m³ (at the old 900 s: 0.060 and 3.14; Li at 900 s:
+  7.85 and 5.16). There is no dilution, yet SOA peaks at 0.36 µg/m³ about 2 h in and
+  then falls: 0.24 at 4 h, 0.15 at 6 h, about 0.12 through the night, 0.078 at 22 h and
+  0.048 at 24 h. 2 ppb limonene gives little organic mass to absorb into, and OH (up to
+  1.2×10⁷ cm⁻³ on day 1, 2.5×10⁷ on day 2) oxidises and photolysis destroys the
   gas-phase semivolatile hydroperoxides, so the particles evaporate to follow the gas.
-  The table SOA is 2 % N-containing (Li: ~100 %). Nitrate drops because SOA and its
-  water no longer add surface for N2O5 uptake: k_het rises ×1.22 over the first 4 h
-  (Li ×2.76) and ends 23 % below the chamber's 4×10⁻⁴ s⁻¹ (Li +20 %); γ 0.002 / 0.02 /
-  0.1 → 0.39 / 3.14 / 6.81 µg/m³ (Li 0.98 / 5.16 / 7.71). Because the SOA is so small,
-  it is far more sensitive to the coupling interval than nitrate (A12: −10.5 % at 600 s,
-  −20 % at 300 s, vs nitrate +2.6 / +4.7 %).
+  Nitrate drops against Li because SOA and its water no longer add surface for N2O5
+  uptake; γ 0.002 / 0.02 / 0.1 → 0.40 / 3.28 / 7.15 µg/m³ (900 s: 0.39 / 3.14 / 6.81;
+  Li at 900 s: 0.98 / 5.16 / 7.71). Measured at 900 s only: the table SOA is 2 %
+  N-containing (Li: ~100 %), and k_het rises ×1.22 over the first 4 h (Li ×2.76) and
+  ends 23 % below the chamber's 4×10⁻⁴ s⁻¹ (Li +20 %). Because the SOA is so small, it
+  is far more sensitive to the coupling interval than nitrate (A12: against a 30 s
+  reference, SOA +10 % at 300 s and +38 % at 900 s, nitrate −2.0 % and −6.4 %).
 - Level 1, and Levels 2 and 3 with `cstar_table=None`, are bit-identical to 2faa391
   (67 arrays compared). Run times are unchanged (Level 2 median 5.8 s, Level 3 12.8 s).
 - Radicals (odd H + N + Cl + Br) never partition. Species more volatile than
@@ -253,9 +256,9 @@ is assumed, why, where it is implemented and how to change it.
 
 - All k (MCM complex rates, J at the interval midpoint, RO2 sum, k_het) are held
   fixed while the stiff solver integrates one coupling interval (300 s in every preset;
-  Level 3 used 900 s until 2026-10-17). Gas and aerosol are operator-split at the same interval; H2SO4
-  (from the SA counter) and nitrate (from NA_HET) are passed to TOMAS as constant
-  rates over the interval.
+  Level 3 used 900 s until 2026-10-17). Gas and aerosol are operator-split at the same
+  interval; H2SO4 (from the SA counter) and nitrate (from NA_HET) are passed to TOMAS as
+  constant rates over the interval.
 - With nucleation on, the interval used is at most 60 s and the aerosol micro-step
   at most 5 s, whatever the scenario asks for (A13). The requested interval is split
   into equal parts, so output times and the run's end do not move. Runs without
@@ -356,8 +359,8 @@ is assumed, why, where it is implemented and how to change it.
   run the off case at 60 s coupling as well.
 - Cost (warm, laptop): Level 1 with nucleation 1.3 → 14 s, Level 2 5.4 → 25 s,
   Level 3 27 → 112–125 s for the preset durations (11.5 s without nucleation at the old
-  900 s interval; also 112 s on one thread, as in the API workers). The cost does not depend on whether a burst happens and grows in
-  proportion to the run length: the longest run the API allows, 48 h, takes 235 s in
+  900 s interval; also 112 s on one thread, as in the API workers). The cost does not
+  depend on whether a burst happens and grows in proportion to the run length: the longest run the API allows, 48 h, takes 235 s in
   Level 3 and 204 s in Level 2 (measured 2026-10-17 through the API worker's job path,
   one thread, laptop under load). The API's tutorial job limit was raised from 120 s
   to 480 s for these runs (tomas-api ADR-15); a worker core more than about 2 times
@@ -406,7 +409,7 @@ is assumed, why, where it is implemented and how to change it.
 
 1. ~~c* table for the mechanism species~~ — received 2026-10-16 and used by Levels 2
    and 3 (A8). Open: is ignoring particle-phase PAN decomposition acceptable now that
-   23 PANs still condense? Is Level 3 SOA of 0.06 µg/m³ (peak 0.39 at 2 h) acceptable
+   23 PANs still condense? Is Level 3 SOA of 0.05 µg/m³ (peak 0.36 at 2 h) acceptable
    for the tutorial, or should the Level 3 preset change (more limonene, lower NO2
    hold)? With the table, Level 2 SOA falls with NOx (8.5 µg/m³ at NOx = 0, 1.0 at
    10 ppb) and is 90 % hydroperoxides: does that match your expectation and your own
