@@ -380,10 +380,13 @@ is assumed, why, where it is implemented and how to change it.
   night); O3 accumulates without deposition.
 - How the hold works matters (G3 against PyCHAM, 2026-10-14) — for Shantanu: the
   driver resets NO2 to 1 ppb after each coupling interval and lets it evolve inside
-  the interval (it falls to 0.78–0.91 ppb in daylight at 900 s). The time-mean NO2 is
-  0.969 ppb, so 8.4 % less NOx is supplied over 24 h than with NO2 fixed inside the
-  solver (PyCHAM `const_comp`), giving HNO3 −9 %, NO −11 % by day and night-time
-  nitrates up to +28 %. Holding NO2 inside the gas solver removes this (prototype:
+  the interval. At the end of a daylight interval it is 0.78–1.20 ppb at 900 s and
+  0.89–1.13 ppb at the 300 s Level 3 default (above 1 ppb just after sunrise, when NO
+  from the night turns back into NO2); at night 0.94–0.96 and 0.98–0.99 ppb
+  (measured 2026-10-17, TOMAS-JAX 6900eb3). In the G3 comparison at 900 s the time-mean
+  NO2 was 0.969 ppb, so 8.4 % less NOx was supplied over 24 h than with NO2 fixed inside
+  the solver (PyCHAM `const_comp`), giving HNO3 −9 %, NO −11 % by day and night-time
+  nitrates up to +28 %; the shorter 300 s interval makes the shortfall smaller. Holding NO2 inside the gas solver removes this (prototype:
   `benchmarks/pycham/cases/G3/hold.py`); at 60 s coupling the effect is 0.5 %.
 
 ### AC1 — SOA absorbing floor (stream C)
