@@ -1,0 +1,51 @@
+{
+ "floor_molec_cm3": 1000000.0,
+ "radau_vs_bdf": {
+  "lim726_L2_dt900": {
+   "key_max": 6.7851694475393745e-09,
+   "key_worst": "LIMONENE",
+   "all_species_hourly_max": 6.470611202530563e-09
+  },
+  "lim726_L2_dt60": {
+   "key_max": 1.3829252489286566e-07,
+   "key_worst": "LIMONENE",
+   "all_species_hourly_max": 9.093280529154304e-08
+  },
+  "lim726_L3_dt900": {
+   "key_max": 6.872642644964904e-09,
+   "key_worst": "N2O5",
+   "all_species_hourly_max": 6.872642644964904e-09
+  },
+  "lim726_L3_dt60": {
+   "key_max": 4.412546401765054e-08,
+   "key_worst": "NO",
+   "all_species_hourly_max": 3.0542466676590066e-09
+  }
+ },
+ "synthetic_vs_limonene": {
+  "syn1353_L3_dt900": {
+   "all_species_hourly_max": 2.1515061730453538e-09,
+   "worst_species": "N2O5"
+  },
+  "syn1353_L3_dt60": {
+   "all_species_hourly_max": 7.29975407011807e-10,
+   "worst_species": "NO"
+  },
+  "syn4488_L3_dt900": {
+   "all_species_hourly_max": 9.460222023748613e-09,
+   "worst_species": "N2O5"
+  },
+  "syn4488_L3_dt60": {
+   "all_species_hourly_max": 2.564173313520606e-09,
+   "worst_species": "NO3"
+  },
+  "syn5742_L3_dt900": {
+   "all_species_hourly_max": 1.0697538754606382e-08,
+   "worst_species": "N2O5"
+  },
+  "syn5742_L3_dt60": {
+   "all_species_hourly_max": 3.4089609574852187e-09,
+   "worst_species": "NO3"
+  }
+ }
+}

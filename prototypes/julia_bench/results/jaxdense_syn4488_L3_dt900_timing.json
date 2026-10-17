@@ -1,0 +1,63 @@
+{
+ "problem": "syn4488_L3",
+ "coupling_s": 900,
+ "n_species": 4488,
+ "n_reactions": 13259,
+ "solver": "TOMAS-JAX integrate_interval: diffrax kvaerno3, dense autodiff Jacobian, rtol 0.001, atol 10000.0, max_steps 2000",
+ "versions": {
+  "jax": "0.9.1",
+  "diffrax": "0.7.2",
+  "python": "3.11.15"
+ },
+ "machine": "macOS-26.6.2-arm64-arm-64bit",
+ "XLA_FLAGS": "",
+ "t_setup_s": 1.2557496670051478,
+ "runs": [
+  {
+   "kind": "first (includes compile)",
+   "wall_s": 468.1714887089911,
+   "uptime_before": "17:53  up 8 days,  9:57, 4 users, load averages: 7.05 8.33 7.84",
+   "uptime_after": "18:01  up 8 days, 10:05, 4 users, load averages: 9.96 9.79 8.89"
+  }
+ ],
+ "status": "complete",
+ "t_first_s": 468.1714887089911,
+ "t_first_interval_s": 10.817371000011917,
+ "accepted_steps": 904,
+ "accuracy": {
+  "run": "jaxdense_syn4488_L3_dt900.json",
+  "reference": "ref_syn4488_L3_dt900.json",
+  "floor_molec_cm3": 1000000.0,
+  "key": {
+   "max": 0.01002308634026651,
+   "median": 1.8502571128875725e-06,
+   "p95": 0.00024541398433955696,
+   "worst_species": "LIMONENE_6",
+   "per_species": {
+    "O3": 2.9188972329196027e-06,
+    "OH": 0.0006622196862477576,
+    "HO2": 0.005684281249993197,
+    "NO": 0.000244545090134892,
+    "NO2": 5.576490880237873e-05,
+    "NO3": 0.003941196944457525,
+    "N2O5": 0.005543478411773664,
+    "HNO3": 4.026772439923656e-05,
+    "H2O2": 8.103267357431707e-05,
+    "HCHO": 2.8100482260631788e-05,
+    "PAN": 3.5122630295649346e-05,
+    "SA": 0.0011098265565227694,
+    "LIMONENE": 0.01002308634026617,
+    "LIMAL": 0.0010133040726269015,
+    "LIMKET": 0.0026722872539344245,
+    "LIMONONIC": 0.0001828946496924377,
+    "LIMAOOH": 0.0007383469593557529,
+    "LIMANO3": 0.0008182277410332219,
+    "LIMONENE_6": 0.01002308634026651,
+    "LIMONONIC_6": 0.00018289464969185827
+   }
+  },
+  "all_species_hourly_max": 0.010023086340266848
+ },
+ "compile_estimate_s": 468.1714887089911,
+ "peak_rss_mb": 3448.75
+}
