@@ -482,7 +482,8 @@ def warmup(nucleation: bool = True) -> None:
     With ``nucleation`` (default) each preset is also compiled with nucleation on, whose
     shorter time steps (NUCLEATION_MAX_COUPLING_DT_S, NUCLEATION_MAX_MICRO_DT_S) are
     separate compiles. 300, 600 and 900 s all split into 60 s intervals, so one 60 s
-    variant per preset covers them.
+    variant per preset covers them. Every preset requests 300 s, so a run without
+    nucleation at another interval (600 or 900 s) compiles once on its first call.
     """
     for name in list_presets():
         s = load_preset(name)

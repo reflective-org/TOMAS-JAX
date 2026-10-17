@@ -57,7 +57,11 @@ Solver choice (24 h chemistry-only benchmark, Buffalo July, MCM J, 300 s interva
 atol = 1e4 molec/cm³ (~0.4 ppq) removes the step-size collapse caused by near-zero
 species; O3 after 24 h changes by < 0.6 % across these settings. Carrying the step size
 across intervals was tried and rejected (fewer accepted, many more rejected steps).
-Defaults: Kvaerno3, rtol 1e-3, atol 1e4 (`config.py`).
+Defaults: Kvaerno3, rtol 1e-3, atol 1e4 (`config.py`). The coupling interval is a
+numerical solver setting of the scenario (`numerics.coupling_dt_s`), not of this module.
+The bold 900 s row was the Level 3 preset until 2026-10-17; every preset now uses 300 s
+(Ali), because the chemistry is more accurate with a shorter interval (ASSUMPTIONS A12),
+and an interval chosen by the numerical solver itself is planned.
 
 ## Photolysis
 

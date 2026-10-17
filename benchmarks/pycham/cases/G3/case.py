@@ -63,7 +63,7 @@ SUN_JSON = RESULTS_DIR / "sun.json"
 
 
 def scenario(coupling_dt_s: float | None = None, seed_number_cm3: float | None = None) -> Scenario:
-    """The G3 TOMAS-JAX scenario (preset coupling unless ``coupling_dt_s`` is given)."""
+    """The G3 TOMAS-JAX scenario (G3["coupling_dt_s"], 900 s, unless ``coupling_dt_s`` is given)."""
     s = load_preset(G3["preset"])
     if tuple(s.hold_constant) != G3["held_species"]:
         raise ValueError(f"preset holds {s.hold_constant}, G3 expects {G3['held_species']}")

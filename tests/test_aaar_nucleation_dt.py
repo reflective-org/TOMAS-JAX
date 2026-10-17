@@ -119,13 +119,18 @@ def test_level1_nucleation_burst_converges():
 
 
 def test_warmup_covers_capped_preset_runs():
-    """After warmup(), a nucleating run of each preset at its requested coupling interval
-    needs no new compile of the aerosol step (the API workers rely on this)."""
+    """After warmup(), a run of each preset at its own coupling interval (300 s in all
+    three since 2026-10-17), with nucleation off and on, needs no new compile of the
+    aerosol step or of the gas solver (the API workers rely on this)."""
     from tomas_jax.box.aerosol_step import aerosol_outer_step
     from tomas_jax.box.driver import warmup
+    from tomas_jax.gaschem.solver import _integrate
 
     warmup()
-    n_compiled = aerosol_outer_step._cache_size()
+    n_aerosol, n_gas = aerosol_outer_step._cache_size(), _integrate._cached._cache_size()
     for name in list_presets():
-        run(_short(_nucleating(load_preset(name))))
-    assert aerosol_outer_step._cache_size() == n_compiled
+        s = load_preset(name)
+        run(_short(s))
+        run(_short(_nucleating(s)))
+    assert aerosol_outer_step._cache_size() == n_aerosol
+    assert _integrate._cached._cache_size() == n_gas

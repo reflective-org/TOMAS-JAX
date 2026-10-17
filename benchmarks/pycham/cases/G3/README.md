@@ -18,6 +18,10 @@ cd tomas-jax
 `run.py --skip-pycham` reuses `pycham-bench/outputs/G3_*`. The case uses its own PyCHAM
 copy, `pycham-bench/PyCHAM_G3`.
 
+"Preset coupling" below means 900 s, the Level 3 preset interval when this case was run
+(2026-10-14). Since 2026-10-17 the preset uses 300 s (ASSUMPTIONS A12); the case keeps
+900 s (`config.py`, `G3["coupling_dt_s"]`) so that it reproduces these results.
+
 ## Runs
 
 | Run | What it is for |

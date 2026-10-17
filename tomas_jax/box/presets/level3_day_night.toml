@@ -42,7 +42,10 @@ h2so4_condensation = true
 soa_partitioning = true
 n2o5_uptake = true
 
+# Numerical solver settings. Coupling interval 300 s, as in Levels 1-2 (Ali, 2026-10-17;
+# 900 s until then; ASSUMPTIONS A12). An interval chosen automatically by the numerical
+# solver is planned.
 [numerics]
-coupling_dt_s = 900.0
+coupling_dt_s = 300.0
 output_dt_s = 1800.0
 nbins = 40

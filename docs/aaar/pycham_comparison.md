@@ -18,14 +18,15 @@ time) are numerical experiments done in benchmark code; they never change the mo
 | Process | Verdict | Main residual and its cause |
 |---|---|---|
 | Gas chemistry (G2) | **Same ODE system.** All 2135 rate constants agree to 4e-16. At the preset 300 s coupling the median \|NMB\| over 391 species is 1.7e-3 (max 3 %); at 60 s it is 3e-4, and with tight solver tolerances and the same water vapour formula 5e-7. | RO2+RO2 products in the first 20 min (RO2 frozen at 0 for the first interval). |
-| Photolysis and day/night (G3) | **Agree once the coupling is short.** 900 s preset: median \|NMB\| 10 % over 361 species, HNO3 −9 %, NO −11 % by day. 60 s: 0.6 %, every species within 2.6 % at all times. All differences removed: 1.5e-6. | How NO2 is "held": TOMAS-JAX resets it after each interval, PyCHAM fixes it inside the solver. Plus J and RO2 frozen for 900 s. |
+| Photolysis and day/night (G3) | **Agree once the coupling is short.** 900 s (the Level 3 preset until 2026-10-17): median \|NMB\| 10 % over 361 species, HNO3 −9 %, NO −11 % by day. 60 s: 0.6 %, every species within 2.6 % at all times. All differences removed: 1.5e-6. | How NO2 is "held": TOMAS-JAX resets it after each interval, PyCHAM fixes it inside the solver. Plus J and RO2 frozen for 900 s. |
 | Condensation / evaporation (S1) | **Mass agrees within ~1 % at 12 h; the size distribution differs by the Kelvin term and transfer coefficient only; early uptake is faster.** c* = 1 SOA +0.7 % at 12 h (max +4.1 % at 1–3 h), c* = 100 −0.3 %. Number-mean dry diameter +2.3 % and GSD −3.2 % at 12 h, the same at 40 and 160 bins (TOMAS-JAX moves by ≤ 0.1 % with resolution). With Kelvin off in both and PyCHAM's transfer coefficient in TOMAS-JAX: −0.2 to +0.1 % in diameter and −0.4 to +0.1 % in GSD at 40–160 bins. | vbs-jax's transfer coefficient (up to 1.5× PyCHAM's and above the kinetic limit) and the Kelvin term. Until 2026-10-15 TOMAS-JAX moved growing particles with MNFIX, which spread the distribution (diameter −12.6 % at 40 bins); it now uses a PPM remap. |
 | SOA partitioning with chemistry (S2) | **Total SOA within 1–4.2 % after 1 h (+1.1 % at 6 h), +13 % at 30 min.** Per c* class within ~11 %. | Operator split and transfer rate early on; per-species apportionment inside a class off by up to 4×. The volatility itself is not tested (identical c* by construction). |
 
 What this means for the tutorial: the gas-phase chemistry and the partitioning
 numerics are sound. Three TOMAS-JAX behaviours deserve a decision (they are model
-choices, not bugs): the coupling interval (300/900 s) and the NO2 reset convention in
-Level 3; the vbs-jax transfer coefficient; and the within-class species tracker. A fourth,
+choices, not bugs): the coupling interval (300/900 s; since 2026-10-17 Level 3 also uses
+300 s, and an interval chosen by the numerical solver is planned) and the NO2 reset
+convention in Level 3; the vbs-jax transfer coefficient; and the within-class species tracker. A fourth,
 the size-distribution spreading at 40 bins, was fixed on 2026-10-15 (SOA growth now moves
 particles with a PPM remap; S1 and S2 below were re-run with it). Separately, the large
 NOx-sink feedback seen in Level 2 SOA comes from the Li et al. (2016) placeholder c*
@@ -61,7 +62,7 @@ NOx-sink feedback seen in Level 2 SOA comes from the Li et al. (2016) placeholde
 | | TOMAS-JAX (ours) | PyCHAM (reference) |
 |---|---|---|
 | Version | `tomas-jax` branch `feat/aaar-tutorial`, commit `8753736` plus the opt-in `driver.run(observer=...)` hook (default runs and `RunResult` unchanged); S1 and S2 re-run 2026-10-15 on branch `feat/aaar-tutorial-ppm-soa` (PPM bin transfer for SOA and nitrate; gas chemistry unchanged); vbs-jax `4a67f16`, tuvx-jax `e5d9032`, JAX 0.11.2, diffrax 0.7.2 | v5.8.0, commit `7880d81`, with `single_seed_dry_fix.patch`; UManSysProp `f6d8645`; Python 3.10, exact environment in `benchmarks/pycham/requirements-lock.txt` |
-| Gas solver | diffrax Kvaerno3, rtol 1e-3, atol 1e4 molec cm⁻³; rate constants, J (interval midpoint) and the RO2 sum frozen per coupling interval (300 s Level 1–2, 900 s Level 3) | scipy BDF, rtol 1e-4, atol 1e-3; rates, J and RO2 refreshed every `update_step` (60 s here) |
+| Gas solver | diffrax Kvaerno3, rtol 1e-3, atol 1e4 molec cm⁻³; rate constants, J (interval midpoint) and the RO2 sum frozen per coupling interval (300 s Level 1–2, 900 s Level 3 in these runs; 300 s in every preset since 2026-10-17) | scipy BDF, rtol 1e-4, atol 1e-3; rates, J and RO2 refreshed every `update_step` (60 s here) |
 | Gas–aerosol coupling | operator split per coupling interval | one ODE system for gas and particles |
 | Aerosol | TOMAS two-moment fixed sectional bins; SOA and nitrate move between bins by a PPM remap, MNFIX elsewhere | moving-centre bins |
 | Partitioning | vbs-jax (Zaveri et al. 2014), Raoult by **mass** fraction over the organic phase, Kelvin σ = 0.025 N m⁻¹ | Raoult by **mole** fraction, Kelvin σ = 0.072 N m⁻¹ (also on water), Fuchs–Sutugin (Jacobson) |
@@ -190,12 +191,12 @@ More figures: [PAN species](figures/pycham/g2_pan_species.png),
 | Environment | 293.15 K, RH 0.6, 24 h from 2026-07-01 12:00 EDT, Buffalo (42.89 N, 78.88 W); sunset 20:53 EDT (t = 8.88 h), sunrise 05:47 (t = 17.78 h) |
 | Photolysis | TUV-x in TOMAS-JAX; PyCHAM reads our J on a 60 s grid (reference) or on the 900 s grid |
 | Held species | NO2 = 1 ppb (A14): TOMAS-JAX `hold_constant`, PyCHAM `const_comp` |
-| TOMAS-JAX runs | 900 s (preset), 60 s; attribution: 900 s with NO2 held inside the solver, 60 s tight, + PyCHAM water, + NO2 held inside the solver |
+| TOMAS-JAX runs | 900 s (the preset at the time), 60 s; attribution: 900 s with NO2 held inside the solver, 60 s tight, + PyCHAM water, + NO2 held inside the solver |
 | PyCHAM runs | J every 60 s (reference), J every 900 s, J every 60 s at rtol 1e-6 |
 
 ![G3 key species](figures/pycham/G3_key_species.png)
 
-| 361 species (NO2 excluded) | coupling 900 s (preset) | coupling 60 s |
+| 361 species (NO2 excluded) | coupling 900 s (preset until 2026-10-17) | coupling 60 s |
 |---|---|---|
 | median \|NMB\| | 0.104 | 5.7e-3 |
 | 95th percentile \|NMB\| | 0.29 | 0.019 |
@@ -466,13 +467,16 @@ More figures: [all gas-phase species with particles present](figures/pycham/S2_g
   spin-up, would remove the start-up artefact.
 - **Photolysis and the diurnal cycle.** Verified once J is shared: J from TUV-x, frozen
   at interval midpoints, reproduces PyCHAM when PyCHAM gets the same J. At the Level 3
-  preset (900 s) the differences are not small (median 10 %, HNO3 −9 %, nitrates at
+  preset of the time (900 s) the differences are not small (median 10 %, HNO3 −9 %, nitrates at
   night up to +28 %), and they come from two model choices: NO2 reset after each
   interval instead of held inside the solver, and 900 s intervals (J step at sunset and
   sunrise, RO2 frozen). **Decision needed:** hold NO2 inside the gas solver (a
   prototype is in `benchmarks/pycham/cases/G3/hold.py`), and/or shorten the Level 3
-  coupling. ASSUMPTIONS A12 has the coupling sensitivity of the totals (600 s: nitrate
-  +3.5 %, SOA +2.4 %; 300 s: +6.6 %, +4.7 %, re-measured 2026-10-16).
+  coupling. The coupling was decided on 2026-10-17 (Ali): Level 3 now uses 300 s, as
+  Levels 1–2 do, and an interval chosen by the numerical solver is planned; the NO2 hold
+  is still open. G3 was not re-run at 300 s; both effects shrink with the interval (60 s:
+  median 0.6 %). ASSUMPTIONS A12 has the coupling sensitivity of the Level 3 totals
+  (300 s against 900 s with the Jathar c* table: SOA −20 %, nitrate +4.7 %).
 - **Condensation / evaporation.** Mass partitioning is right (≤ 0.7 % at 12 h,
   equilibrium within 0.03 % with Kelvin off). The approach to equilibrium is faster than
   PyCHAM's because the vbs-jax transfer coefficient is up to 1.5× larger and exceeds the
@@ -495,9 +499,10 @@ More figures: [all gas-phase species with particles present](figures/pycham/S2_g
 ## Findings about TOMAS-JAX (reported, not changed)
 
 1. Level 3 NO2 hold is a reset per coupling interval (G3): ~8 % less NOx supplied at
-   900 s, median species difference 10 % against a continuous hold.
+   900 s (the Level 3 interval until 2026-10-17), median species difference 10 % against a
+   continuous hold.
 2. RO2 = 0 during the first coupling interval (G2, G3): RO2+RO2 products 50–60 % low
-   in the first 900 s of Level 3.
+   in the first 900 s of Level 3 at the old interval (the first 300 s now).
 3. vbs-jax transfer coefficient exceeds the kinetic limit by up to 1.5× and uses one
    diffusion volume (120) for every organic (S1, S2).
 4. *Fixed 2026-10-15.* MNFIX-only growth across bins spread the size distribution at

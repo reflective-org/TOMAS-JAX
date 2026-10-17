@@ -166,7 +166,7 @@ G3 = {
     "processes": {"coagulation": False, "h2so4_condensation": False,
                   "soa_partitioning": False, "n2o5_uptake": False, "nucleation": False},
     "gamma_n2o5": 0.0,                    # preset 0.02; uptake is off in a gas-only case
-    "coupling_dt_s": 900.0,               # preset value
+    "coupling_dt_s": 900.0,               # Level 3 preset value when G3 was run (300 s since 2026-10-17)
     "coupling_dt_sensitivity_s": 60.0,    # = PyCHAM update_step
     # <34> N2O5 = NA + NA : 4.0E-4 is replaced in TOMAS-JAX by gamma uptake (gamma = 0 here)
     "eqn_rate_overrides": {"34": "0.0"},
