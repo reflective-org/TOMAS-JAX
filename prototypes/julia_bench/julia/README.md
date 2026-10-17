@@ -25,6 +25,7 @@ Julia 1.12.7 (official Apple-silicon tarball) lives in `../opt`, and its package
 - `scripts/julia_tables.py`: the results tables from `bench/results/*_timing.json`.
 - `sysimage/env`: the environment that the system image is built from and runs in.
 - `sysimage/tools`: PackageCompiler.
+- `scripts/install.jl`: how the environment was first made (`Pkg.add`; the Manifest pins what it resolved).
 
 ## Solvers
 
@@ -44,7 +45,7 @@ come from `../bench/scripts` (BENCHMARK.md section 10).
 
 ```sh
 source env.sh
-$JULIA --startup-file=no scripts/install.jl          # once: packages into ../depot
+$JULIA --startup-file=no -e 'using Pkg; Pkg.instantiate()'   # once: the pinned packages into ../depot
 $JULIA --startup-file=no scripts/check.jl            # unit-test vectors, all problems
 scripts/run_case.sh 900 lim726_L3 900 fbdf 1e-3 1e4 3 nom 600   # one timed case
 scripts/run_batch.sh logs/nominal.log nom 3 "rodas5p fbdf qndf cvode" "lim726_L3 900" "syn5742_L3 60"
