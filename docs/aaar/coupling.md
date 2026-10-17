@@ -70,8 +70,8 @@ interval. Halving Δt_c halves the error and makes the chemistry about 1.7 times
 expensive (gas solver steps over 24 h: 1047 at 900 s, 2446 at 300 s, 8664 at 60 s).
 The error is largest where the chemistry changes quickly within one interval (after
 sunrise and sunset, and in the first interval, where the RO2 sum is held at its
-starting value 0) and where much is
-emitted or held fixed (Level 3 resets NO2 to 1 ppb after every interval, ASSUMPTIONS A14).
+starting value 0) and where much is emitted or held fixed (Level 3 resets NO2 to 1 ppb
+after every interval, ASSUMPTIONS A14).
 
 Every preset uses Δt_c = 300 s. Level 3 used 900 s until 2026-10-17, when Ali chose
 300 s for the tutorial ("15 mins seems to be a bit long ... it really depends how fast
@@ -95,8 +95,8 @@ Level 3 preset (24 h, 40 bins, nucleation off), measured 2026-10-17: final value
 
 GMD is the number geometric mean diameter, exp(Σ N_i ln D_i / Σ N_i) over the bins.
 Peak OH is at noon of the second day (24 h; 1.19e7 cm⁻³ on day 1, at 4 h) and peak
-NO3 at 00:30 local time (12.5 h). The SOA error is about +0.035 % per second of
-interval (+10 % at 300 s, +38 % at 900 s) and the nitrate error about −0.007 % per
+NO3 at 00:30 local time (12.5 h). The SOA error is about +0.035 to +0.04 % per second
+of interval (+10 % at 300 s, +38 % at 900 s) and the nitrate error about −0.007 % per
 second, as the first-order equation says. SOA is this sensitive because the Level 3 SOA
 at 24 h is a small residual: it peaks at 0.36 µg/m³ 2 h in, and OH and photolysis then
 destroy most of the semivolatile gases it is in equilibrium with (see
@@ -228,7 +228,8 @@ by `warmup()` and compiles on its first call in a process (about 2–3 s; before
 become 60 s intervals with 5 s micro-steps, one more compile per preset, which
 `warmup()` covers (`tests/test_aaar_nucleation_dt.py`).
 
-Validation in `tests/test_aaar_driver.py`: Level 1 organic budget closes
+Validation in `tests/test_aaar_driver.py`: every preset requests a 300 s coupling
+interval; Level 1 organic budget closes
 (gas + particle = produced, 1e-3) and low vs high c* bracket the Pankow limits;
 zero vapour gives constant dry mass and number decreasing only by coagulation;
 class gather/scatter conserves mass per class (1e-12); Level 2 consumes limonene and

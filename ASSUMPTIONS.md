@@ -263,6 +263,11 @@ is assumed, why, where it is implemented and how to change it.
   at most 5 s, whatever the scenario asks for (A13). The requested interval is split
   into equal parts, so output times and the run's end do not move. Runs without
   nucleation keep the requested interval and the 60 s micro-step.
+- **Choice of interval (2026-10-17, Ali) — for Shantanu.** The coupling interval is a
+  setting of the numerical solver. Ali: 15 min is long, and the right value depends on
+  how fast the chemistry is and how much is emitted, so the numerical solver should
+  choose it. Decision: Level 3 uses 300 s from now on, as Levels 1–2 do; an interval
+  chosen automatically by the numerical solver is planned after the tutorial.
 - Coupling-interval sensitivity, Level 3 preset at 40 bins with the Jathar c* table
   (measured 2026-10-17; final values at 24 h against a reference with 30 s coupling
   and a 2.5 s aerosol micro-step: SOA 0.04335, nitrate 3.3514, sulfate 5.5569 µg/m³,
@@ -283,19 +288,14 @@ is assumed, why, where it is implemented and how to change it.
   nitrate 5.160, SOA 7.850 µg/m³, N 2620 cm⁻³) 600 s / 300 s changed nitrate
   +3.5 % / +6.6 %, SOA +2.4 % / +4.7 %, N +0.09 % / +0.19 %.
 - Small negative concentrations from the implicit solver are clipped to zero.
-- **Choice of interval (2026-10-17, Ali) — for Shantanu.** The coupling interval is a
-  setting of the numerical solver. Ali: 15 min is long, and the right value depends on
-  how fast the chemistry is and how much is emitted, so the numerical solver should
-  choose it. Decision: Level 3 uses 300 s from now on, as Levels 1–2 do; an interval
-  chosen automatically by the numerical solver is planned after the tutorial.
 - Measured against PyCHAM (benchmark case G2, Level 2 gas phase,
   `benchmarks/pycham/README.md`): at 300 s coupling the RO2 sum is frozen at its t = 0
   value (0) for the first interval, so RO2+RO2 products (e.g. LIMAOH) are 0 at 5 min.
   Deviations are ≤ 6 % after 1 h and |NMB| ≤ 3 % over 6 h (median 1.7e-3). At 60 s
   coupling the median |NMB| is 3e-4.
 - **Level 3 against PyCHAM (G3, 2026-10-14) — for Shantanu:** at 900 s (the preset
-  then) the median |NMB| over 361 species is 10 % (60 s: 0.6 %). Most of it is the NO2 reset
-  convention (A14). The rest: the interval that contains sunset or sunrise uses the J
+  then) the median |NMB| over 361 species is 10 % (60 s: 0.6 %). Most of it is the NO2
+  reset convention (A14). The rest: the interval that contains sunset or sunrise uses the J
   of its midpoint (light 2 min early at 05:45–06:00; N2O5 +120 % at 06:00), and RO2 is
   0 for the first 900 s while half of the limonene reacts, so RO2+RO2 products are
   50–60 % low early on. The table above shows the same: 900 s is several percent away
@@ -360,11 +360,12 @@ is assumed, why, where it is implemented and how to change it.
 - Cost (warm, laptop): Level 1 with nucleation 1.3 → 14 s, Level 2 5.4 → 25 s,
   Level 3 27 → 112–125 s for the preset durations (11.5 s without nucleation at the old
   900 s interval; also 112 s on one thread, as in the API workers). The cost does not
-  depend on whether a burst happens and grows in proportion to the run length: the longest run the API allows, 48 h, takes 235 s in
-  Level 3 and 204 s in Level 2 (measured 2026-10-17 through the API worker's job path,
-  one thread, laptop under load). The API's tutorial job limit was raised from 120 s
-  to 480 s for these runs (tomas-api ADR-15); a worker core more than about 2 times
-  slower than the laptop would hit it on the 48 h Level 3 run.
+  depend on whether a burst happens and grows in proportion to the run length: the
+  longest run the API allows, 48 h, takes 235 s in Level 3 and 204 s in Level 2
+  (measured 2026-10-17 through the API worker's job path, one thread, laptop under
+  load). The API's tutorial job limit was raised from 120 s to 480 s for these runs
+  (tomas-api ADR-15); a worker core more than about 2 times slower than the laptop
+  would hit it on the 48 h Level 3 run.
 - Not tried: adding the H2SO4 production gradually within the micro-step instead of
   all at its start might remove most of the micro-step error at lower cost.
 - `driver.run(..., nucleation_caps=False)` turns the caps off, for convergence
