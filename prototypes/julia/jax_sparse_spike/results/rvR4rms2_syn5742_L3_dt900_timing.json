@@ -1,0 +1,113 @@
+{
+ "problem": "syn5742_L3",
+ "coupling_s": 900,
+ "n_species": 5742,
+ "n_reactions": 16967,
+ "solver": "JAX sparse spike: rodas4 (KPP coefficients and step control), analytic sparse Jacobian, levelised sparse LU (markowitz order, dense tail 0, factor v2, solve v2), rms error norm, rtol 0.001, atol 10000.0, max_steps 2000, h0 carry, mode loop",
+ "settings": {
+  "method": "rodas4",
+  "rtol": 0.001,
+  "atol": 10000.0,
+  "h0": "carry",
+  "mode": "loop",
+  "tail": 0,
+  "order": "markowitz",
+  "factor": "v2",
+  "solve": "v2",
+  "norm": "rms",
+  "carry_scale": 1.0,
+  "max_steps": 2000
+ },
+ "lu": {
+  "jac_nnz": 48926,
+  "lu_nnz": 63062,
+  "factor_levels": 78,
+  "fwd_groups": 19,
+  "bwd_groups": 17,
+  "flops": 355448
+ },
+ "versions": {
+  "jax": "0.9.1",
+  "python": "3.11.15"
+ },
+ "machine": "macOS-26.6.2-arm64-arm-64bit",
+ "XLA_FLAGS": "",
+ "t_symbolic_s": 0.2967844170052558,
+ "t_setup_s": 0.8275282499962486,
+ "runs": [
+  {
+   "kind": "first (includes compile)",
+   "wall_s": 2.701987166015897,
+   "uptime_before": "21:58  up 8 days, 14:02, 5 users, load averages: 3.88 3.81 4.92",
+   "uptime_after": "21:58  up 8 days, 14:02, 5 users, load averages: 3.81 3.79 4.91"
+  },
+  {
+   "kind": "warm",
+   "wall_s": 0.5286230000201613,
+   "uptime_before": "21:58  up 8 days, 14:02, 5 users, load averages: 3.81 3.79 4.91",
+   "uptime_after": "21:58  up 8 days, 14:02, 5 users, load averages: 3.81 3.79 4.91"
+  },
+  {
+   "kind": "warm",
+   "wall_s": 0.5288989589898847,
+   "uptime_before": "21:58  up 8 days, 14:02, 5 users, load averages: 3.81 3.79 4.91",
+   "uptime_after": "21:58  up 8 days, 14:02, 5 users, load averages: 3.81 3.79 4.91"
+  },
+  {
+   "kind": "warm",
+   "wall_s": 0.5310607500141487,
+   "uptime_before": "21:58  up 8 days, 14:02, 5 users, load averages: 3.81 3.79 4.91",
+   "uptime_after": "21:58  up 8 days, 14:02, 5 users, load averages: 3.81 3.79 4.91"
+  }
+ ],
+ "status": "complete",
+ "t_first_s": 2.701987166015897,
+ "t_first_interval_s": 1.1495177500182763,
+ "accepted_steps": 167,
+ "work": {
+  "accepted": 167,
+  "rejected": 29,
+  "rhs_evals": 1148,
+  "jac_evals": 167,
+  "lu_factorisations": 196
+ },
+ "accuracy": {
+  "run": "rvR4rms2_syn5742_L3_dt900.json",
+  "reference": "ref_syn5742_L3_dt900.json",
+  "floor_molec_cm3": 1000000.0,
+  "key": {
+   "max": 0.6394892248561568,
+   "median": 0.0007952727094282454,
+   "p95": 0.016335840102153578,
+   "worst_species": "NO",
+   "per_species": {
+    "O3": 0.0024453723595251587,
+    "OH": 0.041994915990482315,
+    "HO2": 0.024768532613595583,
+    "NO": 0.6394892248561568,
+    "NO2": 0.0032842210416560735,
+    "NO3": 0.022979631426635134,
+    "N2O5": 0.051419923903965936,
+    "HNO3": 0.007765256724968622,
+    "H2O2": 0.0033214020200470267,
+    "HCHO": 0.003756051460774173,
+    "PAN": 0.012773928101683877,
+    "SA": 0.023161553851922,
+    "LIMONENE": 0.03582327837373009,
+    "LIMAL": 0.028299981012595853,
+    "LIMKET": 0.0266493438750337,
+    "LIMONONIC": 0.010468046585964149,
+    "LIMAOOH": 0.02458823309525979,
+    "LIMANO3": 0.024040760406691928,
+    "LIMONENE_8": 0.03582327837373009,
+    "LIMONONIC_8": 0.010468046585964336
+   }
+  },
+  "all_species_hourly_max": 0.08788290623234794
+ },
+ "t_warm_median_s": 0.5288989589898847,
+ "t_warm_min_s": 0.5286230000201613,
+ "ms_per_step_warm_median": 3.167059634669968,
+ "compile_estimate_s": 2.1730882070260122,
+ "peak_rss_mb": 664.703125
+}

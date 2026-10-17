@@ -1,0 +1,61 @@
+=== lim726_L2 900 pass a | 18:22  up 8 days, 10:26, 5 users, load averages: 3.33 9.52 10.59
+{"problem": "lim726_L2", "coupling": 900, "method": "BDF", "rtol": 0.001, "atol": 10000.0, "steps": 1375, "nfev": 2949, "njev": 97, "nlu": 730, "wall_s": 1.022214459022507, "load_before": [3.3271484375, 9.51806640625, 10.58740234375], "load_after": [3.3271484375, 9.51806640625, 10.58740234375], "peak_rss_mb": 124.921875}
+exit 0 lim726_L2 900 a
+=== lim726_L3 900 pass a | 18:22  up 8 days, 10:26, 5 users, load averages: 3.33 9.52 10.59
+{"problem": "lim726_L3", "coupling": 900, "method": "BDF", "rtol": 0.001, "atol": 10000.0, "steps": 2288, "nfev": 4787, "njev": 97, "nlu": 1091, "wall_s": 1.4678331660106778, "load_before": [3.3271484375, 9.51806640625, 10.58740234375], "load_after": [3.3271484375, 9.51806640625, 10.58740234375], "peak_rss_mb": 131.53125}
+exit 0 lim726_L3 900 a
+=== syn1353_L3 900 pass a | 18:22  up 8 days, 10:26, 5 users, load averages: 3.33 9.52 10.59
+{"problem": "syn1353_L3", "coupling": 900, "method": "BDF", "rtol": 0.001, "atol": 10000.0, "steps": 2161, "nfev": 4536, "njev": 97, "nlu": 1064, "wall_s": 4.45600274996832, "load_before": [3.3271484375, 9.51806640625, 10.58740234375], "load_after": [3.380859375, 9.42626953125, 10.54833984375], "peak_rss_mb": 170.484375}
+exit 0 syn1353_L3 900 a
+=== syn4488_L3 900 pass a | 18:22  up 8 days, 10:26, 5 users, load averages: 3.38 9.43 10.55
+{"problem": "syn4488_L3", "coupling": 900, "method": "BDF", "rtol": 0.001, "atol": 10000.0, "steps": 1931, "nfev": 4078, "njev": 97, "nlu": 985, "wall_s": 13.033100624976214, "load_before": [3.380859375, 9.42626953125, 10.54833984375], "load_after": [3.4501953125, 9.1435546875, 10.42724609375], "peak_rss_mb": 268.359375}
+exit 0 syn4488_L3 900 a
+=== syn5742_L3 900 pass a | 18:22  up 8 days, 10:26, 5 users, load averages: 3.45 9.14 10.43
+{"problem": "syn5742_L3", "coupling": 900, "method": "BDF", "rtol": 0.001, "atol": 10000.0, "steps": 1910, "nfev": 4039, "njev": 97, "nlu": 975, "wall_s": 15.509997416986153, "load_before": [3.4501953125, 9.1435546875, 10.42724609375], "load_after": [3.52294921875, 8.8759765625, 10.30859375], "peak_rss_mb": 303.578125}
+exit 0 syn5742_L3 900 a
+=== lim726_L2 60 pass a | 18:22  up 8 days, 10:26, 5 users, load averages: 3.52 8.88 10.31
+{"problem": "lim726_L2", "coupling": 60, "method": "BDF", "rtol": 0.001, "atol": 10000.0, "steps": 13552, "nfev": 29984, "njev": 1440, "nlu": 7589, "wall_s": 10.55577308300417, "load_before": [3.52294921875, 8.8759765625, 10.30859375], "load_after": [3.4423828125, 8.68212890625, 10.22265625], "peak_rss_mb": 202.5625}
+exit 0 lim726_L2 60 a
+=== lim726_L3 60 pass a | 18:23  up 8 days, 10:27, 5 users, load averages: 3.44 8.68 10.22
+{"problem": "lim726_L3", "coupling": 60, "method": "BDF", "rtol": 0.001, "atol": 10000.0, "steps": 18651, "nfev": 40182, "njev": 1440, "nlu": 10109, "wall_s": 13.706332667032257, "load_before": [3.4423828125, 8.68212890625, 10.22265625], "load_after": [3.19580078125, 8.3701171875, 10.083984375], "peak_rss_mb": 219.96875}
+exit 0 lim726_L3 60 a
+=== syn1353_L3 60 pass a | 18:23  up 8 days, 10:27, 5 users, load averages: 3.20 8.37 10.08
+{"problem": "syn1353_L3", "coupling": 60, "method": "BDF", "rtol": 0.001, "atol": 10000.0, "steps": 18345, "nfev": 39570, "njev": 1440, "nlu": 10015, "wall_s": 43.43914779101033, "load_before": [3.19580078125, 8.3701171875, 10.083984375], "load_after": [2.92431640625, 7.5703125, 9.69970703125], "peak_rss_mb": 253.90625}
+exit 0 syn1353_L3 60 a
+=== syn4488_L3 60 pass a | 18:24  up 8 days, 10:28, 5 users, load averages: 2.92 7.57 9.70
+{"problem": "syn4488_L3", "coupling": 60, "method": "BDF", "rtol": 0.001, "atol": 10000.0, "steps": 17789, "nfev": 38458, "njev": 1440, "nlu": 9802, "wall_s": 136.10337387496838, "load_before": [2.92431640625, 7.5703125, 9.69970703125], "load_after": [6.578125, 7.0087890625, 9.1376953125], "peak_rss_mb": 376.5625}
+exit 0 syn4488_L3 60 a
+=== syn5742_L3 60 pass a | 18:26  up 8 days, 10:30, 5 users, load averages: 6.58 7.01 9.14
+{"problem": "syn5742_L3", "coupling": 60, "method": "BDF", "rtol": 0.001, "atol": 10000.0, "steps": 17705, "nfev": 38290, "njev": 1440, "nlu": 9718, "wall_s": 159.9126542500453, "load_before": [6.578125, 7.0087890625, 9.1376953125], "load_after": [1.9462890625, 4.87109375, 7.89208984375], "peak_rss_mb": 416.375}
+exit 0 syn5742_L3 60 a
+=== lim726_L2 900 pass b | 18:29  up 8 days, 10:33, 5 users, load averages: 1.95 4.87 7.89
+{"problem": "lim726_L2", "coupling": 900, "method": "BDF", "rtol": 0.001, "atol": 10000.0, "steps": 1375, "nfev": 2949, "njev": 97, "nlu": 730, "wall_s": 1.011137957975734, "load_before": [1.9462890625, 4.87109375, 7.89208984375], "load_after": [1.9462890625, 4.87109375, 7.89208984375], "peak_rss_mb": 125.25}
+exit 0 lim726_L2 900 b
+=== lim726_L3 900 pass b | 18:29  up 8 days, 10:33, 5 users, load averages: 1.95 4.87 7.89
+{"problem": "lim726_L3", "coupling": 900, "method": "BDF", "rtol": 0.001, "atol": 10000.0, "steps": 2288, "nfev": 4787, "njev": 97, "nlu": 1091, "wall_s": 1.4733166670193896, "load_before": [1.8701171875, 4.806640625, 7.8515625], "load_after": [1.8701171875, 4.806640625, 7.8515625], "peak_rss_mb": 133.953125}
+exit 0 lim726_L3 900 b
+=== syn1353_L3 900 pass b | 18:29  up 8 days, 10:33, 5 users, load averages: 1.87 4.81 7.85
+{"problem": "syn1353_L3", "coupling": 900, "method": "BDF", "rtol": 0.001, "atol": 10000.0, "steps": 2161, "nfev": 4536, "njev": 97, "nlu": 1064, "wall_s": 4.425139792030677, "load_before": [1.8701171875, 4.806640625, 7.8515625], "load_after": [1.80029296875, 4.7431640625, 7.81103515625], "peak_rss_mb": 161.921875}
+exit 0 syn1353_L3 900 b
+=== syn4488_L3 900 pass b | 18:29  up 8 days, 10:33, 5 users, load averages: 1.80 4.74 7.81
+{"problem": "syn4488_L3", "coupling": 900, "method": "BDF", "rtol": 0.001, "atol": 10000.0, "steps": 1931, "nfev": 4078, "njev": 97, "nlu": 985, "wall_s": 12.699853166996036, "load_before": [1.80029296875, 4.7431640625, 7.81103515625], "load_after": [2.064453125, 4.70166015625, 7.76025390625], "peak_rss_mb": 280.84375}
+exit 0 syn4488_L3 900 b
+=== syn5742_L3 900 pass b | 18:29  up 8 days, 10:33, 5 users, load averages: 2.06 4.70 7.76
+{"problem": "syn5742_L3", "coupling": 900, "method": "BDF", "rtol": 0.001, "atol": 10000.0, "steps": 1910, "nfev": 4039, "njev": 97, "nlu": 975, "wall_s": 15.35517166700447, "load_before": [2.13916015625, 4.67333984375, 7.73193359375], "load_after": [1.9599609375, 4.50927734375, 7.61962890625], "peak_rss_mb": 305.109375}
+exit 0 syn5742_L3 900 b
+=== lim726_L2 60 pass b | 18:29  up 8 days, 10:33, 5 users, load averages: 1.96 4.51 7.62
+{"problem": "lim726_L2", "coupling": 60, "method": "BDF", "rtol": 0.001, "atol": 10000.0, "steps": 13552, "nfev": 29984, "njev": 1440, "nlu": 7589, "wall_s": 10.506969125010073, "load_before": [1.9599609375, 4.50927734375, 7.61962890625], "load_after": [2.0390625, 4.4423828125, 7.55908203125], "peak_rss_mb": 200.34375}
+exit 0 lim726_L2 60 b
+=== lim726_L3 60 pass b | 18:29  up 8 days, 10:33, 5 users, load averages: 2.04 4.44 7.56
+{"problem": "lim726_L3", "coupling": 60, "method": "BDF", "rtol": 0.001, "atol": 10000.0, "steps": 18651, "nfev": 40182, "njev": 1440, "nlu": 10109, "wall_s": 13.328973040974233, "load_before": [2.0390625, 4.4423828125, 7.55908203125], "load_after": [2.10986328125, 4.33837890625, 7.46728515625], "peak_rss_mb": 213.46875}
+exit 0 lim726_L3 60 b
+=== syn1353_L3 60 pass b | 18:30  up 8 days, 10:34, 5 users, load averages: 2.11 4.34 7.47
+{"problem": "syn1353_L3", "coupling": 60, "method": "BDF", "rtol": 0.001, "atol": 10000.0, "steps": 18345, "nfev": 39570, "njev": 1440, "nlu": 10015, "wall_s": 44.94132591597736, "load_before": [2.10986328125, 4.33837890625, 7.46728515625], "load_after": [2.662109375, 4.19140625, 7.251953125], "peak_rss_mb": 247.765625}
+exit 0 syn1353_L3 60 b
+=== syn4488_L3 60 pass b | 18:30  up 8 days, 10:34, 5 users, load averages: 2.66 4.19 7.25
+{"problem": "syn4488_L3", "coupling": 60, "method": "BDF", "rtol": 0.001, "atol": 10000.0, "steps": 17789, "nfev": 38458, "njev": 1440, "nlu": 9802, "wall_s": 136.11394479201408, "load_before": [2.662109375, 4.19140625, 7.251953125], "load_after": [2.35693359375, 3.478515625, 6.50830078125], "peak_rss_mb": 379.484375}
+exit 0 syn4488_L3 60 b
+=== syn5742_L3 60 pass b | 18:33  up 8 days, 10:37, 5 users, load averages: 2.36 3.48 6.51
+{"problem": "syn5742_L3", "coupling": 60, "method": "BDF", "rtol": 0.001, "atol": 10000.0, "steps": 17705, "nfev": 38290, "njev": 1440, "nlu": 9718, "wall_s": 159.45660020801006, "load_before": [2.35693359375, 3.478515625, 6.50830078125], "load_after": [2.08740234375, 3.033203125, 5.81201171875], "peak_rss_mb": 417.34375}
+exit 0 syn5742_L3 60 b
+batch exit 0

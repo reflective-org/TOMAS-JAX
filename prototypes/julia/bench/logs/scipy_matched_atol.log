@@ -1,0 +1,61 @@
+=== lim726_L2 900 rtol 1e-4 atol 1e2 | 18:51  up 8 days, 10:55, 5 users, load averages: 5.48 6.01 5.81
+{"problem": "lim726_L2", "coupling": 900, "method": "BDF", "rtol": 0.0001, "atol": 100.0, "steps": 1941, "nfev": 4103, "njev": 98, "nlu": 938, "wall_s": 1.3478914580191486, "load_before": [5.47802734375, 6.01416015625, 5.81103515625], "load_after": [5.47802734375, 6.01416015625, 5.81103515625], "peak_rss_mb": 126.25}
+exit 0 lim726_L2 900 1e-4
+=== lim726_L3 900 rtol 1e-4 atol 1e2 | 18:51  up 8 days, 10:55, 5 users, load averages: 5.48 6.01 5.81
+{"problem": "lim726_L3", "coupling": 900, "method": "BDF", "rtol": 0.0001, "atol": 100.0, "steps": 3993, "nfev": 8390, "njev": 97, "nlu": 1486, "wall_s": 2.160214250034187, "load_before": [5.47802734375, 6.01416015625, 5.81103515625], "load_after": [5.439453125, 5.9970703125, 5.80615234375], "peak_rss_mb": 143.109375}
+exit 0 lim726_L3 900 1e-4
+=== syn1353_L3 900 rtol 1e-4 atol 1e2 | 18:51  up 8 days, 10:55, 5 users, load averages: 5.44 6.00 5.81
+{"problem": "syn1353_L3", "coupling": 900, "method": "BDF", "rtol": 0.0001, "atol": 100.0, "steps": 3793, "nfev": 7924, "njev": 98, "nlu": 1457, "wall_s": 6.477142832998652, "load_before": [5.439453125, 5.9970703125, 5.80615234375], "load_after": [5.24365234375, 5.947265625, 5.78955078125], "peak_rss_mb": 172.40625}
+exit 0 syn1353_L3 900 1e-4
+=== syn4488_L3 900 rtol 1e-4 atol 1e2 | 18:51  up 8 days, 10:55, 5 users, load averages: 5.24 5.95 5.79
+{"problem": "syn4488_L3", "coupling": 900, "method": "BDF", "rtol": 0.0001, "atol": 100.0, "steps": 3466, "nfev": 7234, "njev": 97, "nlu": 1373, "wall_s": 18.74387712503085, "load_before": [5.24365234375, 5.947265625, 5.78955078125], "load_after": [4.4521484375, 5.72265625, 5.7119140625], "peak_rss_mb": 262.265625}
+exit 0 syn4488_L3 900 1e-4
+=== syn5742_L3 900 rtol 1e-4 atol 1e2 | 18:52  up 8 days, 10:56, 5 users, load averages: 4.45 5.72 5.71
+{"problem": "syn5742_L3", "coupling": 900, "method": "BDF", "rtol": 0.0001, "atol": 100.0, "steps": 3403, "nfev": 7104, "njev": 99, "nlu": 1361, "wall_s": 22.76462224998977, "load_before": [4.4521484375, 5.72265625, 5.7119140625], "load_after": [4.63037109375, 5.67578125, 5.6943359375], "peak_rss_mb": 279.40625}
+exit 0 syn5742_L3 900 1e-4
+=== lim726_L2 60 rtol 1e-4 atol 1e2 | 18:52  up 8 days, 10:56, 5 users, load averages: 4.63 5.68 5.69
+{"problem": "lim726_L2", "coupling": 60, "method": "BDF", "rtol": 0.0001, "atol": 100.0, "steps": 16767, "nfev": 36416, "njev": 1440, "nlu": 9113, "wall_s": 12.679067374963779, "load_before": [4.89990234375, 5.71435546875, 5.70751953125], "load_after": [4.84130859375, 5.673828125, 5.69287109375], "peak_rss_mb": 200.515625}
+exit 0 lim726_L2 60 1e-4
+=== lim726_L3 60 rtol 1e-4 atol 1e2 | 18:52  up 8 days, 10:56, 5 users, load averages: 4.84 5.67 5.69
+{"problem": "lim726_L3", "coupling": 60, "method": "BDF", "rtol": 0.0001, "atol": 100.0, "steps": 27085, "nfev": 57050, "njev": 1440, "nlu": 13954, "wall_s": 19.637581083050463, "load_before": [4.84130859375, 5.673828125, 5.69287109375], "load_after": [4.73583984375, 5.60986328125, 5.66943359375], "peak_rss_mb": 222.953125}
+exit 0 lim726_L3 60 1e-4
+=== syn1353_L3 60 rtol 1e-4 atol 1e2 | 18:53  up 8 days, 10:57, 5 users, load averages: 4.74 5.61 5.67
+{"problem": "syn1353_L3", "coupling": 60, "method": "BDF", "rtol": 0.0001, "atol": 100.0, "steps": 25949, "nfev": 54778, "njev": 1440, "nlu": 13301, "wall_s": 57.62586408300558, "load_before": [4.73583984375, 5.60986328125, 5.66943359375], "load_after": [4.1513671875, 5.365234375, 5.57763671875], "peak_rss_mb": 261.15625}
+exit 0 syn1353_L3 60 1e-4
+=== syn4488_L3 60 rtol 1e-4 atol 1e2 | 18:54  up 8 days, 10:58, 5 users, load averages: 4.15 5.37 5.58
+{"problem": "syn4488_L3", "coupling": 60, "method": "BDF", "rtol": 0.0001, "atol": 100.0, "steps": 24602, "nfev": 52084, "njev": 1440, "nlu": 12840, "wall_s": 191.53492837498197, "load_before": [4.1513671875, 5.365234375, 5.57763671875], "load_after": [6.619140625, 6.45361328125, 6.0517578125], "peak_rss_mb": 373.484375}
+exit 0 syn4488_L3 60 1e-4
+=== syn5742_L3 60 rtol 1e-4 atol 1e2 | 18:57  up 8 days, 11:01, 5 users, load averages: 6.62 6.45 6.05
+{"problem": "syn5742_L3", "coupling": 60, "method": "BDF", "rtol": 0.0001, "atol": 100.0, "steps": 24014, "nfev": 50919, "njev": 1441, "nlu": 12773, "wall_s": 228.04147904203273, "load_before": [6.619140625, 6.45361328125, 6.0517578125], "load_after": [5.38671875, 6.5732421875, 6.24462890625], "peak_rss_mb": 408.328125}
+exit 0 syn5742_L3 60 1e-4
+=== lim726_L2 900 rtol 1e-3 atol 1e2 | 19:01  up 8 days, 11:05, 5 users, load averages: 5.39 6.57 6.24
+{"problem": "lim726_L2", "coupling": 900, "method": "BDF", "rtol": 0.001, "atol": 100.0, "steps": 1629, "nfev": 3468, "njev": 98, "nlu": 843, "wall_s": 1.316460707981605, "load_before": [5.38671875, 6.5732421875, 6.24462890625], "load_after": [5.38671875, 6.5732421875, 6.24462890625], "peak_rss_mb": 129.078125}
+exit 0 lim726_L2 900 1e-3
+=== lim726_L3 900 rtol 1e-3 atol 1e2 | 19:01  up 8 days, 11:05, 5 users, load averages: 5.39 6.57 6.24
+{"problem": "lim726_L3", "coupling": 900, "method": "BDF", "rtol": 0.001, "atol": 100.0, "steps": 2898, "nfev": 6033, "njev": 98, "nlu": 1301, "wall_s": 2.0523247080272995, "load_before": [5.38671875, 6.5732421875, 6.24462890625], "load_after": [5.275390625, 6.5302734375, 6.2314453125], "peak_rss_mb": 142.1875}
+exit 0 lim726_L3 900 1e-3
+=== syn1353_L3 900 rtol 1e-3 atol 1e2 | 19:01  up 8 days, 11:05, 5 users, load averages: 5.28 6.53 6.23
+{"problem": "syn1353_L3", "coupling": 900, "method": "BDF", "rtol": 0.001, "atol": 100.0, "steps": 2803, "nfev": 5844, "njev": 100, "nlu": 1272, "wall_s": 5.84011620801175, "load_before": [5.275390625, 6.5302734375, 6.2314453125], "load_after": [5.2529296875, 6.50439453125, 6.22412109375], "peak_rss_mb": 169.359375}
+exit 0 syn1353_L3 900 1e-3
+=== syn4488_L3 900 rtol 1e-3 atol 1e2 | 19:01  up 8 days, 11:05, 5 users, load averages: 5.25 6.50 6.22
+{"problem": "syn4488_L3", "coupling": 900, "method": "BDF", "rtol": 0.001, "atol": 100.0, "steps": 2534, "nfev": 5305, "njev": 98, "nlu": 1235, "wall_s": 17.546159708988853, "load_before": [5.2529296875, 6.50439453125, 6.22412109375], "load_after": [10.642578125, 7.6376953125, 6.63330078125], "peak_rss_mb": 257.953125}
+exit 0 syn4488_L3 900 1e-3
+=== syn5742_L3 900 rtol 1e-3 atol 1e2 | 19:01  up 8 days, 11:05, 5 users, load averages: 10.64 7.64 6.63
+{"problem": "syn5742_L3", "coupling": 900, "method": "BDF", "rtol": 0.001, "atol": 100.0, "steps": 2478, "nfev": 5183, "njev": 98, "nlu": 1197, "wall_s": 20.53379600000335, "load_before": [10.0302734375, 7.560546875, 6.61181640625], "load_after": [8.521484375, 7.37646484375, 6.5673828125], "peak_rss_mb": 292.125}
+exit 0 syn5742_L3 900 1e-3
+=== lim726_L2 60 rtol 1e-3 atol 1e2 | 19:01  up 8 days, 11:05, 5 users, load averages: 8.52 7.38 6.57
+{"problem": "lim726_L2", "coupling": 60, "method": "BDF", "rtol": 0.001, "atol": 100.0, "steps": 16488, "nfev": 35857, "njev": 1440, "nlu": 9045, "wall_s": 14.008057999948505, "load_before": [8.521484375, 7.37646484375, 6.5673828125], "load_after": [9.80419921875, 7.68994140625, 6.69189453125], "peak_rss_mb": 190.328125}
+exit 0 lim726_L2 60 1e-3
+=== lim726_L3 60 rtol 1e-3 atol 1e2 | 19:02  up 8 days, 11:06, 5 users, load averages: 9.80 7.69 6.69
+{"problem": "lim726_L3", "coupling": 60, "method": "BDF", "rtol": 0.001, "atol": 100.0, "steps": 22776, "nfev": 48432, "njev": 1440, "nlu": 12354, "wall_s": 18.919734791037627, "load_before": [9.80419921875, 7.68994140625, 6.69189453125], "load_after": [8.34912109375, 7.49755859375, 6.6455078125], "peak_rss_mb": 211.78125}
+exit 0 lim726_L3 60 1e-3
+=== syn1353_L3 60 rtol 1e-3 atol 1e2 | 19:02  up 8 days, 11:06, 5 users, load averages: 8.35 7.50 6.65
+{"problem": "syn1353_L3", "coupling": 60, "method": "BDF", "rtol": 0.001, "atol": 100.0, "steps": 22474, "nfev": 47828, "njev": 1440, "nlu": 12210, "wall_s": 56.738433917053044, "load_before": [8.34912109375, 7.49755859375, 6.6455078125], "load_after": [6.5146484375, 7.158203125, 6.5732421875], "peak_rss_mb": 226.0625}
+exit 0 syn1353_L3 60 1e-3
+=== syn4488_L3 60 rtol 1e-3 atol 1e2 | 19:03  up 8 days, 11:07, 5 users, load averages: 6.51 7.16 6.57
+{"problem": "syn4488_L3", "coupling": 60, "method": "BDF", "rtol": 0.001, "atol": 100.0, "steps": 21496, "nfev": 45872, "njev": 1440, "nlu": 11497, "wall_s": 176.64602320903214, "load_before": [6.5146484375, 7.158203125, 6.5732421875], "load_after": [4.3359375, 6.2646484375, 6.3359375], "peak_rss_mb": 366.484375}
+exit 0 syn4488_L3 60 1e-3
+=== syn5742_L3 60 rtol 1e-3 atol 1e2 | 19:06  up 8 days, 11:10, 5 users, load averages: 4.34 6.26 6.34
+{"problem": "syn5742_L3", "coupling": 60, "method": "BDF", "rtol": 0.001, "atol": 100.0, "steps": 21420, "nfev": 45720, "njev": 1440, "nlu": 11467, "wall_s": 206.0429823330487, "load_before": [4.3359375, 6.2646484375, 6.3359375], "load_after": [10.76171875, 8.62109375, 7.3173828125], "peak_rss_mb": 416.78125}
+exit 0 syn5742_L3 60 1e-3
+batch exit 0

@@ -4,6 +4,35 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-10-17 (Sat) — Julia benchmark, sparse JAX spike and the TOMAS.jl plan (Pro, not tutorial)
+
+**Branch**: `feat/pro-julia` (from `feat/pro-mechanism` 7e7d19d via `pro-julia-bench`).
+Nothing in `tomas_jax/` or the tutorial changed.
+
+- Ali asked whether Julia would run full MCM faster on laptops, and then decided on a separate
+  private repository, `reflective-org/TOMAS.jl`, for the whole box model and every new feature.
+  TOMAS-JAX stays the tutorial engine, frozen to fixes, and is the reference TOMAS.jl is
+  validated against.
+- `docs/pro/julia/`: the shared gas-chemistry benchmark (`BENCHMARK.md`) and a README that
+  points to TOMAS.jl and its plan (`docs/TOMAS_JL_PLAN.md` there).
+- `prototypes/julia/bench/`: benchmark generators and scoring (problem export from TOMAS-JAX,
+  references, metric, dense-JAX and scipy runners), with the manifest, checks, batch logs and
+  timing summaries; the 200 MB of data files are regenerated, not committed.
+- `prototypes/julia/jax_sparse_spike/`: a sparse Rosenbrock solver in JAX with a levelised
+  sparse LU; logs and timing summaries are now committed (the repository's `logs/` ignore
+  rule had kept the report out). The Julia spike moved to TOMAS.jl
+  (`prototypes/julia-spike/`).
+- Result (gas only, 5742 species, 24 h, matched accuracy):
+  - a sparse solver in either language is 500 to 1200 times faster than the dense tutorial
+    solver;
+  - Julia against sparse JAX ranges from JAX 1.7 times faster to Julia 2.4 times faster,
+    depending on method, error measure and coupling interval. A review re-ran the key
+    timings and found JAX's own Rodas4 with a carried step at 4.4 s per day at 60 s coupling
+    (`results/rv*_timing.json`).
+- Known limits: synthetic full-size mechanisms (copies of the limonene chemistry); no
+  aerosol step in the benchmark; the Julia spike's runs used the RMS error norm.
+- Next: TOMAS.jl work packages after 2026-10-27 (decisions J1 to J12 in its plan).
+
 ## 2026-10-16 (Fri) — Per-species c* table from Shantanu Jathar is the Level 2/3 default
 
 **Branch**: `aaar-cstar` (from `feat/aaar-tutorial` 2faa391; not committed)

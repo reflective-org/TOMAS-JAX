@@ -1,0 +1,21 @@
+{"problem": "lim726_L3", "coupling": 900, "method": "Radau", "rtol": 1e-09, "atol": 0.001, "steps": 16798, "nfev": 122557, "njev": 622, "nlu": 9432, "wall_s": 20.874082750000525, "load_before": [1.9658203125, 3.0546875, 4.2353515625], "load_after": [1.90625, 2.9697265625, 4.1767578125], "peak_rss_mb": 119.859375}
+exit 0 lim726_L3 900 radau
+{"problem": "lim726_L3", "coupling": 60, "method": "Radau", "rtol": 1e-09, "atol": 0.001, "steps": 83599, "nfev": 604448, "njev": 2285, "nlu": 78088, "wall_s": 152.89750237500994, "load_before": [1.90625, 2.9697265625, 4.1767578125], "load_after": [2.7919921875, 3.0185546875, 3.9951171875], "peak_rss_mb": 148.53125}
+exit 0 lim726_L3 60 radau
+{"problem": "lim726_L2", "coupling": 900, "method": "Radau", "rtol": 1e-09, "atol": 0.001, "steps": 5708, "nfev": 41176, "njev": 321, "nlu": 5956, "wall_s": 11.733776749984827, "load_before": [2.7919921875, 3.0185546875, 3.9951171875], "load_after": [2.7373046875, 3.00048828125, 3.9775390625], "peak_rss_mb": 116.90625}
+exit 0 lim726_L2 900 radau
+{"problem": "lim726_L2", "coupling": 60, "method": "Radau", "rtol": 1e-09, "atol": 0.001, "steps": 25663, "nfev": 183788, "njev": 1590, "nlu": 40380, "wall_s": 74.91336399997817, "load_before": [2.7373046875, 3.00048828125, 3.9775390625], "load_after": [2.7353515625, 2.9228515625, 3.86376953125], "peak_rss_mb": 133.1875}
+exit 0 lim726_L2 60 radau
+{"problem": "syn1353_L3", "coupling": 900, "method": "BDF", "rtol": 1e-10, "atol": 0.0001, "steps": 33035, "nfev": 75516, "njev": 110, "nlu": 6220, "wall_s": 30.670897167001385, "load_before": [2.7353515625, 2.9228515625, 3.86376953125], "load_after": [2.318359375, 2.8017578125, 3.7861328125], "peak_rss_mb": 165.78125}
+exit 0 syn1353_L3 900 ref
+{"problem": "syn4488_L3", "coupling": 900, "method": "BDF", "rtol": 1e-10, "atol": 0.0001, "steps": 30219, "nfev": 69184, "njev": 114, "nlu": 5745, "wall_s": 97.15371462499024, "load_before": [2.318359375, 2.8017578125, 3.7861328125], "load_after": [7.3671875, 4.609375, 4.39453125], "peak_rss_mb": 255.75}
+exit 0 syn4488_L3 900 ref
+{"problem": "syn5742_L3", "coupling": 900, "method": "BDF", "rtol": 1e-10, "atol": 0.0001, "steps": 29671, "nfev": 68033, "njev": 117, "nlu": 5650, "wall_s": 116.14351920800982, "load_before": [7.3671875, 4.609375, 4.39453125], "load_after": [6.197265625, 5.30517578125, 4.71044921875], "peak_rss_mb": 279.28125}
+exit 0 syn5742_L3 900 ref
+{"problem": "syn1353_L3", "coupling": 60, "method": "BDF", "rtol": 1e-10, "atol": 0.0001, "steps": 222059, "nfev": 460889, "njev": 2111, "nlu": 47927, "wall_s": 251.0950953339925, "load_before": [6.197265625, 5.30517578125, 4.71044921875], "load_after": [9.8857421875, 7.69775390625, 5.8818359375], "peak_rss_mb": 240.265625}
+exit 0 syn1353_L3 60 ref
+{"problem": "syn4488_L3", "coupling": 60, "method": "BDF", "rtol": 1e-10, "atol": 0.0001, "steps": 204684, "nfev": 423066, "njev": 2054, "nlu": 45178, "wall_s": 747.7915520420065, "load_before": [9.8857421875, 7.69775390625, 5.8818359375], "load_after": [6.783203125, 8.9619140625, 7.61669921875], "peak_rss_mb": 350.046875}
+exit 0 syn4488_L3 60 ref
+{"problem": "syn5742_L3", "coupling": 60, "method": "BDF", "rtol": 1e-10, "atol": 0.0001, "steps": 201653, "nfev": 416920, "njev": 2020, "nlu": 44356, "wall_s": 826.5731348750414, "load_before": [6.783203125, 8.9619140625, 7.61669921875], "load_after": [7.125, 9.033203125, 8.66943359375], "peak_rss_mb": 359.71875}
+exit 0 syn5742_L3 60 ref
+batch exit 0

@@ -1,0 +1,34 @@
+=== lim726_L3 900 warm=3 cap=1200 tag=jaxdense | 17:28  up 8 days,  9:33, 4 users, load averages: 6.87 3.98 4.18
+{"problem": "lim726_L3", "coupling_s": 900, "t_setup_s": 1.3097066660411656, "t_first_s": 9.07033945794683, "t_first_interval_s": 1.01849141594721, "t_warm_median_s": 8.433288416010328, "accepted_steps": 1047, "ms_per_step_warm_median": 8.05471672971378, "peak_rss_mb": 419.671875, "key_max_err": 0.010380561469852742, "key_worst": "LIMONENE", "all_species_hourly_max": 0.008234427824854921}
+exit 0 lim726_L3 900 jaxdense
+=== lim726_L2 900 warm=3 cap=1200 tag=jaxdense | 17:29  up 8 days,  9:33, 4 users, load averages: 6.31 4.15 4.23
+{"problem": "lim726_L2", "coupling_s": 900, "t_setup_s": 1.2317747080232948, "t_first_s": 6.47047666599974, "t_first_interval_s": 0.9851074580219574, "t_warm_median_s": 5.738769916992169, "accepted_steps": 710, "ms_per_step_warm_median": 8.082774530974886, "peak_rss_mb": 418.625, "key_max_err": 0.002252067746085464, "key_worst": "LIMONENE", "all_species_hourly_max": 0.0016849939588148846}
+exit 0 lim726_L2 900 jaxdense
+=== syn1353_L3 900 warm=3 cap=1200 tag=jaxdense | 17:30  up 8 days,  9:34, 4 users, load averages: 7.66 4.62 4.40
+{"problem": "syn1353_L3", "coupling_s": 900, "t_setup_s": 1.1329647080274299, "t_first_s": 30.907147208985407, "t_first_interval_s": 1.4059787089936435, "t_warm_median_s": 29.82498733396642, "accepted_steps": 995, "ms_per_step_warm_median": 29.974861642177306, "peak_rss_mb": 621.328125, "key_max_err": 0.012079880367784563, "key_worst": "LIMONENE", "all_species_hourly_max": 0.00838889160607931}
+exit 0 syn1353_L3 900 jaxdense
+=== lim726_L3 60 warm=3 cap=1200 tag=jaxdense | 17:32  up 8 days,  9:36, 4 users, load averages: 6.20 5.31 4.71
+{"problem": "lim726_L3", "coupling_s": 60, "t_setup_s": 1.1526466249488294, "t_first_s": 70.88237470801687, "t_first_interval_s": 0.9080927080358379, "t_warm_median_s": 69.4394749160274, "accepted_steps": 8666, "ms_per_step_warm_median": 8.0128634798093, "peak_rss_mb": 433.703125, "key_max_err": 0.03069933422301897, "key_worst": "NO", "all_species_hourly_max": 0.0005833132634530405}
+exit 0 lim726_L3 60 jaxdense
+=== lim726_L2 60 warm=3 cap=1200 tag=jaxdense | 17:36  up 8 days,  9:40, 4 users, load averages: 8.53 7.56 5.88
+{"problem": "lim726_L2", "coupling_s": 60, "t_setup_s": 1.1045495420112275, "t_first_s": 59.09061274997657, "t_first_interval_s": 0.9105682080262341, "t_warm_median_s": 59.18457879195921, "accepted_steps": 7237, "ms_per_step_warm_median": 8.178054275522898, "peak_rss_mb": 433.921875, "key_max_err": 0.0002228099466094961, "key_worst": "HO2", "all_species_hourly_max": 0.00010557562502504803}
+exit 0 lim726_L2 60 jaxdense
+=== syn1353_L3 60 warm=2 cap=1200 tag=jaxdense | 17:40  up 8 days,  9:44, 4 users, load averages: 7.52 7.23 6.11
+{"problem": "syn1353_L3", "coupling_s": 60, "t_setup_s": 1.1888974590110593, "t_first_s": 264.11822679196484, "t_first_interval_s": 1.193714958964847, "t_warm_median_s": 252.5838216455013, "accepted_steps": 8189, "ms_per_step_warm_median": 30.844281553975005, "peak_rss_mb": 645.1875, "key_max_err": 0.03281338547386999, "key_worst": "NO", "all_species_hourly_max": 0.0008743625372892516}
+exit 0 syn1353_L3 60 jaxdense
+=== syn4488_L3 900 warm=0 cap=1200 tag=jaxdense | 17:53  up 8 days,  9:57, 4 users, load averages: 7.23 8.38 7.86
+{"problem": "syn4488_L3", "coupling_s": 900, "t_setup_s": 1.2557496670051478, "t_first_s": 468.1714887089911, "t_first_interval_s": 10.817371000011917, "t_warm_median_s": null, "accepted_steps": 904, "ms_per_step_warm_median": null, "peak_rss_mb": 3448.75, "key_max_err": 0.01002308634026651, "key_worst": "LIMONENE_6", "all_species_hourly_max": 0.010023086340266848}
+exit 0 syn4488_L3 900 jaxdense
+=== syn5742_L3 900 warm=0 cap=1200 tag=jaxdense | 18:01  up 8 days, 10:05, 4 users, load averages: 9.96 9.79 8.89
+{"problem": "syn5742_L3", "coupling_s": 900, "t_setup_s": 1.200403374969028, "t_first_s": 807.2926357500255, "t_first_interval_s": 17.099047208030242, "t_warm_median_s": null, "accepted_steps": 890, "ms_per_step_warm_median": null, "peak_rss_mb": 6179.921875, "key_max_err": 0.008590648284192974, "key_worst": "LIMONENE_8", "all_species_hourly_max": 0.008590648284193193}
+exit 0 syn5742_L3 900 jaxdense
+=== lim726_L3 900 warm=3 cap=1200 tag=jaxdense_repeat | 18:14  up 8 days, 10:19, 4 users, load averages: 9.95 11.06 10.00
+{"problem": "lim726_L3", "coupling_s": 900, "t_setup_s": 1.1074249999946915, "t_first_s": 8.584229375002906, "t_first_interval_s": 0.8872636249870993, "t_warm_median_s": 7.811692000017501, "accepted_steps": 1047, "ms_per_step_warm_median": 7.461023877762656, "peak_rss_mb": 422.984375, "key_max_err": 0.010380561469852742, "key_worst": "LIMONENE", "all_species_hourly_max": 0.008234427824854921}
+exit 0 lim726_L3 900 jaxdense_repeat
+=== syn1353_L3 900 warm=3 cap=1200 tag=jaxdense_repeat | 18:15  up 8 days, 10:19, 4 users, load averages: 12.43 11.53 10.21
+{"problem": "syn1353_L3", "coupling_s": 900, "t_setup_s": 0.9286923329927959, "t_first_s": 29.849579750036355, "t_first_interval_s": 1.2981359170516953, "t_warm_median_s": 28.24345758301206, "accepted_steps": 995, "ms_per_step_warm_median": 28.385384505539758, "peak_rss_mb": 619.734375, "key_max_err": 0.012079880367784563, "key_worst": "LIMONENE", "all_species_hourly_max": 0.00838889160607931}
+exit 0 syn1353_L3 900 jaxdense_repeat
+=== lim726_L3 60 warm=3 cap=1200 tag=jaxdense_repeat | 18:17  up 8 days, 10:21, 4 users, load averages: 22.76 17.48 12.83
+{"problem": "lim726_L3", "coupling_s": 60, "t_setup_s": 0.9439173330320045, "t_first_s": 67.15662120800698, "t_first_interval_s": 0.8136695830035023, "t_warm_median_s": 67.840816208045, "accepted_steps": 8666, "ms_per_step_warm_median": 7.828388669287445, "peak_rss_mb": 433.859375, "key_max_err": 0.03069933422301897, "key_worst": "NO", "all_species_hourly_max": 0.0005833132634530405}
+exit 0 lim726_L3 60 jaxdense_repeat
+batch exit 0
