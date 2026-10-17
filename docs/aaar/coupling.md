@@ -54,6 +54,59 @@ the run.
 Level 1 has no chemistry: one class (K = 1) holds the user's surrogate with a
 production rate, and H2SO4 has an optional production rate.
 
+## Coupling interval (numerical solver setting)
+
+The coupling interval Δt_c (`numerics.coupling_dt_s`) is a setting of the numerical
+solver, not part of the chemistry or the aerosol physics. Within one interval the gas
+chemistry runs with its rate constants k, photolysis rates J (at the interval midpoint)
+and RO2 sum (at its start) held fixed, and the aerosol receives the H2SO4 and nitrate
+formed in the interval, S, as a constant production rate P = S / Δt_c. Splitting the
+processes this way is a first-order method: a result X behaves as
+
+    X(Δt_c) ≈ X₀ + a·Δt_c,
+
+where X₀ is the answer with continuous coupling and a is how strongly X depends on the
+interval. Halving Δt_c halves the error and makes the chemistry about 1.7 times as
+expensive (gas solver steps over 24 h: 1047 at 900 s, 2446 at 300 s, 8664 at 60 s).
+The error is largest where the chemistry changes quickly within one interval (after
+sunrise and sunset, and in the first interval, where the RO2 sum is held at its
+starting value 0) and where much is
+emitted or held fixed (Level 3 resets NO2 to 1 ppb after every interval, ASSUMPTIONS A14).
+
+Every preset uses Δt_c = 300 s. Level 3 used 900 s until 2026-10-17, when Ali chose
+300 s for the tutorial ("15 mins seems to be a bit long ... it really depends how fast
+the chemistry is and how much emissions exist"). Planned for after the tutorial: the
+numerical solver chooses Δt_c itself from how fast the chemistry changes and how much is
+emitted, instead of one fixed value per preset.
+
+Level 3 preset (24 h, 40 bins, nucleation off), measured 2026-10-17: final values at
+24 h and peaks over the 30 min output times, with the deviation from a reference run
+(30 s coupling with a 2.5 s aerosol micro-step) in brackets. All other runs use the
+60 s micro-step (30 s for the 30 s run).
+
+| Δt_c | SOA [µg/m³] | nitrate [µg/m³] | sulfate [µg/m³] | N [cm⁻³] | GMD [nm] | peak OH [cm⁻³] | peak NO3 [cm⁻³] |
+|---|---|---|---|---|---|---|---|
+| 900 s (old) | 0.05982 (+38 %) | 3.1373 (−6.4 %) | 5.5004 (−1.0 %) | 2551.8 (−0.07 %) | 149.57 (−1.0 %) | 2.375e7 (−5.2 %) | 1.723e9 (−2.0 %) |
+| 600 s | 0.05353 (+23 %) | 3.2177 (−4.0 %) | 5.5215 (−0.6 %) | 2552.4 (−0.05 %) | 150.14 (−0.6 %) | 2.422e7 (−3.3 %) | 1.735e9 (−1.3 %) |
+| **300 s (preset)** | **0.04781 (+10.3 %)** | **3.2840 (−2.0 %)** | **5.5420 (−0.27 %)** | **2553.1 (−0.02 %)** | **150.62 (−0.31 %)** | **2.468e7 (−1.5 %)** | **1.747e9 (−0.6 %)** |
+| 60 s | 0.04414 (+1.8 %) | 3.3444 (−0.2 %) | 5.5581 (+0.02 %) | 2553.7 (0.00 %) | 151.05 (−0.02 %) | 2.503e7 (−0.1 %) | 1.756e9 (−0.07 %) |
+| 30 s | 0.04357 (+0.5 %) | 3.3516 (0.00 %) | 5.5584 (+0.03 %) | 2553.7 (0.00 %) | 151.09 (0.00 %) | 2.506e7 (0.00 %) | 1.757e9 (0.00 %) |
+| 30 s, 2.5 s micro-step | 0.04335 | 3.3514 | 5.5569 | 2553.6 | 151.08 | 2.506e7 | 1.757e9 |
+
+GMD is the number geometric mean diameter, exp(Σ N_i ln D_i / Σ N_i) over the bins.
+Peak OH is at noon of the second day (24 h; 1.19e7 cm⁻³ on day 1, at 4 h) and peak
+NO3 at 00:30 local time (12.5 h). The SOA error is about +0.035 % per second of
+interval (+10 % at 300 s, +38 % at 900 s) and the nitrate error about −0.007 % per
+second, as the first-order equation says. SOA is this sensitive because the Level 3 SOA
+at 24 h is a small residual: it peaks at 0.36 µg/m³ 2 h in, and OH and photolysis then
+destroy most of the semivolatile gases it is in equilibrium with (see
+[Presets and runtime](#presets-and-runtime-warm-process-laptop-cpu)).
+
+Wall time for the 24 h run (warm process, laptop CPU with other work running, load
+average about 6 on 14 cores): 13 s at 900 s, 18 s at 600 s, 27 s at 300 s, 90 s at
+60 s, 157 s at 30 s and 213 s for the reference. On one thread, as in the API workers:
+13 s at 900 s, 27 s at 300 s and 85 s at 60 s.
+
 ## Time steps with nucleation
 
 With nucleation on, the driver shortens both time steps (`driver.time_steps`, constants
@@ -115,18 +168,24 @@ between 1 s and 0.5 s. At 80 bins the cap is therefore outside 5 % on peak N. Th
 12 h Level 1 run takes 52 s at 80 bins with 5 s micro-steps and 138 s with 2 s.
 
 Turning nucleation on in Level 3 also changes SOA and nitrate when nothing nucleates,
-because the coupling interval drops from 900 s to 60 s. In the Level 3 preset (293 K,
-no new particles, peak N 3000 cm⁻³ in both runs) the final values at 24 h with
-nucleation on, against off, are SOA −27 %, nitrate +6.6 %, sulfate +1.0 % and GMD
-+1.0 %. The nucleation-on run agrees with a 30 s / 2.5 s run within 0.8 %, so the 60 s
-answer is the more accurate one; the shift is the 900 s coupling error of A12. In
-Levels 1 and 2 only GMD moves (−1.3 % and −1.2 %). A comparison of nucleation on and
-off in Level 3 therefore needs the off run at 60 s coupling too (or
-`nucleation_caps=False` on both runs, at the cost of an inaccurate burst).
+because the coupling interval drops from 300 s to 60 s and the aerosol micro-step from
+60 s to 5 s. In the Level 3 preset (293 K, no new particles: peak N 3000 cm⁻³ in both
+runs, largest nucleation rate 2e-8 cm⁻³ s⁻¹) the final values at 24 h with nucleation
+on, against off, are SOA −8.6 %, nitrate +1.8 %, sulfate +0.24 % and GMD +0.27 %
+(measured 2026-10-17; against the old 900 s interval it was SOA −27 %, nitrate +6.6 %).
+With the same time steps (60 s / 5 s) nucleation on and off agree to 1e-6, so the whole
+shift comes from the time steps, not from new particles. The nucleation-on run is the
+more accurate one: it is within 0.8 % of the 30 s / 2.5 s reference (SOA +0.8 %,
+nitrate −0.2 %), against +10 % and −2 % for the 300 s run
+([Coupling interval](#coupling-interval-numerical-solver-setting)). In Levels 1 and 2
+only GMD moves (−1.3 % and −1.2 %). A comparison of nucleation on and off in Level 3
+therefore needs the off run at 60 s coupling too (or `nucleation_caps=False` on both
+runs, at the cost of an inaccurate burst).
 
 Cost (warm process, laptop): with nucleation on, Level 1 takes about 14 s (1.3 s
-without the caps), Level 2 about 25 s (5.4 s), Level 3 about 112 s (11.5 s; the same on
-one thread, as in the API workers). The cost is the same whether or not a burst
+without the caps), Level 2 about 25 s (5.4 s), Level 3 about 112–125 s (27 s without
+nucleation at the 300 s preset interval, 11.5 s at the old 900 s; the same on one
+thread, as in the API workers). The cost is the same whether or not a burst
 happens, and it grows in proportion to the run length: at the API's longest allowed
 run, 48 h, Level 3 takes 235 s and Level 2 204 s (measured 2026-10-17 through the API
 worker's job path, one thread). The API's tutorial job limit is 480 s for this reason
@@ -141,26 +200,33 @@ boxvol = 1e10 cm³ (so per-cell thresholds mean 1 #/cm³); outputs µg/m³, ppb,
 |---|---|---|---|---|
 | `level1_volatility` | growth vs c* (0.01: 54→133 nm; 100: 54→57 nm GMD) | 12 h | 300 s | ~1.7 s |
 | `level2_limonene_soa` | limonene oxidation → ~9 µg/m³ SOA (Jathar c* table, A8), top contributors | 6 h | 300 s | ~6 s |
-| `level3_day_night` | diurnal J/OH/NO3; nitrate 0 → 3.1 → 6.8 µg/m³ for γ = 0, 0.02, 0.1; SOA 0.06 µg/m³ | 24 h | 900 s | ~14 s |
+| `level3_day_night` | diurnal J/OH/NO3; nitrate 0 → 3.3 → GAMMA01_NIT µg/m³ for γ = 0, 0.02, 0.1; SOA 0.05 µg/m³ | 24 h | 300 s | ~27 s |
 
 With nucleation on, every preset runs at 60 s coupling with 5 s micro-steps and takes
-about 14 s, 25 s and 112 s ([Time steps with nucleation](#time-steps-with-nucleation)).
+about 14 s, 25 s and 112–125 s ([Time steps with nucleation](#time-steps-with-nucleation)).
+Δt_c is the coupling interval, a numerical solver setting
+([Coupling interval](#coupling-interval-numerical-solver-setting)); Level 3 used 900 s
+(~13 s) until 2026-10-17.
 
 Level 3 SOA with the Jathar c* table (A8) is small and not monotonic: there is no
-dilution, yet it peaks at 0.39 µg/m³ about 2 h in, falls to ~0.14 µg/m³ by sunset,
-stays flat at night and falls to 0.060 µg/m³ on the second morning, as OH and
+dilution, yet it peaks at 0.36 µg/m³ about 2 h in, falls to ~0.12 µg/m³ by sunset,
+stays flat at night and falls to 0.048 µg/m³ on the second morning, as OH and
 photolysis destroy the gas-phase semivolatile hydroperoxides and the particles
 evaporate to follow. Because it is a small residual, it depends on the coupling
-interval much more than nitrate does: 600 s gives SOA −10.5 % and nitrate +2.6 %,
-300 s gives SOA −20 % and nitrate +4.7 % (vs 900 s; A12). Quote the Level 3 SOA as
-"a few tenths of a µg/m³ or less", not to two figures.
+interval much more than nitrate does: at the preset 300 s it is 10 % above the 30 s
+reference and nitrate 2 % below (900 s: +38 % and −6.4 %; A12). Quote the Level 3 SOA
+as "a few tenths of a µg/m³ or less", not to two figures.
 
 First call in a process adds JIT compilation and the TUV-x table (~3–10 s);
-`warmup()` runs every preset for two intervals, and again with nucleation on at 60 s
-(`warmup(nucleation=False)` skips that; about 8 s against 11 s in total).
-`coupling_dt_s` is a static argument of the jitted aerosol step: each distinct value
-compiles separately, so the API allows only {300, 600, 900} s. With nucleation on all
-three become 60 s intervals with 5 s micro-steps, one more compile per preset.
+`warmup()` runs every preset for two intervals at its own coupling interval (300 s in
+all three), and again with nucleation on at 60 s (`warmup(nucleation=False)` skips that;
+about 8 s against 11 s in total). `coupling_dt_s` is a static argument of the jitted
+aerosol step and of the gas solver: each distinct value compiles separately, so the API
+allows only {300, 600, 900} s. A run without nucleation at 600 or 900 s is not covered
+by `warmup()` and compiles on its first call in a process (about 2–3 s; before
+2026-10-17 this was true of Level 3 at 300 and 600 s). With nucleation on all three
+become 60 s intervals with 5 s micro-steps, one more compile per preset, which
+`warmup()` covers (`tests/test_aaar_nucleation_dt.py`).
 
 Validation in `tests/test_aaar_driver.py`: Level 1 organic budget closes
 (gas + particle = produced, 1e-3) and low vs high c* bracket the Pankow limits;

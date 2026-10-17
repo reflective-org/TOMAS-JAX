@@ -252,8 +252,8 @@ is assumed, why, where it is implemented and how to change it.
 ### A12 — Rate constants frozen per coupling interval (KPP semantics)
 
 - All k (MCM complex rates, J at the interval midpoint, RO2 sum, k_het) are held
-  fixed while the stiff solver integrates one coupling interval (300 s Level 1–2,
-  900 s Level 3). Gas and aerosol are operator-split at the same interval; H2SO4
+  fixed while the stiff solver integrates one coupling interval (300 s in every preset;
+  Level 3 used 900 s until 2026-10-17). Gas and aerosol are operator-split at the same interval; H2SO4
   (from the SA counter) and nitrate (from NA_HET) are passed to TOMAS as constant
   rates over the interval.
 - With nucleation on, the interval used is at most 60 s and the aerosol micro-step
@@ -261,25 +261,42 @@ is assumed, why, where it is implemented and how to change it.
   into equal parts, so output times and the run's end do not move. Runs without
   nucleation keep the requested interval and the 60 s micro-step.
 - Coupling-interval sensitivity, Level 3 preset at 40 bins with the Jathar c* table
-  (measured 2026-10-16, final values at 24 h, against the preset 900 s: nitrate
-  3.137 µg/m³, SOA 0.060 µg/m³, N 2552 cm⁻³): 600 s gives nitrate +2.6 %, SOA −10.5 %,
-  N +0.03 %; 300 s gives nitrate +4.7 %, SOA −20.1 %, N +0.05 %. The totals are not
-  converged in the coupling interval. With the Li et al. (2016) c* (same day: nitrate
-  5.160, SOA 7.850 µg/m³, N 2620 cm⁻³) the changes were nitrate +3.5 % / +6.6 %, SOA
-  +2.4 % / +4.7 %, N +0.09 % / +0.19 %.
+  (measured 2026-10-17; final values at 24 h against a reference with 30 s coupling
+  and a 2.5 s aerosol micro-step: SOA 0.04335, nitrate 3.3514, sulfate 5.5569 µg/m³,
+  N 2553.6 cm⁻³, GMD 151.08 nm):
+
+  | interval | SOA | nitrate | sulfate | GMD | peak OH | peak NO3 |
+  |---|---|---|---|---|---|---|
+  | 900 s (old preset) | +38 % | −6.4 % | −1.0 % | −1.0 % | −5.2 % | −2.0 % |
+  | 600 s | +23 % | −4.0 % | −0.6 % | −0.6 % | −3.3 % | −1.3 % |
+  | 300 s (preset) | +10.3 % | −2.0 % | −0.27 % | −0.31 % | −1.5 % | −0.6 % |
+  | 60 s | +1.8 % | −0.2 % | +0.02 % | −0.02 % | −0.1 % | −0.07 % |
+
+  N moves by less than 0.1 %. The error grows in proportion to the interval,
+  X(Δt_c) ≈ X₀ + a·Δt_c (first-order operator splitting, X₀ the answer with continuous
+  coupling), so 300 s has about a third of the 900 s error. Against 900 s, 300 s gives
+  SOA −20.1 % and nitrate +4.7 %. Values and run times: `docs/aaar/coupling.md`,
+  "Coupling interval". With the Li et al. (2016) c* (2026-10-16, against 900 s:
+  nitrate 5.160, SOA 7.850 µg/m³, N 2620 cm⁻³) 600 s / 300 s changed nitrate
+  +3.5 % / +6.6 %, SOA +2.4 % / +4.7 %, N +0.09 % / +0.19 %.
 - Small negative concentrations from the implicit solver are clipped to zero.
+- **Choice of interval (2026-10-17, Ali) — for Shantanu.** The coupling interval is a
+  setting of the numerical solver. Ali: 15 min is long, and the right value depends on
+  how fast the chemistry is and how much is emitted, so the numerical solver should
+  choose it. Decision: Level 3 uses 300 s from now on, as Levels 1–2 do; an interval
+  chosen automatically by the numerical solver is planned after the tutorial.
 - Measured against PyCHAM (benchmark case G2, Level 2 gas phase,
   `benchmarks/pycham/README.md`): at 300 s coupling the RO2 sum is frozen at its t = 0
   value (0) for the first interval, so RO2+RO2 products (e.g. LIMAOH) are 0 at 5 min.
   Deviations are ≤ 6 % after 1 h and |NMB| ≤ 3 % over 6 h (median 1.7e-3). At 60 s
   coupling the median |NMB| is 3e-4.
-- **Level 3 against PyCHAM (G3, 2026-10-14) — for Shantanu:** at the preset 900 s the
-  median |NMB| over 361 species is 10 % (60 s: 0.6 %). Most of it is the NO2 reset
+- **Level 3 against PyCHAM (G3, 2026-10-14) — for Shantanu:** at 900 s (the preset
+  then) the median |NMB| over 361 species is 10 % (60 s: 0.6 %). Most of it is the NO2 reset
   convention (A14). The rest: the interval that contains sunset or sunrise uses the J
   of its midpoint (light 2 min early at 05:45–06:00; N2O5 +120 % at 06:00), and RO2 is
   0 for the first 900 s while half of the limonene reacts, so RO2+RO2 products are
-  50–60 % low early on. The 600 s and 300 s numbers above show the same: 900 s is
-  several percent away from a continuous solution.
+  50–60 % low early on. The table above shows the same: 900 s is several percent away
+  from a continuous solution. G3 was not re-run at 300 s.
 
 ### A13 — Nucleation uses H2SO4 only, with short time steps
 
@@ -328,15 +345,18 @@ is assumed, why, where it is implemented and how to change it.
   is marginal. The web API allows only 40 bins. Run time at 80 bins: 52 s (5 s) and
   138 s (2 s) for the 12 h Level 1 run, against 14 s at 40 bins.
 - Level 3 side effect: turning nucleation on also moves the coupling interval from
-  900 s to 60 s, so SOA and nitrate change even without new particles. Level 3 preset
-  at 293 K (no burst, peak N 3000 cm⁻³ either way), final values at 24 h, on against
-  off: SOA −27 %, nitrate +6.6 %, sulfate +1.0 %, GMD +1.0 %. The 60 s run agrees with
-  30 s / 2.5 s within 0.8 %, so this is the A12 coupling error of the 900 s run, not
-  nucleation. Levels 1 and 2 move only in GMD (−1.3 %, −1.2 %). To isolate nucleation
-  in Level 3, run the off case at 60 s coupling as well.
+  300 s to 60 s and the micro-step from 60 s to 5 s, so SOA and nitrate change even
+  without new particles. Level 3 preset at 293 K (no burst: peak N 3000 cm⁻³ either way,
+  largest nucleation rate 2e-8 cm⁻³ s⁻¹), final values at 24 h, on against off
+  (2026-10-17): SOA −8.6 %, nitrate +1.8 %, sulfate +0.24 %, GMD +0.27 % (against the
+  old 900 s interval: −27 %, +6.6 %, +1.0 %, +1.0 %). Nucleation on and off with the
+  same 60 s / 5 s steps agree to 1e-6, so none of this is nucleation. The 60 s run is
+  within 0.8 % of 30 s / 2.5 s, so the shift is the A12 coupling error of the 300 s run.
+  Levels 1 and 2 move only in GMD (−1.3 %, −1.2 %). To isolate nucleation in Level 3,
+  run the off case at 60 s coupling as well.
 - Cost (warm, laptop): Level 1 with nucleation 1.3 → 14 s, Level 2 5.4 → 25 s,
-  Level 3 11.5 → 112 s for the preset durations (also 112 s on one thread, as in the
-  API workers). The cost does not depend on whether a burst happens and grows in
+  Level 3 27 → 112–125 s for the preset durations (11.5 s without nucleation at the old
+  900 s interval; also 112 s on one thread, as in the API workers). The cost does not depend on whether a burst happens and grows in
   proportion to the run length: the longest run the API allows, 48 h, takes 235 s in
   Level 3 and 204 s in Level 2 (measured 2026-10-17 through the API worker's job path,
   one thread, laptop under load). The API's tutorial job limit was raised from 120 s
