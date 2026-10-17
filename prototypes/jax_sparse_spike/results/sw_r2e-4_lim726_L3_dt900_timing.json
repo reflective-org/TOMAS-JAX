@@ -1,0 +1,96 @@
+{
+ "problem": "lim726_L3",
+ "coupling_s": 900,
+ "n_species": 726,
+ "n_reactions": 2135,
+ "solver": "JAX sparse spike: ros3 (KPP coefficients and step control), analytic sparse Jacobian, levelised sparse LU (markowitz order, dense tail 0, solve v2), rtol 0.0002, atol 10000.0, max_steps 2000, h0 hairer, mode loop",
+ "settings": {
+  "method": "ros3",
+  "rtol": 0.0002,
+  "atol": 10000.0,
+  "h0": "hairer",
+  "mode": "loop",
+  "tail": 0,
+  "order": "markowitz",
+  "solve": "v2",
+  "max_steps": 2000
+ },
+ "lu": {
+  "jac_nnz": 6142,
+  "lu_nnz": 7814,
+  "factor_levels": 48,
+  "fwd_groups": 16,
+  "bwd_groups": 17,
+  "flops": 42907
+ },
+ "versions": {
+  "jax": "0.9.1",
+  "python": "3.11.15"
+ },
+ "machine": "macOS-26.6.2-arm64-arm-64bit",
+ "XLA_FLAGS": "",
+ "t_symbolic_s": 0.21841662499355152,
+ "t_setup_s": 1.0782377920113504,
+ "runs": [
+  {
+   "kind": "first (includes compile)",
+   "wall_s": 2.5054939999827184,
+   "uptime_before": "19:36  up 8 days, 11:40, 5 users, load averages: 10.72 10.47 8.39",
+   "uptime_after": "19:36  up 8 days, 11:40, 5 users, load averages: 10.72 10.47 8.39"
+  },
+  {
+   "kind": "warm",
+   "wall_s": 0.3374668339965865,
+   "uptime_before": "19:36  up 8 days, 11:40, 5 users, load averages: 10.72 10.47 8.39",
+   "uptime_after": "19:36  up 8 days, 11:40, 5 users, load averages: 10.72 10.47 8.39"
+  }
+ ],
+ "status": "complete",
+ "t_first_s": 2.5054939999827184,
+ "t_first_interval_s": 1.0747477500117384,
+ "accepted_steps": 1243,
+ "work": {
+  "accepted": 1243,
+  "rejected": 0,
+  "rhs_evals": 2582,
+  "jac_evals": 1243,
+  "lu_factorisations": 1243
+ },
+ "accuracy": {
+  "run": "sw_r2e-4_lim726_L3_dt900.json",
+  "reference": "ref_lim726_L3_dt900.json",
+  "floor_molec_cm3": 1000000.0,
+  "key": {
+   "max": 0.00804740443075586,
+   "median": 4.137814624717252e-06,
+   "p95": 0.00017391485152350796,
+   "worst_species": "LIMONENE",
+   "per_species": {
+    "O3": 2.676488196939511e-06,
+    "OH": 0.000268277376476326,
+    "HO2": 0.0013233688717936328,
+    "NO": 9.140247757657199e-05,
+    "NO2": 1.7130632205798302e-05,
+    "NO3": 0.0009549856373911864,
+    "N2O5": 0.0013421026197225339,
+    "HNO3": 1.871832560916927e-05,
+    "H2O2": 2.4152202855342626e-05,
+    "HCHO": 1.3887460160372281e-05,
+    "PAN": 2.9177937468133807e-05,
+    "SA": 0.0003118616162793478,
+    "LIMONENE": 0.00804740443075586,
+    "LIMAL": 0.0009830931659286144,
+    "LIMKET": 0.002694966146742947,
+    "LIMONONIC": 0.00028090184903366023,
+    "LIMAOOH": 0.0006829571245416932,
+    "LIMANO3": 0.0009756674009846383
+   }
+  },
+  "all_species_hourly_max": 0.00529227051435981
+ },
+ "t_warm_median_s": 0.3374668339965865,
+ "t_warm_min_s": 0.3374668339965865,
+ "ms_per_step_warm_median": 0.27149383266016613,
+ "compile_estimate_s": 2.168027165986132,
+ "peak_rss_mb": 567.34375
+}
