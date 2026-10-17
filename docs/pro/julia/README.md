@@ -1,5 +1,11 @@
 # Julia and the Pro Simulator
 
+**Decision, 2026-10-17 (Ali): "JAX first, Julia later if needed".** New features are built in
+TOMAS-JAX on the sparse Rosenbrock solver in `prototypes/julia/jax_sparse_spike/` (full-MCM size:
+about 1.6 s per simulated day at 15 min coupling and 4.4 s at 1 min, at matched accuracy). TOMAS.jl
+(private) keeps the Julia plan and prototype as a tracked option.
+
+
 Status: 2026-10-17, branch `feat/pro-julia`. Nothing here changes the AAAR tutorial. TOMAS-JAX
 stays the tutorial engine: frozen, bit-identical, fixes only.
 
