@@ -1,0 +1,61 @@
+# Level 1 (series) — Urban warm-up: O3, NO and NO2 cycling in midday sunlight, and a
+# three-mode particle population that only coagulates. The two run side by side and
+# neither affects the other (no condensation, no SOA, no nucleation; ASSUMPTIONS A19).
+# Midlatitude summer: 40 N, 75 W, 1 July, 10:00 to 16:00 local (EDT = UTC-4).
+# Try: cloud fraction; initial O3, NO, NO2; temperature; NO emissions; the particle
+# number, mode sizes and inorganic:organic share.
+name = "Level 1 - Urban warm-up"
+level = 1
+duration_h = 6.0
+start_utc = "2026-07-01T14:00:00+00:00"   # 10:00 EDT
+hold_constant = []
+cstar_table = "mcm_limonene_cstar_298K.csv"
+
+[gases_ppb]
+O3 = 40.0
+NO = 5.0
+NO2 = 15.0
+CO = 200.0
+CH4 = 1900.0
+H2 = 500.0
+
+# constant NO source E [ppb/h]: an urban mixed layer receives about 1-2 ppb/h (A19)
+[emissions_ppb_per_h]
+NO = 1.0
+
+[environment]
+temp_k = 298.15
+pres_pa = 101325.0
+rh = 0.5
+
+# Aitken, accumulation and coarse modes (sigma 1.5 each), about 2e4 cm-3 in total; dry
+# mass 50 % non-volatile organic, 30 % ammonium sulfate, 20 % ammonium nitrate (A15)
+[seed]
+organic_mass_fraction = 0.5
+ammonium_nitrate_mass_fraction = 0.2
+ammonium = true
+organic_o_to_c = 0.5
+modes = [
+  { number_cm3 = 12000.0, gmd_nm = 30.0, gsd = 1.5 },
+  { number_cm3 = 8000.0, gmd_nm = 120.0, gsd = 1.5 },
+  { number_cm3 = 3.0, gmd_nm = 2000.0, gsd = 1.5 },
+]
+
+[photolysis]
+mode = "tuvx"
+latitude_deg = 40.0
+longitude_deg = -75.0
+cloud_fraction = 0.0
+
+[processes]
+chemistry = true
+nucleation = false
+coagulation = true
+h2so4_condensation = false
+soa_partitioning = false
+n2o5_uptake = false
+
+[numerics]
+coupling_dt_s = 300.0
+output_dt_s = 600.0
+nbins = 40

@@ -10,11 +10,13 @@ from tomas_jax.box.scenario import Scenario, list_presets, load_preset
 
 
 def test_presets_load():
-    assert list_presets() == ["level1_volatility", "level2_limonene_soa", "level3_day_night"]
-    assert [load_preset(n).level for n in list_presets()] == [1, 2, 3]
+    # the original levels plus the series added 2026-10-19 (urban warm-up, indoor air)
+    assert list_presets() == ["level1_urban", "level1_volatility", "level2_indoor",
+                              "level2_limonene_soa", "level3_day_night"]
+    assert [load_preset(n).level for n in list_presets()] == [1, 1, 2, 2, 3]
     # every preset couples gas and aerosol every 300 s (Level 3 used 900 s until
     # 2026-10-17; ASSUMPTIONS A12)
-    assert [load_preset(n).numerics.coupling_dt_s for n in list_presets()] == [300.0] * 3
+    assert [load_preset(n).numerics.coupling_dt_s for n in list_presets()] == [300.0] * 5
 
 
 def test_presets_use_the_jathar_cstar_table():

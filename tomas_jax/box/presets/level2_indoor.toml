@@ -1,0 +1,70 @@
+# Level 2 (series) — Indoor air: limonene ozonolysis in a dark room (window glass keeps
+# out the ultraviolet light that photolyses O3 and NO2, so photolysis is off; A20). O3
+# starts at 30 ppb after an airing and relaxes toward the balance of outdoor supply and
+# surface loss; the ozonolysis makes OH, oxidation products and SOA. Outdoor air comes in
+# at the air-exchange rate (closed room 0.5 1/h; window open 3; HVAC 6), O3 is lost to
+# surfaces, condensable vapours to the walls, and particles deposit (Lai and Nazaroff
+# 2000; A17). Try: initial limonene and O3, the air-exchange rate, the wall losses.
+name = "Level 2 - Indoor air"
+level = 2
+duration_h = 4.0
+hold_constant = []
+cstar_table = "mcm_limonene_cstar_298K.csv"
+
+[gases_ppb]
+LIMONENE = 20.0
+O3 = 30.0
+NO = 0.5
+NO2 = 2.0
+CO = 150.0
+CH4 = 1900.0
+H2 = 500.0
+
+[environment]
+temp_k = 295.15
+pres_pa = 101325.0
+rh = 0.4
+
+# indoor particles: dry mass 50 % organic, 10 % ammonium nitrate, 40 % ammonium sulfate
+[seed]
+organic_mass_fraction = 0.5
+ammonium_nitrate_mass_fraction = 0.1
+ammonium = true
+organic_o_to_c = 0.5
+modes = [{ number_cm3 = 3000.0, gmd_nm = 80.0, gsd = 1.6 }]
+
+[photolysis]
+mode = "off"
+
+[losses]
+ventilation_per_h = 0.5
+outdoor_gases_ppb = { O3 = 40.0, NO = 1.0, NO2 = 5.0, CO = 150.0, CH4 = 1900.0, H2 = 500.0 }
+o3_surface_per_h = 3.0
+organic_vapour_wall_per_s = 1e-4
+particle_deposition = "lai_nazaroff"
+
+[losses.outdoor_seed]
+organic_mass_fraction = 0.5
+ammonium_nitrate_mass_fraction = 0.1
+ammonium = true
+organic_o_to_c = 0.5
+modes = [{ number_cm3 = 5000.0, gmd_nm = 100.0, gsd = 1.6 }]
+
+[losses.room]
+friction_velocity_cm_s = 1.0
+surface_to_volume_per_m = 3.0
+height_m = 2.5
+particle_density_g_cm3 = 1.4
+
+[processes]
+chemistry = true
+nucleation = false
+coagulation = true
+h2so4_condensation = true
+soa_partitioning = true
+n2o5_uptake = false
+
+[numerics]
+coupling_dt_s = 300.0
+output_dt_s = 600.0
+nbins = 40
