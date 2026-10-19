@@ -3,7 +3,7 @@
 `box.driver.run(scenario, progress_cb=None, cancel=None) -> RunResult` couples the
 MCM gas chemistry and TUV-x photolysis (`gaschem`, see `gaschem.md`) to TOMAS with
 c*-class SOA partitioning and N2O5 uptake (`aerosol_step.md`, `soa_partitioning.md`,
-`heterogeneous.md`). Modelling assumptions are in `ASSUMPTIONS.md` (A1–A14).
+`heterogeneous.md`). Modelling assumptions are in `ASSUMPTIONS.md` (A1–A20).
 
 ## Inputs and outputs
 
@@ -25,7 +25,16 @@ c*-class SOA partitioning and N2O5 uptake (`aerosol_step.md`, `soa_partitioning.
   composition totals (N, SO4, NIT, SOA, POA, NH4, H2O, dry), gases [ppb], radicals
   [molec/cm³], H2SO4, J and SZA, gas/particle mass per c* class, top particle-phase
   species, diagnostics (condensation sink, nucleation rate, c* source, J sources,
-  warnings, solver steps, runtime, `code_version()`).
+  warnings, solver steps, runtime, `code_version()`). Since 2026-10-19 also the surface
+  and volume distributions with their totals, the particle properties (O:C, κ) and the
+  cumulative loss budgets ([Reported properties and budgets](#reported-properties-and-budgets)).
+- Series fields (2026-10-19, all off by default so Levels 1–3 are bit-identical,
+  `tests/test_aaar_presets_unchanged.py`): `emissions_ppb_per_h` {species: E},
+  `photolysis.cloud_fraction` (0–1), `losses` (`ventilation_per_h` λ, `outdoor_gases_ppb`,
+  `outdoor_seed`, `o3_surface_per_h` k_s, `organic_vapour_wall_per_s` k_w,
+  `particle_deposition` "off" | "lai_nazaroff", `room` with u*, S/V, height and particle
+  density) and the seed salts (`seed.ammonium_nitrate_mass_fraction`, `seed.ammonium`,
+  `seed.organic_o_to_c`). Equations below; sources in ASSUMPTIONS A15–A20.
 
 `run(scenario, progress_cb=None, cancel=None, observer=None, aerosol_cfg=None,
 nucleation_caps=True)`: the optional
@@ -201,6 +210,8 @@ boxvol = 1e10 cm³ (so per-cell thresholds mean 1 #/cm³); outputs µg/m³, ppb,
 | `level1_volatility` | growth vs c* (0.01: 54→133 nm; 100: 54→57 nm GMD) | 12 h | 300 s | ~1.7 s |
 | `level2_limonene_soa` | limonene oxidation → ~9 µg/m³ SOA (Jathar c* table, A8), top contributors | 6 h | 300 s | ~6 s |
 | `level3_day_night` | diurnal J/OH/NO3; nitrate 0 → 3.3 → 7.1 µg/m³ for γ = 0, 0.02, 0.1; SOA 0.05 µg/m³ | 24 h | 300 s | ~27 s |
+| `level1_urban` | O3/NO/NO2 in midday sun with 1 ppb/h NO (photostationary state to 1 %); 2e4 → 1.2e4 cm⁻³ by coagulation only, dry mass conserved | 6 h | 300 s | ~5.5 s |
+| `level2_indoor` | dark limonene ozonolysis with ventilation, O3 surface loss, vapour wall loss and deposition; O3 30 → 5.6 ppb; SOA peak 0.2 µg/m³ (7 with the losses off) | 4 h | 300 s | ~7.5 s |
 
 With nucleation on, every preset runs at 60 s coupling with 5 s micro-steps and takes
 about 14 s, 25 s and 112–125 s ([Time steps with nucleation](#time-steps-with-nucleation)).
@@ -237,3 +248,97 @@ forms SOA, and over 6 h gives 6–12 µg/m³ with < 20 % nitrogen-containing top
 contributors (Jathar c*); a c* table that leaves condensable species on Li et al.
 (2016) adds a run warning; Level 3 nitrate is zero for γ = 0 and > 1 µg/m³ for
 γ = 0.02; bad species and surrogate+chemistry are rejected.
+
+## Emissions and losses (series of 2026-10-19)
+
+The urban and indoor levels add constant emissions and first-order losses. They are
+operator-split like everything else: each acts once per coupling interval Δt_c, in this
+order within the interval (A17, A19):
+
+1. Emissions: y_s ← y_s + E_s Δt_c for every emitted species, before the gas chemistry
+   (`emissions_ppb_per_h`, converted with E [molec cm⁻³ s⁻¹] = E [ppb/h] × 10⁻⁹ M / 3600).
+   Adding the whole interval's emission up front is first order in Δt_c, as the rest of
+   the split (at 300 s with 1 ppb/h of NO this is 0.08 ppb per interval).
+2. Cloud fraction: every photolysis rate used in the interval (and reported) is
+   J = J_clear × (1 − 0.75 CF). This is a tutorial simplification, not a radiative
+   transfer result (A16).
+3. Gas chemistry over Δt_c (unchanged).
+4. Gas losses (after the chemistry, before the organics are gathered into the c* classes):
+   for every mechanism species, dC/dt = λ (C_out − C) − k C, with λ the air-exchange rate,
+   C_out the outdoor mixing ratio (`losses.outdoor_gases_ppb`, 0 when unlisted) and k an
+   extra sink: k_s for O3 (surface loss), k_w for every condensable organic vapour
+   (irreversible wall loss), 0 otherwise. The interval is solved exactly:
+   C(Δt_c) = C* + (C₀ − C*) e^{−(λ+k) Δt_c}, with C* = λ C_out / (λ + k).
+5. Aerosol step over Δt_c (unchanged).
+6. Particle losses, per bin i and species: dN_i/dt = λ (N_out,i − N_i) − β(Dp_i) N_i, the
+   same for every mass component, solved exactly as in 4. N_out is the outdoor seed
+   (`losses.outdoor_seed`, water-equilibrated like the initial state; zero without one).
+   β(Dp) is the Lai and Nazaroff (2000) deposition rate of a room (below). The vapours
+   in the TOMAS gas array are treated in the same step: H2SO4 vapour is ventilated; the
+   Level 1 surrogate is ventilated and wall-lost with k_w; with chemistry on the c*-class
+   slots are not touched here because their species were already treated in step 4 and
+   the class change is scattered back to them. Water is re-equilibrated afterwards.
+7. Scatter and "hold constant" reset (unchanged).
+
+Budgets. For each first-order step the time integral ∫C dt over the interval is known in
+closed form (C* Δt_c + (C₀ − C*)(1 − e^{−rΔt_c})/r with r = λ + k), so each sink removes
+exactly (its rate) × ∫C dt and ventilation brings in λ C_out Δt_c; in − out − removed equals
+the change to rounding (`tests/test_aaar_losses.py`). The cumulative amounts since the start
+are reported at every output time in `RunResult.losses`.
+
+Lai and Nazaroff (2000) deposition (`box/losses.py::lai_nazaroff_beta`;
+https://doi.org/10.1016/S0021-8502(99)00536-4). The loss rate of a room is
+
+    β(Dp) = (S_v v_dv + S_u v_du + S_d v_dd) / V,
+
+with deposition velocities to vertical (v_dv), upward-facing (v_du, floor) and
+downward-facing (v_dd, ceiling) smooth surfaces:
+
+    v_dv = u* / I,    v_du = v_s / (1 − e^{−v_s I / u*}),    v_dd = v_s / (e^{v_s I / u*} − 1),
+
+where u* is the near-surface friction velocity, v_s the settling velocity (Stokes with
+the Cunningham slip correction) and I the dimensionless integral over the near-wall eddy
+diffusivity, I = 3.64 Sc^{2/3} (a − b) + 39 for r⁺ ≤ 4.3 (Sc = ν/D the particle Schmidt
+number, r⁺ = (Dp/2) u*/ν; the a and b terms are the closed-form integral of the paper's
+eq. 11 over 0 ≤ y⁺ ≤ 4.3). Room: u* = 1 cm/s, S/V = 3 m⁻¹, height 2.5 m (so floor and
+ceiling are 0.4 m⁻¹ each and the walls 2.2 m⁻¹), particle density 1.4 g/cm³ (A17,
+placeholders). At these values β is 0.19 h⁻¹ at 10 nm, 0.008 h⁻¹ at 200 nm (the minimum)
+and 1.6 h⁻¹ at 5 µm.
+
+## Reported properties and budgets
+
+- Surface and volume distributions at the dry bin-centre diameter Dp (ρ = 1400 kg/m³):
+  dS/dlog10Dp = π Dp² dN/dlog10Dp [µm² cm⁻³], dV/dlog10Dp = (π/6) Dp³ dN/dlog10Dp
+  [µm³ cm⁻³]; `totals["S_um2cm3"]` and `totals["V_um3cm3"]` are their sums over the bins.
+  Because Dp is the bin centre, V × 1.4 g/cm³ equals the dry mass exactly at the start and
+  within about 0.1 % later.
+- `properties["o_to_c"]`: O:C of the particle organics from the per-species tracker
+  and the mechanism's atom counts, n_O = Σ P_i O_i / MW_i, n_C = Σ P_i C_i / MW_i, plus
+  the seed organic at its own O:C (`seed.organic_o_to_c`, 0.5 by default) with mass per
+  mole of carbon 12.011 + 1.008 (2 − O:C) + 15.999 O:C g/mol (H:C = 2 − O:C) (A18).
+- `properties["kappa"]`: κ_org = 0.18 O:C + 0.03 (Lambe et al. 2011), κ = 0.61 for
+  ammonium sulfate and 0.67 for ammonium nitrate (Petters and Kreidenweis 2007), mixed by
+  dry volume (densities 1.4, 1.77, 1.72 g/cm³); sulfate counts as ammonium sulfate and
+  nitrate as ammonium nitrate whether or not ammonium is present, so the ammonium mass is
+  not counted twice. `kappa_organic`, `kappa_inorganic` and `organic_volume_fraction` are
+  reported with it; NaN (null in JSON) where there is no such mass.
+- `losses`: cumulative since the start, at the output times: `wall_vapour_ugm3` and
+  `ventilated_vapour_ugm3` (condensable organic vapour; ventilation net out),
+  `o3_surface_ppb`, `ventilated_gases_ppb` {species: net out} for the reported gases,
+  `deposited_{dry,SOA,POA,inorganic}_ugm3`, `deposited_N_cm3`, the same `ventilated_*`
+  (net out; negative when outdoor air brings more in), `emitted_ppb` {species}. For the
+  indoor level, "where did the limonene go" is initial + ventilated in − ventilated out −
+  remaining = reacted, and the reacted carbon is split between SOA (`totals`), vapour on
+  the walls, vapour ventilated out, and SOA deposited or ventilated.
+
+Validation (`tests/test_aaar_series_driver.py`, `tests/test_aaar_series_presets.py`):
+with every other process off, particle ventilation follows the exact exponential toward
+the outdoor distribution, deposition and ventilation budgets close to 1e-9, O3 in the dark
+follows C* + (C₀ − C*) e^{−(λ+k_s)t} to 1e-6, NO emission accumulates linearly, the
+surrogate's wall loss closes to 1e-9, a cloud fraction of 1 scales every J by 0.25, and
+the seed salts carry the stated stoichiometry. Urban preset: photostationary state
+k[O3][NO] / (J(NO2)[NO2]) = 1 ± 0.05 at every daytime output, N falls monotonically with
+dry mass conserved to 1e-6 and V to 1 %. Indoor preset: O3 reaches λ O3_out/(λ + k_s)
+within 15 %, the limonene budget closes, the cumulative losses are monotonic, SOA is
+0.05–1 µg/m³ with the losses on and > 5 µg/m³ with them off, and opening the window
+(λ = 3 h⁻¹) more than doubles the indoor O3.

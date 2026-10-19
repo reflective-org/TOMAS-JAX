@@ -4,6 +4,44 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-10-19 (Sun) — Series levels: urban warm-up and indoor air (model side)
+
+**Branch**: `aaar-series` (from `feat/aaar-tutorial` a631e80)
+
+- Shantanu's series (2026-10-18): Level 1 "O3-NO-NO2 under midlatitude mid-day conditions
+  and aerosol coagulation, happening together but none affecting the other", Level 2
+  "limonene ozonolysis (O3 = 30 ppbv) and some OH under indoor conditions to form SOA",
+  Level 3 Day & Night kept. Ali: "Yes: Urban, Indoor, keep Day & Night".
+- Scenario fields (`box/scenario.py`): `emissions_ppb_per_h`, `photolysis.cloud_fraction`,
+  `losses` (ventilation λ with outdoor gases and an outdoor seed, O3 surface loss k_s,
+  condensable vapour wall loss k_w, Lai–Nazaroff particle deposition with room
+  parameters), seed salts (`ammonium_nitrate_mass_fraction`, `ammonium`, `organic_o_to_c`).
+  All default to off; `tests/test_aaar_presets_unchanged.py` holds bit-level fingerprints
+  of Levels 1–3 made at a631e80 (1 h runs fast, full presets slow) and they are unchanged.
+- Driver (`box/driver.py`, `box/losses.py`): per coupling interval emissions → chemistry
+  (J × (1 − 0.75 CF)) → gas losses → aerosol step → particle losses, each loss solved
+  exactly over the interval with its time integral so the budgets close (equations in
+  `docs/aaar/coupling.md`, "Emissions and losses"; ASSUMPTIONS A16, A17, A19).
+- Outputs (`box/properties.py`, `box/result.py`): dS/dlog10Dp, dV/dlog10Dp and S, V
+  totals; O:C of the particle organics (tracker atom counts + seed O:C); κ (Lambe 2011
+  for organics, Petters–Kreidenweis salts, volume mixing); cumulative loss budgets
+  (`RunResult.losses`): walls, surfaces, ventilation (net), deposition, emissions.
+- Presets `level1_urban` (6 h; 40 °N, 1 July, 10:00–16:00 EDT; O3 40, NO 5, NO2 15 ppb,
+  1 ppb/h NO; 2e4 cm⁻³ in three modes, 50 % organic, 30 % AS, 20 % AN; coagulation only)
+  and `level2_indoor` (4 h, dark; limonene 20, O3 30 ppb; λ 0.5 h⁻¹, k_s 3 h⁻¹,
+  k_w 1e-4 s⁻¹, deposition on). Measured: urban photostationary ratio 0.99–1.00, O3 40 →
+  36.9, NO 5 → 7.2, NO2 15 → 12.7 ppb, N 20003 → 11757 cm⁻³, dry mass constant, wall
+  5.5 s; indoor O3 30 → 5.6 ppb (= λ O3_out/(λ + k_s)), limonene 20 → 1.0 (11.1 out,
+  7.9 reacted), SOA peak 0.23 µg/m³ with 7.6 µg/m³ of vapour on the walls and 10.5 out
+  (7 µg/m³ SOA with the losses off), κ 0.34, wall 7.5 s. Open point for Shantanu (A20):
+  the dark-room default lets O3 fall to 15 % of outdoor and the walls take the vapours.
+- Tests: `test_aaar_series_scenario.py`, `test_aaar_losses.py`, `test_aaar_series_driver.py`
+  (exact closures), `test_aaar_series_presets.py`, `test_aaar_presets_unchanged.py`;
+  `test_presets_load` lists five presets; the nucleation-cap tests run on all five.
+- `warmup()` now compiles five presets (two more 300 s shapes and their 60 s variants).
+
+---
+
 ## 2026-10-17 (Sat) — Level 3 coupling interval 900 s → 300 s
 
 **Branch**: `aaar-l3-300s` (from `feat/aaar-tutorial` 44b6db2; tag `aaar-stable-2026-10-17d`)

@@ -409,6 +409,118 @@ is assumed, why, where it is implemented and how to change it.
   therefore have an absorbing phase from birth. All other organic slots
   outside the active classes (except nitrate) are treated the same way.
 
+### A15 — Seed salts and ammonium stoichiometry (series, 2026-10-19)
+
+- `seed.ammonium_nitrate_mass_fraction` is the ammonium nitrate share of the dry seed
+  mass; `seed.organic_mass_fraction` the non-volatile organic (slot 41); the rest is
+  sulfate. With `seed.ammonium = true` the salts carry their ammonium in slot 42:
+  (NH4)2SO4 is 96/132 SO4 and 36/132 NH4 by mass, NH4NO3 is 62/80 NO3 and 18/80 NH4.
+  Without it (default; Levels 1–3) the sulfate is SO4 alone, as before.
+- The water scheme is unchanged (ISORROPIA NH4HSO4 fit on the sulfate; the nitrate in
+  slot 40 takes water like the organics). Coagulation treats every component alike.
+- Urban preset: 50 % organic, 30 % ammonium sulfate, 20 % ammonium nitrate
+  ("inorganic:organic 50:50", Shantanu). For Shantanu to confirm: the 30:20 split of the
+  inorganic part and the seed O:C of 0.5 (A18).
+
+### A16 — Cloud fraction (series)
+
+- Every photolysis rate is scaled by one factor, J = J_clear × (1 − 0.75 CF), with CF the
+  cloud fraction (0–1) the student sets (`photolysis.cloud_fraction`; `CLOUD_J_LOSS` =
+  0.75 in `box/scenario.py`). Full overcast leaves a quarter of the clear-sky rate.
+- This is a simplification for the tutorial, not a radiative transfer result: the
+  reduction under a cloud depends on its optical depth and on the wavelength (J(O¹D)
+  falls more than J(NO2)), and thin broken clouds can even enhance surface J. The same
+  factor is applied to the reported J. For Shantanu to confirm, or replace with a
+  cloud-optical-depth input.
+
+### A17 — Ventilation, surface and wall losses (series)
+
+- Ventilation: dC/dt = λ (C_out − C) for every gas and every particle bin (same for every
+  mass component), λ the air-exchange rate (`losses.ventilation_per_h`). Default for a
+  closed room 0.5 h⁻¹, the median US residential value of Murray and Burmaster (1995),
+  https://doi.org/10.1111/j.1539-6924.1995.tb00338.x. Presets offered to students, as
+  placeholders for Shantanu to confirm: window open 3 h⁻¹, HVAC running 6 h⁻¹
+  (`VENTILATION_PRESETS_PER_H`).
+- C_out: outdoor gases from `losses.outdoor_gases_ppb` (unlisted species 0) and an outdoor
+  particle distribution from `losses.outdoor_seed` (none = clean outdoor air).
+- O3 surface loss: dO3/dt = −k_s O3, k_s = 3 h⁻¹ (Weschler 2000, typical indoor O3
+  decay 2.8 h⁻¹; https://doi.org/10.1034/j.1600-0668.2000.010004269.x).
+- Condensable organic vapour wall loss: dG/dt = −k_w G, irreversible, k_w = 1e-4 s⁻¹ for
+  every species the c* table marks condensable (Zhang et al. 2014,
+  https://doi.org/10.1073/pnas.1404727111, chamber vapour wall loss). Limonene itself is
+  not condensable and is not wall-lost. In a room k_w is probably larger than in a chamber
+  (more surface per volume); for Shantanu.
+- Particle deposition: dN_i/dt = −β(Dp_i) N_i with β from Lai and Nazaroff (2000),
+  https://doi.org/10.1016/S0021-8502(99)00536-4, smooth surfaces, closed form for
+  r⁺ ≤ 4.3 (equations in docs/aaar/coupling.md). Room parameters, placeholders for
+  Shantanu: friction velocity u* = 1 cm/s, surface-to-volume ratio 3 m⁻¹, height 2.5 m
+  (floor and ceiling 0.4 m⁻¹ each, walls 2.2 m⁻¹), particle density 1.4 g/cm³. β is
+  0.19 h⁻¹ at 10 nm, 0.008 h⁻¹ at 200 nm, 1.6 h⁻¹ at 5 µm; the paper notes measured
+  indoor values are larger than this smooth-surface model gives.
+- All losses are applied once per coupling interval (operator split, exact interval
+  solution of each first-order equation) in the order emissions → chemistry → gas losses
+  → aerosol step → particle losses; budgets close exactly per step.
+
+### A18 — O:C and κ of the particles (series)
+
+- O:C of the particle organics: SOA species from the per-species tracker (A6; within a c*
+  class the split between species is approximate) with the mechanism's atom counts; the
+  seed organic (and nucleated organic, slot 41) at the user's O:C (`seed.organic_o_to_c`,
+  default 0.5) with H:C = 2 − O:C (Van Krevelen line) to convert its mass to moles of
+  carbon. For Shantanu: the seed O:C of 0.5.
+- κ_org = 0.18 O:C + 0.03 (Lambe et al. 2011, https://doi.org/10.5194/acp-11-8913-2011, a
+  fit to flow-reactor SOA; applied here to all particle organics). Inorganic: ammonium
+  sulfate 0.61, ammonium nitrate 0.67 (Petters and Kreidenweis 2007,
+  https://doi.org/10.5194/acp-7-1961-2007). Mixing by dry volume with densities 1.4 (organic,
+  the reporting density), 1.77 and 1.72 g/cm³. Sulfate counts as ammonium sulfate and
+  nitrate as ammonium nitrate whether or not the particles carry ammonium (the Level 1–3
+  seeds and condensed H2SO4 have none), so the ammonium mass is not counted twice.
+- Henry's law for the gases: explanation only in the tutorial; the mechanism carries no
+  reliable per-species values, so none are reported.
+
+### A19 — Urban warm-up preset (series)
+
+- 40 °N, 75 °W, 1 July 2026, 10:00–16:00 EDT (14:00–20:00 UTC), TUV-x sun; 298 K, RH 0.5.
+  O3 40, NO 5, NO2 15 ppb; CO 200, CH4 1900, H2 500 ppb; SO2 0. The full limonene
+  mechanism runs with no limonene, so it is the inorganic O3–NOx–HOx–CO–CH4 chemistry.
+- NO emission 1 ppb/h (a constant source added to NO at the start of each interval): an
+  urban NOx flux of about 1e12 molec cm⁻² s⁻¹ into a 1 km mixed layer is 1e7 molec cm⁻³ s⁻¹
+  = 1.5 ppb/h; for Shantanu.
+- Particles: Aitken 1.2e4 cm⁻³ at 30 nm, accumulation 8e3 at 120 nm, coarse 3 cm⁻³ at
+  2 µm, σ = 1.5 each (2e4 cm⁻³ in total); composition A15. Coagulation only: no
+  nucleation, no H2SO4 condensation, no SOA, no uptake. H2SO4 formed from SO2 would stay
+  as vapour (SO2 is 0). The gases and the particles therefore do not affect each other.
+- Result (2026-10-19): photostationary state k[O3][NO]/(J(NO2)[NO2]) = 0.99–1.00 at every
+  output after the first; O3 40 → 36.9 ppb, NO 5 → 7.2, NO2 15 → 12.7, HNO3 → 5.6 ppb;
+  N 20003 → 11757 cm⁻³, S 704 → 663 µm² cm⁻³, V 52.9 → 52.8 µm³ cm⁻³ (bin-centre volume;
+  dry mass 74.09 µg/m³ constant to 1e-9).
+
+### A20 — Indoor air preset (series)
+
+- Dark room: photolysis off (window glass removes the ultraviolet that photolyses O3 and
+  NO2; a small indoor light level would be a student option). 295 K, RH 0.4. Limonene 20,
+  O3 30 (after an airing), NO 0.5, NO2 2, CO 150, CH4 1900, H2 500 ppb. Outdoor air: O3 40,
+  NO 1, NO2 5 ppb, CO, CH4, H2 as indoors; outdoor particles 5000 cm⁻³ at 100 nm (σ 1.6);
+  indoor seed 3000 cm⁻³ at 80 nm (σ 1.6), 50 % organic, 10 % ammonium nitrate, 40 %
+  ammonium sulfate. Losses as A17 (λ 0.5 h⁻¹, k_s 3 h⁻¹, k_w 1e-4 s⁻¹, Lai–Nazaroff).
+  4 h, coupling 300 s.
+- Result (2026-10-19): O3 falls from 30 to the supply/surface-loss balance
+  λ O3_out/(λ + k_s) = 5.7 ppb within 40 minutes (5.6 at 4 h); limonene 20 → 1.0 ppb
+  (11.1 ventilated out net, 7.9 reacted); OH peak 5.9e5 cm⁻³, HO2 1e8; H2O2 0.1–0.2 ppb,
+  HNO3 0.03, N2O5 3e-4 ppb. SOA peaks at 0.23 µg/m³ and ends at 0.12, while 7.6 µg/m³
+  of condensable vapour went to the walls and 10.5 out of the room, 0.36 of SOA was
+  ventilated and 0.008 deposited; without wall losses and ventilation the same chemistry
+  gives 7 µg/m³ of SOA. The reason: the vapour wall sink (τ 2.8 h) and the ventilation
+  (τ 2 h) are much faster than condensation onto 3000 cm⁻³ of particles (sink τ about a
+  day), and at 5.6 ppb of O3 the second ozonolysis step that makes the low-volatility
+  products is slow. Particles: N 3000 → 4539 cm⁻³ (outdoor air brings 1959 in net,
+  deposition removes 210); dry mass 3.8 → 11.1 µg/m³, mostly outdoor seed. O:C stays
+  0.50, κ 0.34.
+- For Shantanu: is this the intended lesson (walls and ventilation take the vapours; O3 is
+  at 15 % of outdoor once the room is closed), or should the default hold O3 at 30 ppb
+  (`hold_constant = ["O3"]`, SOA peak 1 µg/m³), start with more limonene (100 ppb: SOA peak
+  1.4), or use a smaller k_w?
+
 ## Questions for Shantanu
 
 1. ~~c* table for the mechanism species~~ — received 2026-10-16 and used by Levels 2
@@ -436,3 +548,9 @@ is assumed, why, where it is implemented and how to change it.
    is on). Acceptable, or would you rather have a cheaper scheme (production spread
    through the micro-step) or ternary/organic nucleation for the tutorial's
    nucleation case?
+8. Series levels (2026-10-19, A15–A20): the urban preset's NO emission of 1 ppb/h and the
+   30:20 ammonium sulfate : ammonium nitrate split; the cloud factor J = J_clear (1 − 0.75 CF);
+   the room parameters (u* 1 cm/s, S/V 3 m⁻¹, 2.5 m, 1.4 g/cm³) and the window/HVAC
+   air-exchange presets 3 and 6 h⁻¹; k_w = 1e-4 s⁻¹ indoors; the seed O:C of 0.5 and
+   κ_org = 0.18 O:C + 0.03 for all particle organics; and the indoor default (A20): dark
+   room with O3 free to fall to 5.6 ppb (SOA 0.2 µg/m³), or O3 held at 30 ppb?
