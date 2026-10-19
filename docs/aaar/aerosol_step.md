@@ -31,7 +31,7 @@ state, diag = aerosol_outer_step(
 | | `org_rate` | (K,) | kg/cell/s into `Gc[SRTSOA1:SRTSOA1+K]` |
 | | `nitrate_rate` | scalar | kg/cell/s of NO₃ into `Mk[:, SRTNIT]` |
 | | `nitrate_weights` | (nbins,) | – (e.g. `n2o5_uptake` weights) |
-| | `nh3_conc`, `fion`, `org_conc` | scalar, default 0 | molec/cm³, pairs/cm³/s, molec/cm³ (nucleation only) |
+| | `nh3_conc`, `fion`, `org_conc` | scalar, default 0 | molec/cm³, pairs/cm³/s, molec/cm³ (nucleation only; the driver fills them from `Scenario.nucleation` with nucleation on, [coupling.md](coupling.md#nucleation-inputs)) |
 | `SOAParams` | `cstar_ref` | (K,) | µg/m³ at 298 K |
 | | `dhvap` | (K,) | kJ/mol |
 | | `mw` | (K,) | g/mol |

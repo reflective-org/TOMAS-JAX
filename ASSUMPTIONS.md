@@ -301,13 +301,32 @@ is assumed, why, where it is implemented and how to change it.
   50–60 % low early on. The table above shows the same: 900 s is several percent away
   from a continuous solution. G3 was not re-run at 300 s.
 
-### A13 — Nucleation uses H2SO4 only, with short time steps
+### A13 — Nucleation inputs and short time steps
 
-- When nucleation is on, the Riccobono/Dunne scheme gets NH3 = 0, ions = 0 and
-  organic vapour = 0, so it is pure binary/neutral H2SO4–H2O nucleation; organic
-  (HOM) nucleation is not represented. Off by default in all presets. At the preset
-  temperatures (298 K Levels 1–2, 293 K Level 3) the presets do not nucleate even with
-  it on; bursts need colder air (265–270 K) or much more SO2.
+- Until 2026-10-20 the Riccobono/Dunne scheme got NH3 = 0, ions = 0 and organic
+  vapour = 0 when nucleation was on, so it was pure binary neutral H2SO4–H2O
+  nucleation, and at the preset temperatures (298 K Levels 1–2, 293 K Level 3) nothing
+  nucleated even with it on (Level 3, 6 h: peak H2SO4 6.0e7 cm⁻³, J 1.4e-8 cm⁻³ s⁻¹;
+  the urban preset's particles never saw the chemistry's H2SO4 at all). Ali
+  (2026-10-20): "we should see nucleation without ions, NH3, and organic as well ...
+  the nucleation should work in different setup". Since then the scenario supplies
+  the other inputs (A21 ions, A22 NH3, A23 organic vapour) and Level 1 passes its
+  H2SO4 to the particles with nucleation on (A24); all of them are read only when
+  nucleation is on, so every preset (nucleation off) is bit-identical. Students can
+  set each to 0 to see the binary, the ion-induced, the ternary and the organic paths
+  separately. Nucleation stays off by default in all presets.
+- Measured 2026-10-20 with the default inputs (laptop, 40 bins; details and the
+  per-level discussion in coupling.md "Nucleation inputs"): Level 3 preset, 24 h — peak
+  H2SO4 5.9e7 cm⁻³ and J 10.6 cm⁻³ s⁻¹ at 15:30 local, N 3000 → 23345 cm⁻³ at 16:30 →
+  9775 at 24 h (the second morning's burst under way), the new mode grown to the 42 nm
+  bin, 118 s wall; with the inputs off one by one (6 h): binary J 1.7e-8, + ions 4.6e-4,
+  + NH3 9.0 (N peak 2.0e4), + organic 10.6 (2.3e4). Level 1 urban, 6 h: no SO2 → no
+  H2SO4, no new particles (N 20003 → 11533); SO2 30 ppb → H2SO4 4.4e7, J 1.0 at solar
+  noon, 222 cm⁻³ below 10 nm at the peak, N ends at 12609 (coagulation still wins);
+  50 ppb → 6.8e7, J 3.8, 940 cm⁻³ below 10 nm; 28–33 s. Level 2 indoor, 4 h: no SO2 →
+  nothing; SO2 30 ppb → H2SO4 9.1e7 within 10 min from the ozonolysis OH, J 167, N
+  3000 → 74105 at 20 min → 4599 at 4 h as the limonene runs out, some new particles
+  at 8 nm; 28 s.
 - **Time steps (2026-10-16, for Shantanu).** With nucleation on the driver uses a
   coupling interval of at most 60 s and an aerosol micro-step of at most 5 s
   (`box/driver.py`: `NUCLEATION_MAX_COUPLING_DT_S`, `NUCLEATION_MAX_MICRO_DT_S`,
@@ -545,6 +564,100 @@ is assumed, why, where it is implemented and how to change it.
   the default start at 30 ppb and let O3 fall (SOA peak 0.23 µg/m³), start with more
   limonene (100 ppb with O3 free: SOA peak 1.4), or use a smaller k_w?
 
+### A21 — Ion-pair production for ion-induced nucleation (2026-10-20, for Shantanu to confirm)
+
+- Input `nucleation.ion_pairs_cm3_s` (q), default 4 pairs cm⁻³ s⁻¹ in every preset.
+  The Dunne et al. (2016) ion paths need the small-ion concentration, which the scheme
+  takes as the steady state of production and recombination,
+  n± = √(q / α), with α = 6e-8 √(300/T) + 6e-26 M (300/T)⁴ cm³ s⁻¹ (M the air
+  number density; about 1.6e-6 cm³ s⁻¹ at the surface), so q = 4 gives about
+  1600 ion pairs cm⁻³; the ion-induced rates are J_bi = k_bi(T) n± C^3.37 and
+  J_ti = k_ti(T) n± f_i(C, [NH3]) (C the H2SO4 concentration; coupling.md "Nucleation
+  inputs" has every term).
+- Why 4: near the ground, galactic cosmic rays give about 2 pairs cm⁻³ s⁻¹ and the
+  decay of radon and the terrestrial gamma radiation add a similar amount over land.
+  In a boreal forest Laakso et al. (2004) found 2.6 pairs cm⁻³ s⁻¹ from the ion and
+  particle balance and 4.5 from the radon and external radiation measurements
+  (https://doi.org/10.5194/acp-4-1933-2004); the Hirsikko et al. (2011) review gives
+  typical small-ion concentrations of 200–2500 cm⁻³, consistent with a few pairs
+  cm⁻³ s⁻¹ (https://doi.org/10.5194/acp-11-767-2011). The same value is used indoors
+  (indoor radon is usually higher and cosmic rays slightly attenuated, so indoor q is
+  probably somewhat larger; not changed without a source). Scheme: Dunne et al. 2016
+  (https://doi.org/10.1126/science.aaf2649).
+- Range 0–1e4 pairs cm⁻³ s⁻¹; 0 switches both ion paths off. Effect (Level 3, 6 h,
+  NH3 and organic off): J 1.7e-8 → 4.6e-4 cm⁻³ s⁻¹, about one new particle per cm³;
+  the ion paths matter next to the ternary one only in cleaner, colder air.
+
+### A22 — NH3 for ternary nucleation (2026-10-20, for Shantanu to confirm)
+
+- Input `nucleation.nh3_ppb`, a constant NH3 mixing ratio (the mechanism has no NH3
+  chemistry and the particles take no ammonium from it; it enters the nucleation rate
+  only). Defaults: 3 ppb in the urban and the day & night presets, 30 ppb indoors.
+  The Dunne et al. (2016) ternary paths are J_tn = k_tn(T) f_n and
+  J_ti = k_ti(T) n± f_i with
+  f_n = A C^2.89 / (1.6e-6 + C^2.89 / A^8) and f_i = A C^3.14 / (4.85e-3 + C^3.14 / A^3.07),
+  A the NH3 and C the H2SO4 concentration in units of 1e6 cm⁻³; A = 0 switches them off.
+- Why: Ampollini et al. (2019) state that ammonia "is usually found at outdoor
+  concentrations of 1–5 ppb" and measured "a mean unoccupied background concentration
+  of 32 ppb" in the HOMEChem test house, with cooking, cleaning and people raising it to
+  130, 1592 and 99 ppb (https://doi.org/10.1021/acs.est.9b02157); the Behera et al.
+  (2013) review covers the urban sources (https://doi.org/10.1007/s11356-013-2051-9).
+  3 ppb is the middle of the outdoor range; 30 ppb the indoor background without
+  activities.
+- Range 0–1e4 ppb with a hint when a molec/cm³ value is given. At 1e8 cm⁻³ H2SO4 and
+  298 K the code's rate is 6e-9 cm⁻³ s⁻¹ binary, 2e-4 with q = 4, 6.8 with q = 4 and
+  3 ppb NH3, and 68 with 30 ppb (measured 2026-10-20 with
+  `ricco_dunne_nucleation_rate`; at 3e7 cm⁻³: 5e-11, 4e-6, 0.2 and 1.9), so in the
+  tutorial's warm air the ternary path is the one that makes a burst, and the rate is
+  close to linear in NH3.
+
+### A23 — Nucleating organic vapour BioOxOrg (2026-10-20, for Shantanu to confirm)
+
+- Inputs `nucleation.organic` (default True) and `nucleation.organic_log10_cstar_max`
+  (default −0.5). The Riccobono et al. (2014) rate, with the Yu et al. (2017)
+  temperature factor as in the code, is
+  J_org = k_m [H2SO4]² [BioOxOrg] exp(ΔH/k_B (1/T − 1/T₀)), k_m = 3.27e-21 cm⁶ s⁻¹,
+  ΔH = 2.66e-19 J, T₀ = 278 K (https://doi.org/10.1126/science.1243527,
+  https://doi.org/10.5194/acp-17-4997-2017). BioOxOrg [molec/cm³] is defined as the
+  gas-phase sum of the mechanism's closed-shell organics whose c* (298 K, the scenario's
+  c* table, A8) is at or below 10^(−0.5) = 0.3 µg/m³, Σ_i y_i over log10 c*_i ≤ −0.5,
+  evaluated once per coupling interval from the gas state handed to the aerosol step
+  (after that interval's chemistry and gas losses, the state the SOA partitioning
+  sees) and held constant over the interval. It is 0 without chemistry (Level 1
+  volatility) and with `organic = false`.
+- Why this threshold: Riccobono's BioOxOrg were the highly oxygenated pinanediol
+  oxidation products detected by nitrate chemical ionisation, which belong to the
+  ELVOC/LVOC end of the volatility scale (Donahue et al. 2012 class boundaries: ELVOC
+  c* < 3e-4 µg/m³, LVOC 3e-4–0.3, SVOC 0.3–300,
+  https://doi.org/10.5194/acp-12-615-2012; Schervish and Donahue 2020 add ULVOC below
+  3e-9 for the pure-organic nucleation, https://doi.org/10.5194/acp-20-1183-2020).
+  The MCM limonene mechanism has no autoxidation (HOM) chemistry, so the lowest c* in
+  the Jathar table is 2.3e-3 µg/m³ (HPC52CO3H) and an ELVOC threshold selects
+  nothing. The default takes the LVOC and below: 13 species (C925OOH, C825OOH,
+  C734OOH, INDOOH, INDHPCO3H, HPC52PAN, HPC52CO3H, C537OOH and five nitro-acids). It is
+  an upper-bound stand-in for the HOM the mechanism lacks; setting the threshold to
+  −3.5 gives the ELVOC definition (and no organic nucleation with this mechanism).
+- The organic path does not consume the vapour: the nucleated organic mass (10 % of the
+  cluster mass) is created in `SRTORG_NUC` as before (AC2) and the BioOxOrg species keep
+  partitioning as SOA. Range of the threshold: −15 to 10. Effect: BioOxOrg peaks at
+  5.1e6 cm⁻³ in Level 3 and 4.1e6 indoors; in Level 3 it lifts the peak J from 9.0 to
+  10.6 cm⁻³ s⁻¹ and the peak N from 2.0e4 to 2.3e4 cm⁻³ (about +15 %), so the ternary
+  path dominates with the defaults.
+
+### A24 — Level 1 passes its H2SO4 to the particles when nucleation is on (2026-10-20, for Shantanu to confirm)
+
+- The urban preset keeps gases and particles apart by switching H2SO4 condensation and
+  SOA partitioning off (A19), and it has no SO2, so with nucleation forced on the
+  particle-side H2SO4 stayed exactly 0 and N went 20003 → 11758 cm⁻³ as with
+  nucleation off. Now, whenever nucleation is on, the driver also turns H2SO4
+  condensation on (`_processes`), so the H2SO4 the chemistry makes from SO2 both
+  nucleates and condenses, dC/dt = P − CS·C (P the production rate from SO2 + OH,
+  CS the condensation sink of the particles), and the new particles grow; the run adds
+  the warning "H2SO4 condensation is on as well, because nucleation is on: the new
+  particles need it to grow." SOA partitioning stays off in that level. Nucleation off is
+  unchanged (fingerprints). Without SO2 the source is zero and nothing but the time
+  steps changes; a daytime burst needs SO2 of 20–50 ppb (a polluted-city value).
+
 ## Questions for Shantanu
 
 1. ~~c* table for the mechanism species~~ — received 2026-10-16 and used by Levels 2
@@ -579,3 +692,9 @@ is assumed, why, where it is implemented and how to change it.
    κ_org = 0.18 O:C + 0.03 for all particle organics; and the indoor default (A20): O3
    held at 30 ppb as a steady source (SOA peak 1.0 µg/m³), rather than free to fall to
    5.6 ppb in the closed room (SOA peak 0.2 µg/m³)?
+9. Nucleation inputs (2026-10-20, A21–A24): q = 4 ion pairs cm⁻³ s⁻¹ everywhere, NH3
+   3 ppb outdoors and 30 ppb indoors, BioOxOrg = the mechanism's vapours with
+   c* ≤ 0.3 µg/m³ (the MCM has no HOM, so an ELVOC threshold gives nothing), and
+   H2SO4 condensation switched on with nucleation in the urban level — acceptable, or
+   would you rather give the tutorial a HOM yield (a fixed fraction of the limonene
+   oxidised) for the organic path and keep c* ≤ 3e-4 µg/m³?
