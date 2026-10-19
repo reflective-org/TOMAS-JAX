@@ -1,0 +1,74 @@
+{
+  "weights": "PyCHAM class-centre run, particle-phase mass at 6 h",
+  "t0_tomas_seed": {
+    "cs_ratio_weighted": 0.6903111519227932,
+    "d_ratio_weighted": 0.7867594298812061,
+    "cs_ours_weighted_per_s": 0.003470068744024315,
+    "cs_pycham_weighted_per_s": 0.002395006368862356
+  },
+  "6h_pycham_sizes": {
+    "cs_ratio_weighted": 0.7134789183597933,
+    "d_ratio_weighted": 0.7867594298812061,
+    "cs_ours_weighted_per_s": 0.010850603035311749,
+    "cs_pycham_weighted_per_s": 0.0077414180798429915
+  },
+  "top_species_t0": [
+    {
+      "species": "C823PAN",
+      "diff_vol_pycham": 220.44,
+      "diff_vol_ours": 120.0,
+      "d_ratio": 0.7734677876653657,
+      "cs_ratio": 0.6892301567769048
+    },
+    {
+      "species": "C822PAN",
+      "diff_vol_pycham": 214.32999999999998,
+      "diff_vol_ours": 120.0,
+      "d_ratio": 0.7831064934354633,
+      "cs_ratio": 0.6910637726059902
+    },
+    {
+      "species": "C923PAN",
+      "diff_vol_pycham": 234.85000000000002,
+      "diff_vol_ours": 120.0,
+      "d_ratio": 0.7491458850190197,
+      "cs_ratio": 0.6720540734679232
+    },
+    {
+      "species": "C729PAN",
+      "diff_vol_pycham": 193.81,
+      "diff_vol_ours": 120.0,
+      "d_ratio": 0.8229030322039648,
+      "cs_ratio": 0.7169196844483429
+    },
+    {
+      "species": "C817PAN",
+      "diff_vol_pycham": 220.44,
+      "diff_vol_ours": 120.0,
+      "d_ratio": 0.7734677876653657,
+      "cs_ratio": 0.6892301567769048
+    },
+    {
+      "species": "C731PAN",
+      "diff_vol_pycham": 199.92000000000002,
+      "diff_vol_ours": 120.0,
+      "d_ratio": 0.8089280159255978,
+      "cs_ratio": 0.6998589921937549
+    },
+    {
+      "species": "LIMANO3",
+      "diff_vol_pycham": 208.95,
+      "diff_vol_ours": 120.0,
+      "d_ratio": 0.7869825714817977,
+      "cs_ratio": 0.6708258426322797
+    },
+    {
+      "species": "C622PAN",
+      "diff_vol_pycham": 177.91000000000003,
+      "diff_vol_ours": 120.0,
+      "d_ratio": 0.8528527027206331,
+      "cs_ratio": 0.7141279849058215
+    }
+  ],
+  "attribution_factor": 0.6903111519227932
+}

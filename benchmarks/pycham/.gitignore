@@ -1,0 +1,5 @@
+# The PyCHAM benchmark keeps its small results in the repo (< ~2.5 MB per case); the root
+# .gitignore ignores *.npz and *.csv everywhere. Case figures/ stay ignored: analyse.py copies
+# them to docs/aaar/figures/pycham/, which is committed.
+!*.npz
+!*.csv

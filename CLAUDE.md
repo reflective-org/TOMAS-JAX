@@ -48,6 +48,9 @@ python -c "from tomas_jax import TomasState, CoagulationSolver"
 - **GPU deployment:** See `docs/gpu_deployment.md`. Use only `*_jit` methods and `make_step()`. Legacy numpy paths (`method='tfl'`, `method='ppm'`) emit `DeprecationWarning` and are not GPU-compatible. `make_step()` returns a JIT-compiled function by default (`jit=True`). For batch/ensemble runs, use `jax.vmap(step_fn)`.
 - **Centralized float64 config:** Only `core/config.py` calls `jax.config.update("jax_enable_x64", True)`. All other library modules reference it via comment. Do not add redundant x64 config calls.
 - **dilution_step requires explicit background arrays** (no `None` defaults). Pass `jnp.zeros_like(Nk)` etc. for clean-air dilution. This ensures JIT safety.
+- **AAAR tutorial aerosol step** (`docs/aaar/`): the organic block is carved in `config.py` — `SRTSOA1=1`…15 (`N_SOA_CLASSES`) SOA c*-class slots (Gc vapour, Mk particle), `SRTNIT=40` particle nitrate (as NO3), `SRTORG_NUC=41` nucleated organic; module asserts keep them disjoint. `soa_partition_step` (vbs-jax adapter) takes K classes from `len(cstar_ref)` with c*/ΔHvap/MW traced (compile once per (nbins, K)); `calc_wet_diameters` is its geometry hook; a 1e-4 absorbing floor (Raoult denominator only) prevents the zero-OA psat=0 sawtooth. **SOA and N2O5-uptake nitrate change particle mass in place and then move particles between bins with `physics/ppm_remap.py::remap_mass_change`** (Lagrangian remap of the condensation_ppm sub-bin profile: each bin's PPM profile is carried by that bin's own log-mass displacement — linear inside the bin with the smaller one-sided slope, so unchanged particles map onto themselves even when neighbours grow or shrink past them — and deposited onto the fixed bins by exact overlap integrals, any number of bins in one call, no sub-steps; do not go back to flux-form edge velocities (a bin moving more than about one bin takes the displacement of the bins it passes through and piles up) or to dmdt_int (number lags mass); species move with the donor's mass share plus an MC-limited composition slope (keeps grow-then-evaporate round trips right); images are kept between 0.25 and 4 bin widths so the work is a (nbins, 6) band; `keep_means_in_bins` is a safety net; `cap_top_bin` takes back in-place mass (SOA → vapour, nitrate → not added, driver warns) instead of letting MNFIX trim the top bin; after the SOA remap the class mass MNFIX deletes goes back to the vapour, so gas+particle closes per class). Selected by `AerosolStepConfig.growth_bin_transfer` = 'ppm' (default) or 'mnfix' (the old MNFIX-after-every-vbs-sub-step, kept for comparison; `soa_partition_step(bin_transfer=...)` is static). Do not put MNFIX back as the SOA redistribute hook: it combs the size distribution (3/13/30 extrema at 40/80/160 bins). `n2o5_uptake` is the condensation sink with α=γ. `box/aerosol_step.py::aerosol_outer_step` (jitted; dt_outer, micro_dt, processes, cfg static) composes sources (nitrate remapped) → MNFIX → make_step(nucleation, coagulation, condensation) → SOA (remapped) → water per micro-step; its settings live in `box/config.py::AerosolStepConfig`; `driver.run(..., aerosol_cfg=...)` overrides them and lists changed fields in `diagnostics["aerosol_cfg"]`. Tutorial boxvol is 1e10 cm³ so per-cell thresholds (NEPS_CONDSINK=1e10 #/cell, sink geometry only) mean 1 #/cm³; nitrate placement uses `aerosol_step.NITRATE_N_MIN` = 2e-5 #/cell (just above MNFIX's 1e-5 floor) with each bin's share scaled by Nk/Nk_start inside the outer step (weights are frozen per coupling interval), SOA and the remap 1e-10 #/cell — do not gate nitrate at NEPS_CONDSINK again (thin tail bins stop growing and leave a 40–90 nm band in Level 3). Assumptions: `ASSUMPTIONS.md` (A5, A6, A9, AC1, AC2).
+
+- **AAAR tutorial gas chemistry** (`docs/aaar/gaschem.md`, `docs/aaar/coupling.md`): `gaschem/` must not import TOMAS. Rate constants follow KPP semantics — evaluated once per coupling interval (RO2 at start, J at midpoint) via `RateModel.at_env` decomposition `k = k_thermal*(RO2|1) + J_coef@J`, then frozen for `integrate_interval` (diffrax Kvaerno3, rtol 1e-3, atol 1e4 molec/cm³ — chosen by benchmark; keep the chemistry in JAX). Never edit `gaschem/mechanisms/*.eqn`; tutorial edits live in `box/coupling.py` and are logged in `ASSUMPTIONS.md`. `coupling_dt_s` is static for the jitted aerosol step and the gas solver (each value compiles; `warmup()` compiles each preset's own value). **Every preset requests a 300 s coupling interval** (Level 3 since 2026-10-17, Ali; it was 900 s, which put SOA 38 % and nitrate 6 % off a 30 s reference, ASSUMPTIONS A12); the interval is a numerical solver setting, and an interval chosen automatically by the numerical solver is planned. **With nucleation on, `driver.time_steps` caps the coupling interval at `NUCLEATION_MAX_COUPLING_DT_S` = 60 s (the requested interval split into equal parts, so output times do not move) and the aerosol micro-step at `NUCLEATION_MAX_MICRO_DT_S` = 5 s** (convergence study 2026-10-16, ASSUMPTIONS A13: the 60 s micro-step overshoots the burst by up to +78 % peak N); the run warns and records `requested_coupling_dt_s`/`coupling_dt_s`/`requested_micro_dt_s`/`micro_dt_s` in its diagnostics; runs without nucleation must stay bit-identical; `run(..., nucleation_caps=False)` is for convergence studies only. **Scenario inputs are checked where they are built** (`box/scenario.py` `__post_init__`: types, ranges, unit-slip hints; a string `hold_constant` is one species); checks may only raise, never change a valid value (`tests/test_aaar_scenario_checks.py`). TUV-x data is found via `TUVX_JAX_ROOT`. **Series levels (2026-10-19, `docs/aaar/coupling.md` "Emissions and losses", ASSUMPTIONS A15–A20):** `emissions_ppb_per_h`, `photolysis.cloud_fraction` (J × (1 − 0.75 CF)), `losses` (ventilation toward outdoor gases and an outdoor seed, O3 surface loss, condensable vapour wall loss, Lai–Nazaroff deposition with room parameters) and the seed salts are applied by the driver once per coupling interval in the order emissions → chemistry → gas losses → aerosol step → particle losses, each as the exact interval solution of its first-order equation with the time integral kept so `RunResult.losses` closes; every one of them defaults to off and `tests/test_aaar_presets_unchanged.py` keeps Levels 1–3 bit-identical to the stored fingerprints (regenerate with `python tests/aaar_fingerprint.py` only for an intended change). `driver.run(..., observer=fn)` is an opt-in hook (benchmarks) that receives every gas species, the aerosol state and the J used after each coupling interval; it must never change the run or the RunResult contract.
 
 ## File Layout
 
@@ -73,6 +76,21 @@ tomas_jax/
   physics/nucleation.py       — Nucleation: ricco_dunne (Riccobono+Dunne) + zhao2024 (11-mechanism) schemes (JIT-compilable)
   physics/so2_chemistry.py    — SO2+OH chemistry: Sun et al. (2022) Troe formalism, SZA, diurnal OH (JIT-compilable)
   physics/dilution.py         — Dilution/entrainment: first-order relaxation toward background (JIT-compilable)
+  physics/soa_partitioning.py — SOA c*-class gas-particle partitioning: TOMAS adapter over vbs-jax (JIT)
+  physics/ppm_remap.py        — PPM log-mass remap of in-place mass changes (SOA, nitrate) onto the fixed bins (JIT)
+  physics/heterogeneous.py    — N2O5 heterogeneous uptake k_het and per-bin weights (JIT)
+  box/aerosol_step.py         — AAAR tutorial aerosol outer step (sources, nucl, coag, H2SO4 cond, SOA, water; JIT)
+  box/config.py               — Box-model configuration (AerosolStepConfig)
+  box/scenario.py             — Scenario input contract + TOML presets (box/presets/level{1,2,3}_*.toml:
+                                volatility, limonene_soa, day_night, and the series urban, indoor)
+  box/losses.py               — Ventilation, O3 surface loss, vapour wall loss, Lai-Nazaroff deposition (numpy, per interval)
+  box/properties.py           — Reported properties: dS/dV distributions, O:C of particle organics, kappa (volume mixing)
+  box/result.py               — RunResult output contract (JSON-ready)
+  box/coupling.py             — Units, seed, tutorial mechanism edits (<34> -> NA_HET), c*-class gather/scatter
+  box/driver.py               — run(scenario) / warmup() / code_version(): coupled gas-chemistry + aerosol driver
+  gaschem/                    — MCM gas chemistry (no TOMAS imports): kpp_parser, mcm_rates, mechanism, solver,
+                                photolysis (TUV-x/MCM J), volatility (c* table loader: Jathar/Nannoolal table default
+                                for Levels 2-3, Li 2016 fallback; classes), environment, config
   solvers/diffrax.py          — Coagulation solvers: Tsit5 adaptive (diffrax_step), forward Euler (coag_euler_step)
   solvers/condensation.py     — Process orchestrator: core helpers + thin wrappers + make_step() composable API + scan-fused loops
 
@@ -93,6 +111,11 @@ benchmarks/
   python/validate_so2_chemistry.py — SO2 chemistry validation (7 figures vs Sun et al. 2022, incl. stratospheric lifetime heatmaps)
   python/benchmark_so2_sensitivity.py — SO2 sensitivity benchmark (5 SO2 × 4 modes × 3 altitudes × 2 grids, 48h, 12 figures)
   python/benchmark_dilution.py — Dilution benchmark (3 cases × 24h, all processes + SO2 + dilution, 6 figures)
+  pycham/                     — AAAR box model vs PyCHAM (independent check): config.py (single source of truth),
+                                ours.py (run + record via driver.run(observer=...)), jvalues.py (our J -> PyCHAM J.xlsx),
+                                pycham_inputs.py (model_var/.eqn/xml writer, per-case PyCHAM copy, bounded runs),
+                                metrics.py, plotting.py, cases/<case>/{case,run,analyse}.py; README.md has the
+                                PyCHAM install recipe and the list of model differences per case
 
 tomas_fortran/
   src/                        — 14 core TOMAS Fortran source files (TFL condensation)
@@ -122,12 +145,14 @@ docs/
   water_uptake.md             — Water uptake schemes (bisulfate fit, Tabazadeh), water_every_process, assumptions
   coagulation_bin_ratio.md    — Why TFL fails on non-doubling grids; linear sub-bin coagulation scheme, dispatch, validation
   missing_physics.md          — Gap analysis of unimplemented physics
+  aaar/                       — AAAR tutorial: gaschem.md, coupling.md, aerosol_step.md, soa_partitioning.md, heterogeneous.md
   future_features.md          — Planned improvements: AD, GPU, vmap, multi-species, surrogates
 ```
 
 ## Species Indices (0-based)
 
 - 0 = SO4, 1-41 = Organics, 42 = NH4, 43 = H2O
+- AAAR carve of the organics: 1-15 = SOA c* classes (`SRTSOA1`, `N_SOA_CLASSES`), 40 = particle nitrate as NO3 (`SRTNIT`), 41 = nucleated organic (`SRTORG_NUC`)
 - Gas array Gc has 44 elements (N_GAS_SPECIES=44): indices 0-42 (aerosol species except water) + index 43 (SO2, SRTSO2=43)
 
 ## Fortran Source Mapping
@@ -165,6 +190,7 @@ When modifying condensation code, verify:
 5. Convergence benchmark: `python -m benchmarks.python.convergence_test --constant-gc --h2so4 1e7 --n-total 1e4 --gmd 0.02 --gsd 1.6 --temp 298 --pres 101325 --mode cond_only` (PPM should be smooth and resolution-stable at 40/80 bins)
 6. Coagulation mass budget: `M(0) = M(24h) + overflow` should close to < 1e-8 relative (use `return_overflow=True`)
 7. Coagulation at multiple resolutions: `python -m benchmarks.python.coag_bin_ratio_convergence` — the linear scheme's L1 error vs the exact constant-kernel solution must fall from 40→80→160 bins and every run must keep a single mode; `tests/test_coagulation_bin_ratio.py` must pass
+8. AAAR aerosol step: `tests/test_aaar_aerosol.py` must pass (per-class SOA mass conservation 1e-10, Pankow/vbs-jax equilibrium within 1%, no recompilation on a c* change) and `tests/test_aaar_soa_ppm.py` (PPM remap: conservation per species, one extremum for growth and evaporation, particles growing or shrinking 3–13 bins past unchanged ones, multi-bin shifts, round trip and bootstrap/Kelvin ripening against moving sections, per-class budget with particles at the top of the grid, zero-OA bootstrap, both `growth_bin_transfer` settings)
 
 ## Benchmark & Testing Rules
 

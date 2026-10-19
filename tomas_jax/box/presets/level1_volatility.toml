@@ -1,0 +1,37 @@
+# Level 1 — Volatility: coagulation + condensation of one surrogate organic vapor.
+# Try: c* 0.01 -> 100 ug/m3; P_org = 0; H2SO4 production on/off.
+name = "Level 1 - Volatility"
+level = 1
+duration_h = 12.0
+h2so4_production_cm3_s = 0.0
+
+[environment]
+temp_k = 298.15
+pres_pa = 101325.0
+rh = 0.5
+
+[seed]
+organic_mass_fraction = 0.3
+modes = [{ number_cm3 = 2000.0, gmd_nm = 50.0, gsd = 1.6 }]
+
+[photolysis]
+mode = "off"
+
+[surrogate]
+cstar_ugm3 = 1.0
+production_ugm3_per_h = 0.5
+initial_gas_ugm3 = 0.0
+mw_g_mol = 200.0
+
+[processes]
+chemistry = false
+nucleation = false
+coagulation = true
+h2so4_condensation = true
+soa_partitioning = true
+n2o5_uptake = false
+
+[numerics]
+coupling_dt_s = 300.0
+output_dt_s = 600.0
+nbins = 40

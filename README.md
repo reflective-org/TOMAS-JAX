@@ -317,7 +317,7 @@ Median wall time per 24h scenario (49 LHC scenarios, 36-bin legacy grid):
 | `rh` | scalar | 0–1 | Relative humidity |
 | `alpha` | scalar | — | Mass accommodation coefficient |
 
-**Species indices (0-based):** 0 = SO₄, 1–41 = organics, 42 = NH₄, 43 = H₂O. Gas array `Gc` has 44 elements: indices 0–42 (aerosol species except water) + index 43 (SO2).
+**Species indices (0-based):** 0 = SO₄, 1–41 = organics, 42 = NH₄, 43 = H₂O. Gas array `Gc` has 44 elements: indices 0–42 (aerosol species except water) + index 43 (SO2). For the AAAR tutorial the organics are carved into 1–15 SOA volatility classes, 40 = particle nitrate and 41 = nucleated organic (see [docs/aaar/](docs/aaar/aerosol_step.md)).
 
 ---
 
@@ -397,7 +397,13 @@ tomas-jax/
 │   │   ├── density.py               # Mixed-salt density (Tang 1997)
 │   │   ├── so2_chemistry.py          # SO2+OH chemistry (Sun et al. 2022 Troe)
 │   │   ├── water_equilibrium.py     # Hygroscopic water uptake (ISORROPIA)
-│   │   └── nh3_equilibrium.py       # NH3/NH4 equilibrium
+│   │   ├── nh3_equilibrium.py       # NH3/NH4 equilibrium
+│   │   ├── soa_partitioning.py      # SOA c*-class partitioning (vbs-jax adapter)
+│   │   ├── ppm_remap.py             # PPM remap of in-place mass changes (SOA, nitrate) onto the bins
+│   │   └── heterogeneous.py         # N2O5 heterogeneous uptake
+│   ├── box/
+│   │   ├── aerosol_step.py          # AAAR tutorial aerosol outer step (JIT)
+│   │   └── config.py                # AerosolStepConfig
 │   ├── solvers/
 │   │   ├── condensation.py          # Process orchestrator: make_step() + scan loops
 │   │   └── diffrax.py               # Coagulation: diffrax_step + coag_euler_step
@@ -473,6 +479,13 @@ python -m pytest tests/test_nucleation.py tests/test_ppm_condensation.py -q
 | [SO2 Chemistry](docs/so2_chemistry.md) | Sun et al. 2022 Troe formalism, diurnal OH, validation |
 | [Missing Physics](docs/missing_physics.md) | Gap analysis: VBS, Kelvin effect, deposition, chemistry, etc. |
 | [Future Features](docs/future_features.md) | GPU acceleration, autodiff, vmap, learned surrogates |
+| [AAAR gas chemistry & photolysis](docs/aaar/gaschem.md) | MCM/KPP parser, rate constants, JAX solver benchmark, TUV-x J provider, c* classes |
+| [AAAR coupled driver](docs/aaar/coupling.md) | `box.driver.run(Scenario)`, operator split, presets, runtimes |
+| [AAAR aerosol step](docs/aaar/aerosol_step.md) | Tutorial outer step: call contract, units, process order, config, PPM bin transfer of SOA/nitrate (`growth_bin_transfer`) |
+| [SOA partitioning](docs/aaar/soa_partitioning.md) | vbs-jax adapter, slot map, absorbing floor, equilibrium validation |
+| [N2O5 uptake](docs/aaar/heterogeneous.md) | k_het = condensation sink with α = γ, nitrate placement |
+| [AAAR vs PyCHAM](docs/aaar/pycham_comparison.md) | Independent check against PyCHAM v5.8.0: gas chemistry, day/night photolysis, condensation, SOA; verdict per process, differences explained, upstream findings (`benchmarks/pycham/run_all.py`) |
+| [Assumptions](ASSUMPTIONS.md) | AAAR tutorial modelling assumptions to confirm |
 
 ---
 

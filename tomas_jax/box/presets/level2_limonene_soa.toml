@@ -1,0 +1,45 @@
+# Level 2 — Limonene SOA: MCM limonene chemistry under constant (chamber-like) light,
+# products partition by c* (ASSUMPTIONS A10: constant light, J_NO2 knob).
+name = "Level 2 - Limonene SOA"
+level = 2
+duration_h = 6.0
+hold_constant = []
+# per-species c* (S. Jathar, Nannoolal via PyCHAM; ASSUMPTIONS A8); omit for Li et al. (2016)
+cstar_table = "mcm_limonene_cstar_298K.csv"
+
+[gases_ppb]
+LIMONENE = 10.0
+O3 = 40.0
+NO = 0.5
+NO2 = 2.0
+SO2 = 1.0
+CO = 120.0
+CH4 = 1900.0
+H2 = 500.0
+
+[environment]
+temp_k = 298.15
+pres_pa = 101325.0
+rh = 0.5
+
+[seed]
+organic_mass_fraction = 0.3
+modes = [{ number_cm3 = 2000.0, gmd_nm = 80.0, gsd = 1.6 }]
+
+[photolysis]
+mode = "constant"
+jno2_per_s = 5e-3
+constant_sza_deg = 30.0
+
+[processes]
+chemistry = true
+nucleation = false
+coagulation = true
+h2so4_condensation = true
+soa_partitioning = true
+n2o5_uptake = false
+
+[numerics]
+coupling_dt_s = 300.0
+output_dt_s = 600.0
+nbins = 40
