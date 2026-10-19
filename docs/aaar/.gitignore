@@ -1,0 +1,3 @@
+# Commit the PyCHAM benchmark figures (the root .gitignore ignores figures/ and *.png).
+!figures/
+!figures/pycham/*.png

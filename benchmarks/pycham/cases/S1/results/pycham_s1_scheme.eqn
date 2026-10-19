@@ -1,0 +1,2 @@
+// S1 benchmark: no gas-phase chemistry; the surrogate only partitions
+<1> SURR = SURR : 0.0 ;

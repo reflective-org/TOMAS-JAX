@@ -52,6 +52,8 @@ This document tracks features that are not currently needed but would unlock sig
 
 ## 4. Multi-Species Condensation with VBS Partitioning
 
+**Status:** In progress: PR #19 (`feat/vbs-soa-updated`, VBS/SOA condensation, validated against Fortran).
+
 **What:** Extend condensation beyond H2SO4-only to handle semi-volatile organic species using the Volatility Basis Set (VBS) framework. Each organic "bin" has a saturation concentration; partitioning depends on the Kelvin effect and absorptive mass.
 
 **Unlocks:**
@@ -130,6 +132,83 @@ The Zhao 2024 11-mechanism NPF scheme (mechanisms 6–7) uses pure-biogenic nucl
 
 ---
 
+## 9. Project Wiki
+
+**Status:** To do. Do not publish until the content has been reviewed and we have decided where and when it goes public.
+
+**What:** One place that explains TOMAS-JAX and the web app to users and collaborators:
+- Model overview and the order processes run in each step
+- Numerical schemes and why they were chosen: TFL coagulation at 40 bins vs the linear sub-bin scheme (Simmel et al. 2002) at 80/160 bins; PPM vs TFL condensation
+- Water uptake: the ammonium bisulfate and Tabazadeh schemes, the Auto rule, and water after every process
+- Validation: the constant-kernel exact solution (Scott 1968), Brownian convergence at 40/80/160/320 bins, Fortran comparisons, with their figures
+- The interactive coagulation explainer (how added mass is distributed between bins)
+- Assumptions, limitations and planned work (shared with the app's Assumptions view, `tomas-web/src/content/assumptions.ts`)
+- References (`docs/references.md`)
+
+**Sources:** `docs/coagulation_bin_ratio.md`, `docs/water_uptake.md` and the other docs in `docs/`; figures from `benchmarks/python/coag_bin_ratio_convergence.py`.
+
+**Effort:** About a week for a first version, mostly assembling and editing existing docs and figures.
+
+---
+
+## 10. Additional Aerosol Species
+
+**Status:** To do.
+
+**What:** Track species beyond sulfate, a lumped organic, ammonium and water:
+- Nitrate (NH4NO3 partitioning; `calc_density` already has nitrate terms)
+- Sea salt (`water_uptake_seasalt` is ported but disabled)
+- Dust, black carbon, primary organic aerosol
+
+**Needs:** Emissions (#6), composition layout in `core/config.py`, and matching updates to density, water uptake and optics.
+
+**Effort:** To be scoped.
+
+---
+
+## 11. Additional Water Uptake Schemes
+
+**Status:** To do. Current options: TOMAS ammonium-bisulfate fit and Tabazadeh (1997) H2SO4/H2O (`docs/water_uptake.md`).
+
+**What:**
+- Composition-dependent hygroscopicity (κ-Köhler), so organics and mixed particles take their own water
+- A thermodynamic model (e.g. ISORROPIA II or E-AIM) for partially neutralized sulfate and nitrate
+- Temperature-dependent ammonium-bisulfate water
+- Deliquescence/efflorescence hysteresis
+- Kelvin effect on water uptake for the smallest particles
+
+**Effort:** To be scoped.
+
+---
+
+## 12. Additional Nucleation Schemes
+
+**Status:** To do. Current options: Riccobono (2014) + Dunne (2016), and Zhao (2024) with 11 mechanisms.
+
+**What:** Candidates to add and compare:
+- Binary H2SO4–H2O: Vehkamäki et al. (2002), Määttänen et al. (2018)
+- Ternary H2SO4–NH3–H2O: Merikanto et al. (2007)
+- Ion-mediated nucleation (Yu)
+- Empirical activation/kinetic forms (e.g. J = A·[H2SO4], Kulmala et al. 2006)
+
+**Effort:** To be scoped. The `nucl_scheme` switch in `make_step` already supports more than one scheme.
+
+---
+
+## 13. Additional Organic Aerosol Schemes
+
+**Status:** To do. Related: #4 (VBS, in progress) and #8 (ELVOC/HOM).
+
+**What:** Organic aerosol options beyond the base VBS:
+- VBS with gas-phase aging, and 2D-VBS (volatility and O:C)
+- Statistical Oxidation Model (SOM), as in TRACER_SOM-TOMAS
+- Simple yield-based SOA (two-product) for quick comparisons
+- Kinetic (non-equilibrium) growth by ELVOC/LVOC, and particle-phase reactions
+
+**Effort:** To be scoped.
+
+---
+
 ## Priority Guide
 
 | Priority | Feature | Reason |
@@ -141,3 +220,8 @@ The Zhao 2024 11-mechanism NPF scheme (mechanisms 6–7) uses pure-biogenic nucl
 | Medium | #6 Emissions & deposition | Required for full atmospheric simulations |
 | Medium | #7 Adaptive timestepping | Accuracy/efficiency improvement |
 | Exploratory | #5 Learned surrogate | Research project; depends on #1 and #3 |
+| When ready | #9 Project wiki | Collects docs, validation and assumptions; publish only after review |
+| To scope | #10 Additional species | Nitrate, sea salt, dust, BC; depends on #6 |
+| To scope | #11 Additional water schemes | κ-Köhler, thermodynamic model, hysteresis |
+| To scope | #12 Additional nucleation schemes | Binary, ternary, ion-mediated, activation |
+| To scope | #13 Additional organic schemes | VBS aging, 2D-VBS, SOM; builds on #4 and #8 |

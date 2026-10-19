@@ -12,6 +12,8 @@ dependencies = [
     "numpy>=1.26",
     "scipy>=1.12",
     "matplotlib>=3.8",
+    # AAAR tutorial: SOA absorptive partitioning kernel (soacond physics), pinned
+    "vbs-jax @ git+https://github.com/reflective-org/vbs-jax@4a67f16d5585aee198c62819f1bd52fc0daed9d5",
 ]
 
 [project.optional-dependencies]
@@ -25,6 +27,10 @@ web = [
     "pydantic>=2.0",
     "pydantic-settings>=2.0",
 ]
+# AAAR tutorial: TUV-x photolysis (needs the tuvx-jax data/ dir; set TUVX_JAX_ROOT)
+photolysis = [
+    "tuvx-jax @ git+https://github.com/reflective-org/tuvx-jax@655668c0ca01c8127ae17c51916ecf55be192a9f",
+]
 notebook = [
     "jupyterlab>=4.0",
     "ipywidgets>=8.0",
@@ -33,6 +39,9 @@ notebook = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["tomas_jax"]

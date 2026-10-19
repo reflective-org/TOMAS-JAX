@@ -1,0 +1,68 @@
+{
+  "pycham": {
+    "wall_s": 13.70895624998957,
+    "sha": "7880d81991542ebbcd6597e01ddcf9d93d997a72",
+    "umansysprop_sha": "f6d8645d40f47e57111d4ec77c5427502eeb5d86",
+    "update_step_s": 60.0,
+    "root": "$PYCHAM_BENCH/PyCHAM_g2",
+    "output": "$PYCHAM_BENCH/outputs/g2",
+    "log": "$PYCHAM_BENCH/inputs/g2/pycham_g2.log"
+  },
+  "ours_dt300": {
+    "wall_s": 4.629441583005246,
+    "gas_solver_steps": 491,
+    "code_version": "d3d99e3efc080e72"
+  },
+  "ours_dt60": {
+    "wall_s": 17.45862229098566,
+    "gas_solver_steps": 1837,
+    "code_version": "d3d99e3efc080e72"
+  },
+  "aerosol_independence": {
+    "description": "gas phase with the 2000 cm-3 Level 2 seed vs a 1e-6 cm-3 seed, all aerosol processes off, coupling 300 s",
+    "max_rel_diff_above_threshold": 0.0,
+    "max_abs_diff_ppb": 0.0
+  },
+  "rate_constant_check": {
+    "same_h2o": 4.2818095669449163e-16,
+    "pycham_h2o": 0.00021654576593875373
+  },
+  "m_air_cm3": {
+    "ours": 2.4614924955148243e+19,
+    "pycham": 2.4614924955148247e+19
+  },
+  "threshold_ppb": 1e-05,
+  "pycham_tight": {
+    "wall_s": 15.985168124985648,
+    "int_tol": [
+      0.001,
+      1e-06
+    ],
+    "output": "$PYCHAM_BENCH/outputs/g2_tight"
+  },
+  "ours_dt60_tight": {
+    "wall_s": 25.4773646669928,
+    "gas_solver_steps": 2740,
+    "solver_tol": {
+      "rtol": 1e-05,
+      "atol": 1.0
+    },
+    "pycham_water": false
+  },
+  "ours_dt60_tight_pychamH2O": {
+    "wall_s": 24.982388125004945,
+    "gas_solver_steps": 2740,
+    "solver_tol": {
+      "rtol": 1e-05,
+      "atol": 1.0
+    },
+    "pycham_water": true
+  },
+  "ro2_pool": {
+    "n_pycham": 146,
+    "n_ours": 146,
+    "identical": true,
+    "only_pycham": [],
+    "only_ours": []
+  }
+}

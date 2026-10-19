@@ -1,0 +1,13 @@
+diff --git a/PyCHAM/pp_water_equil.py b/PyCHAM/pp_water_equil.py
+index 17c83157..63b07e83 100755
+--- a/PyCHAM/pp_water_equil.py
++++ b/PyCHAM/pp_water_equil.py
+@@ -417,7 +417,7 @@ def pp_water_equil(H2Ogc, yn, seedx_now, num_asb, y_mm, R_gas,
+ 
+ 		# only consider seed components with non-zero
+ 		# mole fractions now, summed across size bins
+-		nz_seed_comp = np.squeeze(np.sum(seedx_now, axis=1)) > 0.
++		nz_seed_comp = np.atleast_1d(np.squeeze(np.sum(seedx_now, axis=1)) > 0.)
+ 
+ 		# keep just the non-zero seed component mole fractions
+ 		seedx_now = seedx_now[nz_seed_comp, :]

@@ -73,7 +73,9 @@ from ..physics.ezcond import ezcond
 from ..physics.ezcond_ppm_jax import ezcond_ppm_jax
 from ..physics.condensation_tfl_jax import ezcond_tfl_jax
 from ..physics.nh3_equilibrium import eznh3eqm
-from ..physics.water_equilibrium import calc_equilibrium_water
+from ..physics.water_equilibrium import (
+    calc_equilibrium_water, equilibrate_water, WATER_SCHEME_BISULFATE,
+)
 from ..core.mnfix_jax import mnfix_jax
 from ..solvers.diffrax import coag_euler_step
 
@@ -243,11 +245,12 @@ def condensation_step(
 # =========================================================================
 
 def _condensation_step_core(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
-                            ezcond_fn):
+                            ezcond_fn, water_scheme=WATER_SCHEME_BISULFATE):
     """Core condensation: MNFIX -> CS -> gas depletion -> ezcond_fn -> NH3 -> water -> MNFIX.
 
     This is the single implementation that both PPM and TFL JIT paths share.
     The only difference is which ezcond function is passed in.
+    water_scheme selects the water uptake (see equilibrate_water).
     """
     # 0. MNFIX input
     Nk, Mk = mnfix_jax(Nk, Mk, xk, ICOMP_NODIAG)
@@ -291,7 +294,7 @@ def _condensation_step_core(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
     Gc, Mk = eznh3eqm(Gc, Mk)
 
     # 4. Water equilibrium
-    Mk = calc_equilibrium_water(Mk, rh)
+    Mk = equilibrate_water(Mk, rh, temp, water_scheme)
 
     # 5. MNFIX cleanup
     Nk, Mk = mnfix_jax(Nk, Mk, xk, ICOMP_NODIAG)
@@ -314,11 +317,12 @@ def condensation_step_jax(
     rh: jnp.ndarray,
     alpha: jnp.ndarray,
     dt: jnp.ndarray,
+    water_scheme=WATER_SCHEME_BISULFATE,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Pure-JAX condensation step using PPM — fully JIT-compilable."""
     return _condensation_step_core(
         Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
-        ezcond_fn=ezcond_ppm_jax,
+        ezcond_fn=ezcond_ppm_jax, water_scheme=water_scheme,
     )
 
 
@@ -336,11 +340,12 @@ def condensation_step_tfl_jax(
     rh: jnp.ndarray,
     alpha: jnp.ndarray,
     dt: jnp.ndarray,
+    water_scheme=WATER_SCHEME_BISULFATE,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Pure-JAX condensation step using TFL — Fortran-matching, JIT-compilable."""
     return _condensation_step_core(
         Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
-        ezcond_fn=ezcond_tfl_jax,
+        ezcond_fn=ezcond_tfl_jax, water_scheme=water_scheme,
     )
 
 
@@ -352,19 +357,27 @@ condensation_step_tfl_jit = jax.jit(condensation_step_tfl_jax)
 # =========================================================================
 
 def _combined_step_core(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
-                        ezcond_fn, icomp_nodiag=ICOMP_NODIAG, n_coag_substeps=3):
-    """Coagulation + condensation in one step, parameterized by ezcond_fn."""
+                        ezcond_fn, icomp_nodiag=ICOMP_NODIAG, n_coag_substeps=3,
+                        water_scheme=WATER_SCHEME_BISULFATE,
+                        water_every_process=False):
+    """Coagulation + condensation in one step, parameterized by ezcond_fn.
+
+    water_every_process re-equilibrates aerosol water after coagulation too
+    (TOMAS box.f order); by default water is only set by condensation.
+    """
     # 1. Coagulation (forward Euler + MNFIX)
     Nk, Mk = coag_euler_step(
         Nk, Mk, xk, temp, pres, boxvol,
         dt=dt, icomp_nodiag=icomp_nodiag,
         n_substeps=n_coag_substeps,
     )
+    if water_every_process:
+        Mk = equilibrate_water(Mk, rh, temp, water_scheme)
 
     # 2. Condensation
     return _condensation_step_core(
         Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
-        ezcond_fn=ezcond_fn,
+        ezcond_fn=ezcond_fn, water_scheme=water_scheme,
     )
 
 
@@ -372,12 +385,17 @@ def _full_step_core(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
                     ezcond_fn, org_conc, nh3_conc, fion,
                     enable_organic=1.0, enable_inorganic=1.0, fn_scale=1.0,
                     icomp_nodiag=ICOMP_NODIAG, n_coag_substeps=10,
-                    max_nucleation_frac=0.5, max_nuc_substeps=20):
+                    max_nucleation_frac=0.5, max_nuc_substeps=20,
+                    water_scheme=WATER_SCHEME_BISULFATE,
+                    water_every_process=False):
     """Nucleation + coagulation + condensation in one step.
 
     Nucleation uses adaptive sub-stepping: when dN would exceed
     max_nucleation_frac * N_total, the nucleation timestep is subdivided
     (up to max_nuc_substeps) with MNFIX between substeps.
+
+    water_every_process re-equilibrates aerosol water after nucleation and
+    after coagulation too (TOMAS box.f order).
     """
     # 1. Adaptive nucleation sub-stepping
     fn = ricco_dunne_nucleation_rate(
@@ -403,6 +421,8 @@ def _full_step_core(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
         return (Nk_s, Mk_s, Gc_s)
 
     Nk, Mk, Gc = jax.lax.fori_loop(0, n_nuc, nuc_body, (Nk, Mk, Gc))
+    if water_every_process:
+        Mk = equilibrate_water(Mk, rh, temp, water_scheme)
 
     # 2. Coagulation (forward Euler + MNFIX)
     Nk, Mk = coag_euler_step(
@@ -410,11 +430,13 @@ def _full_step_core(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
         dt=dt, icomp_nodiag=icomp_nodiag,
         n_substeps=n_coag_substeps,
     )
+    if water_every_process:
+        Mk = equilibrate_water(Mk, rh, temp, water_scheme)
 
     # 3. Condensation
     return _condensation_step_core(
         Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
-        ezcond_fn=ezcond_fn,
+        ezcond_fn=ezcond_fn, water_scheme=water_scheme,
     )
 
 
@@ -425,24 +447,28 @@ def _full_step_core(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
 def combined_step_ppm_jax(
     Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
     icomp_nodiag=ICOMP_NODIAG, n_coag_substeps=3,
+    water_scheme=WATER_SCHEME_BISULFATE, water_every_process=False,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Combined coagulation + PPM condensation step (JIT-compilable)."""
     return _combined_step_core(
         Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
         ezcond_fn=ezcond_ppm_jax,
         icomp_nodiag=icomp_nodiag, n_coag_substeps=n_coag_substeps,
+        water_scheme=water_scheme, water_every_process=water_every_process,
     )
 
 
 def combined_step_tfl_jax(
     Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
     icomp_nodiag=ICOMP_NODIAG, n_coag_substeps=3,
+    water_scheme=WATER_SCHEME_BISULFATE, water_every_process=False,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Combined coagulation + TFL condensation step (JIT-compilable)."""
     return _combined_step_core(
         Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
         ezcond_fn=ezcond_tfl_jax,
         icomp_nodiag=icomp_nodiag, n_coag_substeps=n_coag_substeps,
+        water_scheme=water_scheme, water_every_process=water_every_process,
     )
 
 
@@ -452,6 +478,7 @@ def condensation_step_with_nucleation_jax(
     enable_organic=1.0, enable_inorganic=1.0, fn_scale=1.0,
     use_tfl=1.0,
     max_nucleation_frac=0.5, max_nuc_substeps=20,
+    water_scheme=WATER_SCHEME_BISULFATE, water_every_process=False,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Nucleation then condensation in one JIT-compilable step.
 
@@ -459,6 +486,8 @@ def condensation_step_with_nucleation_jax(
         use_tfl: 1.0 for TFL condensation, 0.0 for PPM (Python-level dispatch)
         max_nucleation_frac: Max dN/N_total per nucleation substep (0.5 = 50%)
         max_nuc_substeps: Hard cap on nucleation substeps
+        water_scheme: Water uptake scheme (see equilibrate_water)
+        water_every_process: Also re-equilibrate water after nucleation
     """
     # Python-level dispatch — no double compute
     ezcond_fn = ezcond_tfl_jax if float(use_tfl) > 0.5 else ezcond_ppm_jax
@@ -487,11 +516,13 @@ def condensation_step_with_nucleation_jax(
         return (Nk_s, Mk_s, Gc_s)
 
     Nk, Mk, Gc = jax.lax.fori_loop(0, n_nuc, nuc_body, (Nk, Mk, Gc))
+    if water_every_process:
+        Mk = equilibrate_water(Mk, rh, temp, water_scheme)
 
     # 2. Condensation
     return _condensation_step_core(
         Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
-        ezcond_fn=ezcond_fn,
+        ezcond_fn=ezcond_fn, water_scheme=water_scheme,
     )
 
 
@@ -499,6 +530,7 @@ condensation_step_with_nucleation_jit = jax.jit(
     condensation_step_with_nucleation_jax,
     static_argnums=(16,),  # use_tfl must be static for Python-level dispatch
     # max_nucleation_frac (17) and max_nuc_substeps (18) are captured as tracers
+    static_argnames=('use_tfl', 'water_scheme', 'water_every_process'),
 )
 
 
@@ -508,6 +540,7 @@ def full_step_jax(
     enable_organic=1.0, enable_inorganic=1.0, fn_scale=1.0,
     use_tfl=1.0, icomp_nodiag=ICOMP_NODIAG,
     max_nucleation_frac=0.5, max_nuc_substeps=20,
+    water_scheme=WATER_SCHEME_BISULFATE, water_every_process=False,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Full step: nucleation + coagulation + condensation (JIT-compilable).
 
@@ -523,6 +556,7 @@ def full_step_jax(
         fn_scale=fn_scale, icomp_nodiag=icomp_nodiag, n_coag_substeps=10,
         max_nucleation_frac=max_nucleation_frac,
         max_nuc_substeps=max_nuc_substeps,
+        water_scheme=water_scheme, water_every_process=water_every_process,
     )
 
 
@@ -574,11 +608,12 @@ def _run_scan(Nk, Mk, Gc, step_fn, nsteps, dt, prod_rate, diag_mode='rich',
 # Layer 3 wrappers: backward-compatible scan-fused loops
 # =========================================================================
 
-@partial(jax.jit, static_argnums=(10,))
+@partial(jax.jit, static_argnums=(10,), static_argnames=('nsteps', 'water_scheme'))
 def run_condensation_scan(
     Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
     nsteps: int,
     prod_rate,
+    water_scheme=WATER_SCHEME_BISULFATE,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Run nsteps PPM condensation steps fused into a single XLA program.
 
@@ -589,7 +624,7 @@ def run_condensation_scan(
     def step_fn(Nk_c, Mk_c, Gc_c):
         return _condensation_step_core(
             Nk_c, Mk_c, Gc_c, xk, temp, pres, boxvol, rh, alpha, dt,
-            ezcond_fn=ezcond_ppm_jax,
+            ezcond_fn=ezcond_ppm_jax, water_scheme=water_scheme,
         )
     (Nk_f, Mk_f, Gc_f), history = _run_scan(
         Nk, Mk, Gc, step_fn, nsteps, dt, prod_rate, 'rich'
@@ -597,11 +632,12 @@ def run_condensation_scan(
     return Nk_f, Mk_f, Gc_f, history
 
 
-@partial(jax.jit, static_argnums=(10,))
+@partial(jax.jit, static_argnums=(10,), static_argnames=('nsteps', 'water_scheme'))
 def run_condensation_scan_tfl(
     Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
     nsteps: int,
     prod_rate,
+    water_scheme=WATER_SCHEME_BISULFATE,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Run nsteps TFL condensation steps fused into a single XLA program.
 
@@ -612,7 +648,7 @@ def run_condensation_scan_tfl(
     def step_fn(Nk_c, Mk_c, Gc_c):
         return _condensation_step_core(
             Nk_c, Mk_c, Gc_c, xk, temp, pres, boxvol, rh, alpha, dt,
-            ezcond_fn=ezcond_tfl_jax,
+            ezcond_fn=ezcond_tfl_jax, water_scheme=water_scheme,
         )
     (Nk_f, Mk_f, Gc_f), history = _run_scan(
         Nk, Mk, Gc, step_fn, nsteps, dt, prod_rate, 'rich'
@@ -620,17 +656,21 @@ def run_condensation_scan_tfl(
     return Nk_f, Mk_f, Gc_f, history
 
 
-@partial(jax.jit, static_argnums=(10,))
+@partial(jax.jit, static_argnums=(10,),
+         static_argnames=('nsteps', 'water_scheme', 'water_every_process'))
 def run_combined_scan_ppm(
     Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
     nsteps: int,
     prod_rate,
+    water_scheme=WATER_SCHEME_BISULFATE,
+    water_every_process=False,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Scan-fused Euler coagulation + PPM condensation loop."""
     def step_fn(Nk_c, Mk_c, Gc_c):
         return _combined_step_core(
             Nk_c, Mk_c, Gc_c, xk, temp, pres, boxvol, rh, alpha, dt,
             ezcond_fn=ezcond_ppm_jax,
+            water_scheme=water_scheme, water_every_process=water_every_process,
         )
     (Nk_f, Mk_f, Gc_f), history = _run_scan(
         Nk, Mk, Gc, step_fn, nsteps, dt, prod_rate, 'light'
@@ -638,17 +678,21 @@ def run_combined_scan_ppm(
     return Nk_f, Mk_f, Gc_f, history
 
 
-@partial(jax.jit, static_argnums=(10,))
+@partial(jax.jit, static_argnums=(10,),
+         static_argnames=('nsteps', 'water_scheme', 'water_every_process'))
 def run_combined_scan_tfl(
     Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
     nsteps: int,
     prod_rate,
+    water_scheme=WATER_SCHEME_BISULFATE,
+    water_every_process=False,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Scan-fused Euler coagulation + TFL condensation loop."""
     def step_fn(Nk_c, Mk_c, Gc_c):
         return _combined_step_core(
             Nk_c, Mk_c, Gc_c, xk, temp, pres, boxvol, rh, alpha, dt,
             ezcond_fn=ezcond_tfl_jax,
+            water_scheme=water_scheme, water_every_process=water_every_process,
         )
     (Nk_f, Mk_f, Gc_f), history = _run_scan(
         Nk, Mk, Gc, step_fn, nsteps, dt, prod_rate, 'light'
@@ -656,7 +700,8 @@ def run_combined_scan_tfl(
     return Nk_f, Mk_f, Gc_f, history
 
 
-@partial(jax.jit, static_argnums=(10, 18))
+@partial(jax.jit, static_argnums=(10, 18),
+         static_argnames=('nsteps', 'use_tfl', 'water_scheme', 'water_every_process'))
 def run_nucleation_condensation_scan(
     Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
     nsteps: int,
@@ -665,6 +710,8 @@ def run_nucleation_condensation_scan(
     enable_organic, enable_inorganic, fn_scale,
     use_tfl,
     max_nucleation_frac=0.5, max_nuc_substeps=20,
+    water_scheme=WATER_SCHEME_BISULFATE,
+    water_every_process=False,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Scan-fused nucleation + condensation loop with adaptive sub-stepping."""
     ezcond_fn = ezcond_tfl_jax if float(use_tfl) > 0.5 else ezcond_ppm_jax
@@ -695,10 +742,12 @@ def run_nucleation_condensation_scan(
 
         Nk_c, Mk_c, Gc_c = jax.lax.fori_loop(
             0, n_nuc, nuc_body, (Nk_c, Mk_c, Gc_c))
+        if water_every_process:
+            Mk_c = equilibrate_water(Mk_c, rh, temp, water_scheme)
 
         return _condensation_step_core(
             Nk_c, Mk_c, Gc_c, xk, temp, pres, boxvol, rh, alpha, dt,
-            ezcond_fn=ezcond_fn,
+            ezcond_fn=ezcond_fn, water_scheme=water_scheme,
         )
 
     (Nk_f, Mk_f, Gc_f), history = _run_scan(
@@ -707,7 +756,8 @@ def run_nucleation_condensation_scan(
     return Nk_f, Mk_f, Gc_f, history
 
 
-@partial(jax.jit, static_argnums=(10, 18))
+@partial(jax.jit, static_argnums=(10, 18),
+         static_argnames=('nsteps', 'use_tfl', 'water_scheme', 'water_every_process'))
 def run_full_scan(
     Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
     nsteps: int,
@@ -716,6 +766,8 @@ def run_full_scan(
     enable_organic, enable_inorganic, fn_scale,
     use_tfl,
     max_nucleation_frac=0.5, max_nuc_substeps=20,
+    water_scheme=WATER_SCHEME_BISULFATE,
+    water_every_process=False,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Scan-fused nucleation + coagulation + condensation loop with adaptive sub-stepping."""
     ezcond_fn = ezcond_tfl_jax if float(use_tfl) > 0.5 else ezcond_ppm_jax
@@ -729,6 +781,7 @@ def run_full_scan(
             fn_scale=fn_scale,
             max_nucleation_frac=max_nucleation_frac,
             max_nuc_substeps=max_nuc_substeps,
+            water_scheme=water_scheme, water_every_process=water_every_process,
         )
 
     (Nk_f, Mk_f, Gc_f), history = _run_scan(
@@ -744,6 +797,7 @@ def run_full_scan(
 def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
               n_coag_substeps=10,
               max_nucleation_frac=0.5, max_nuc_substeps=20,
+              water_scheme=WATER_SCHEME_BISULFATE, water_every_process=False,
               jit=True):
     """Build a step function from an ordered list of process names.
 
@@ -767,6 +821,12 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
         n_coag_substeps: Number of forward-Euler substeps for coagulation
         max_nucleation_frac: Max dN/N_total per nucleation substep (0.5 = 50%)
         max_nuc_substeps: Hard cap on nucleation substeps
+        water_scheme: Aerosol water uptake, WATER_SCHEME_BISULFATE (default,
+            TOMAS ammonium-bisulfate fit) or WATER_SCHEME_H2SO4 (Tabazadeh
+            1997 pure H2SO4/H2O). See physics/water_equilibrium.py.
+        water_every_process: If True, re-equilibrate aerosol water after
+            nucleation, coagulation and dilution as well as condensation
+            (TOMAS box.f order). Default False: only condensation sets water.
         jit: If True (default), wrap the returned function in ``jax.jit``.
             Callers no longer need to wrap manually. Double-JIT is a no-op.
 
@@ -884,6 +944,8 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
 
                 Nk, Mk, Gc = jax.lax.fori_loop(
                     0, n_nuc, nuc_body, (Nk, Mk, Gc))
+                if water_every_process:
+                    Mk = equilibrate_water(Mk, rh, temp, water_scheme)
 
             elif process == 'coagulation':
                 Nk, Mk = coag_euler_step(
@@ -892,10 +954,12 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                     icomp_nodiag=kwargs.get('icomp_nodiag', ICOMP_NODIAG),
                     n_substeps=n_coag_substeps,
                 )
+                if water_every_process:
+                    Mk = equilibrate_water(Mk, rh, temp, water_scheme)
             elif process == 'condensation':
                 Nk, Mk, Gc = _condensation_step_core(
                     Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
-                    ezcond_fn=ezcond_fn,
+                    ezcond_fn=ezcond_fn, water_scheme=water_scheme,
                 )
             elif process == 'dilution':
                 kdil = kwargs.get('kdil', 0.0)
@@ -905,6 +969,8 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                     kwargs.get('Mk_bg', jnp.zeros_like(Mk)),
                     kwargs.get('Gc_bg', jnp.zeros_like(Gc)),
                 )
+                if water_every_process:
+                    Mk = equilibrate_water(Mk, rh, temp, water_scheme)
         return Nk, Mk, Gc
 
     return jax.jit(step_fn) if jit else step_fn

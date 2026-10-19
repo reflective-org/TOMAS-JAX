@@ -1,0 +1,184 @@
+{
+  "pycham_j60": {
+    "root": "$PYCHAM_BENCH/PyCHAM_G3",
+    "wall_s": 47.2476983339875,
+    "log": "$PYCHAM_BENCH/inputs/G3/pycham_j60.log",
+    "sha": "7880d81991542ebbcd6597e01ddcf9d93d997a72",
+    "umansysprop_sha": "f6d8645d40f47e57111d4ec77c5427502eeb5d86",
+    "update_step_s": 60.0,
+    "j_grid_s": 60.0,
+    "int_tol": "default",
+    "output": "$PYCHAM_BENCH/outputs/G3_j60"
+  },
+  "pycham_j900": {
+    "root": "$PYCHAM_BENCH/PyCHAM_G3",
+    "wall_s": 36.87294500001008,
+    "log": "$PYCHAM_BENCH/inputs/G3/pycham_j900.log",
+    "sha": "7880d81991542ebbcd6597e01ddcf9d93d997a72",
+    "umansysprop_sha": "f6d8645d40f47e57111d4ec77c5427502eeb5d86",
+    "update_step_s": 60.0,
+    "j_grid_s": 900.0,
+    "int_tol": "default",
+    "output": "$PYCHAM_BENCH/outputs/G3_j900"
+  },
+  "pycham_j60_tight": {
+    "root": "$PYCHAM_BENCH/PyCHAM_G3",
+    "wall_s": 64.15857099997811,
+    "log": "$PYCHAM_BENCH/inputs/G3/pycham_j60_tight.log",
+    "sha": "7880d81991542ebbcd6597e01ddcf9d93d997a72",
+    "umansysprop_sha": "f6d8645d40f47e57111d4ec77c5427502eeb5d86",
+    "update_step_s": 60.0,
+    "j_grid_s": 60.0,
+    "int_tol": [
+      0.001,
+      1e-06
+    ],
+    "output": "$PYCHAM_BENCH/outputs/G3_j60_tight"
+  },
+  "ro2_pool": {
+    "n_pycham": 146,
+    "n_ours": 146,
+    "identical": true,
+    "only_pycham": [],
+    "only_ours": []
+  },
+  "no2_held": {
+    "pycham_j60": {
+      "min_ppb": 1.0,
+      "max_ppb": 1.0
+    },
+    "pycham_j900": {
+      "min_ppb": 1.0,
+      "max_ppb": 1.0
+    },
+    "pycham_j60_tight": {
+      "min_ppb": 1.0,
+      "max_ppb": 1.0
+    },
+    "ours_dt900_at_outputs": {
+      "min_ppb": 1.0,
+      "max_ppb": 1.0
+    }
+  },
+  "ours_dt900": {
+    "coupling_dt_s": 900.0,
+    "wall_s": 10.68574412498856,
+    "gas_solver_steps": 1019,
+    "solver_tol": "default",
+    "pycham_water": false,
+    "no2_held_in_solver": false,
+    "code_version": "d3d99e3efc080e72"
+  },
+  "ours_dt60": {
+    "coupling_dt_s": 60.0,
+    "wall_s": 77.20928949999507,
+    "gas_solver_steps": 8232,
+    "solver_tol": "default",
+    "pycham_water": false,
+    "no2_held_in_solver": false,
+    "code_version": "d3d99e3efc080e72"
+  },
+  "ours_dt900_heldNO2": {
+    "coupling_dt_s": 900.0,
+    "wall_s": 8.190490208013216,
+    "gas_solver_steps": 846,
+    "solver_tol": "default",
+    "pycham_water": false,
+    "no2_held_in_solver": true,
+    "code_version": "d3d99e3efc080e72"
+  },
+  "ours_dt60_tight": {
+    "coupling_dt_s": 60.0,
+    "wall_s": 266.5187361249991,
+    "gas_solver_steps": 18673,
+    "solver_tol": {
+      "rtol": 1e-05,
+      "atol": 1.0
+    },
+    "pycham_water": false,
+    "no2_held_in_solver": false,
+    "code_version": "d3d99e3efc080e72"
+  },
+  "ours_dt60_tight_pychamH2O": {
+    "coupling_dt_s": 60.0,
+    "wall_s": 263.188622207992,
+    "gas_solver_steps": 18672,
+    "solver_tol": {
+      "rtol": 1e-05,
+      "atol": 1.0
+    },
+    "pycham_water": true,
+    "no2_held_in_solver": false,
+    "code_version": "d3d99e3efc080e72"
+  },
+  "ours_dt60_tight_pychamH2O_heldNO2": {
+    "coupling_dt_s": 60.0,
+    "wall_s": 171.18447883299086,
+    "gas_solver_steps": 13738,
+    "solver_tol": {
+      "rtol": 1e-05,
+      "atol": 1.0
+    },
+    "pycham_water": true,
+    "no2_held_in_solver": true,
+    "code_version": "d3d99e3efc080e72"
+  },
+  "j_identical": {
+    "dt900": 0.0,
+    "dt60": 0.0
+  },
+  "aerosol_independence": {
+    "description": "gas phase with the 3000 cm-3 Level 3 seed vs a 1e-6 cm-3 seed, all aerosol processes off, coupling 900 s",
+    "max_rel_diff_above_threshold": 0.0,
+    "max_abs_diff_ppb": 0.0
+  },
+  "rate_constant_check": {
+    "max_rel_diff_same_h2o": 6.653245896522516e-16,
+    "max_rel_diff_pycham_h2o": 0.00019865133235564883
+  },
+  "photostationary_state": {
+    "pycham_j60": {
+      "n_times": 743,
+      "median": 1.1879697145644097,
+      "min": 1.0982237836464692,
+      "max": 1.4489472832314214,
+      "k_NO_O3": 1.6047057283214348e-14,
+      "label": "7"
+    },
+    "ours_dt60": {
+      "n_times": 743,
+      "median": 1.1949922448828953,
+      "min": 1.0978969919742494,
+      "max": 1.4743706682739588,
+      "k_NO_O3": 1.6047057283214348e-14,
+      "label": "7"
+    }
+  },
+  "stored_species": {
+    "n": 444,
+    "floor_ppb": 1e-06
+  },
+  "m_air_cm3": {
+    "ours": 2.5034759936474325e+19,
+    "pycham": 2.5034759936474333e+19
+  },
+  "result_bytes_total": 1520731,
+  "sun": {
+    "t_sunset_h": 8.877161345618862,
+    "t_sunrise_h": 17.777172871159515,
+    "start_utc": "2026-07-01T16:00:00+00:00",
+    "utc_offset_h": -4.0,
+    "sza_min_deg": 19.823830289154728,
+    "t_sza_min_h": 1.3166666666666667
+  },
+  "threshold_ppb": 1e-05,
+  "held_within_intervals_self_check": {
+    "dt900": 1.54040996792145e-14,
+    "dt60": 3.963975109424647e-15
+  },
+  "storage_grid_s": {
+    "main": 900.0,
+    "attribution": 1800.0,
+    "key_species_60s_runs": 180.0
+  }
+}

@@ -1,0 +1,51 @@
+# Level 3 — Day & Night: TUV-x sunlight for a site and date over 24 h. NO2 is held
+# constant (a stand-in for continuous NOx emissions; there is no dilution/deposition),
+# so NO3/N2O5 build up at night and N2O5 uptake (gamma) forms particle nitrate.
+name = "Level 3 - Day and Night"
+level = 3
+duration_h = 24.0
+start_utc = "2026-07-01T16:00:00+00:00"   # 12:00 local (EDT) in Buffalo, NY
+hold_constant = ["NO2"]
+gamma_n2o5 = 0.02
+# per-species c* (S. Jathar, Nannoolal via PyCHAM; ASSUMPTIONS A8); omit for Li et al. (2016)
+cstar_table = "mcm_limonene_cstar_298K.csv"
+
+[gases_ppb]
+LIMONENE = 2.0
+O3 = 40.0
+NO = 0.5
+NO2 = 1.0
+SO2 = 2.0
+CO = 120.0
+CH4 = 1900.0
+H2 = 500.0
+
+[environment]
+temp_k = 293.15
+pres_pa = 101325.0
+rh = 0.6
+
+[seed]
+organic_mass_fraction = 0.3
+modes = [{ number_cm3 = 3000.0, gmd_nm = 80.0, gsd = 1.6 }]
+
+[photolysis]
+mode = "tuvx"
+latitude_deg = 42.89
+longitude_deg = -78.88
+
+[processes]
+chemistry = true
+nucleation = false
+coagulation = true
+h2so4_condensation = true
+soa_partitioning = true
+n2o5_uptake = true
+
+# Numerical solver settings. Coupling interval 300 s, as in Levels 1-2 (Ali, 2026-10-17;
+# 900 s until then; ASSUMPTIONS A12). An interval chosen automatically by the numerical
+# solver is planned.
+[numerics]
+coupling_dt_s = 300.0
+output_dt_s = 1800.0
+nbins = 40

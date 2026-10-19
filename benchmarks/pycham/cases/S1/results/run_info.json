@@ -1,0 +1,302 @@
+{
+  "pycham_version": {
+    "sha": "7880d81991542ebbcd6597e01ddcf9d93d997a72",
+    "umansysprop_sha": "f6d8645d40f47e57111d4ec77c5427502eeb5d86"
+  },
+  "pycham_base_cstar1": {
+    "wall_s": 13.901142582995817,
+    "root": "$PYCHAM_BENCH/PyCHAM_S1",
+    "log": "$PYCHAM_BENCH/inputs/S1/pycham_base_cstar1.log",
+    "output": "$PYCHAM_BENCH/outputs/S1_base_cstar1",
+    "checks": {
+      "mw_surr": 200.23164000000003,
+      "mw_poa": 200.23164000000003,
+      "mw_h2o": 18.0,
+      "mw_core": 96.06,
+      "rho_surr_poa_core_g_cm3": [
+        2.169919058,
+        2.169919058,
+        2.169919058
+      ],
+      "rho_h2o_g_cm3": 1.0,
+      "psat_surr_pa": 1.271418165e-05,
+      "initial_number_max_rel_diff": 3.5349079219315627e-10,
+      "initial_dry_mass_max_rel_diff": 9.846539139601873e-10,
+      "mass_closure_max_rel": 1.719978233912419e-10
+    }
+  },
+  "pycham_tight_cstar1": {
+    "wall_s": 70.44830308301607,
+    "root": "$PYCHAM_BENCH/PyCHAM_S1",
+    "log": "$PYCHAM_BENCH/inputs/S1/pycham_tight_cstar1.log",
+    "output": "$PYCHAM_BENCH/outputs/S1_tight_cstar1",
+    "checks": {
+      "mw_surr": 200.23164000000003,
+      "mw_poa": 200.23164000000003,
+      "mw_h2o": 18.0,
+      "mw_core": 96.06,
+      "rho_surr_poa_core_g_cm3": [
+        2.169919058,
+        2.169919058,
+        2.169919058
+      ],
+      "rho_h2o_g_cm3": 1.0,
+      "psat_surr_pa": 1.271418165e-05,
+      "initial_number_max_rel_diff": 3.5349079219315627e-10,
+      "initial_dry_mass_max_rel_diff": 9.846539139601873e-10,
+      "mass_closure_max_rel": 1.5869823973465222e-10
+    }
+  },
+  "pycham_nokelvin_cstar1": {
+    "wall_s": 10.842434040998342,
+    "root": "$PYCHAM_BENCH/PyCHAM_S1_nokelvin",
+    "log": "$PYCHAM_BENCH/inputs/S1/pycham_nokelvin_cstar1.log",
+    "output": "$PYCHAM_BENCH/outputs/S1_nokelvin_cstar1",
+    "checks": {
+      "mw_surr": 200.23164000000003,
+      "mw_poa": 200.23164000000003,
+      "mw_h2o": 18.0,
+      "mw_core": 96.06,
+      "rho_surr_poa_core_g_cm3": [
+        2.169919058,
+        2.169919058,
+        2.169919058
+      ],
+      "rho_h2o_g_cm3": 1.0,
+      "psat_surr_pa": 1.271418165e-05,
+      "initial_number_max_rel_diff": 3.5349079219315627e-10,
+      "initial_dry_mass_max_rel_diff": 9.846539139601873e-10,
+      "mass_closure_max_rel": 1.719951588559828e-10
+    }
+  },
+  "ours_base_cstar1": {
+    "cstar": 1.0,
+    "variant": "base",
+    "wall_s": 1.3012756669777445,
+    "warnings": [],
+    "soa_end_ugm3": 4.943201329410188,
+    "gas_end_ugm3": 1.0567986705898063,
+    "mass_closure_max_rel": 1.1842378929335002e-15,
+    "code_version": "749346461e5f72e2"
+  },
+  "ours_micro10_cstar1": {
+    "cstar": 1.0,
+    "variant": "micro10",
+    "wall_s": 2.255322790995706,
+    "warnings": [],
+    "soa_end_ugm3": 4.941163649933496,
+    "gas_end_ugm3": 1.0588363500667857,
+    "mass_closure_max_rel": 4.692542650748995e-14,
+    "code_version": "749346461e5f72e2"
+  },
+  "ours_nokelvin_cstar1": {
+    "cstar": 1.0,
+    "variant": "nokelvin",
+    "wall_s": 1.2828976669698022,
+    "warnings": [],
+    "soa_end_ugm3": 4.984674965178575,
+    "gas_end_ugm3": 1.0153250348213994,
+    "mass_closure_max_rel": 5.0330110449673766e-15,
+    "code_version": "749346461e5f72e2"
+  },
+  "ours_nokelvin_pytransfer_cstar1": {
+    "cstar": 1.0,
+    "variant": "nokelvin_pytransfer",
+    "wall_s": 1.2981468749931082,
+    "warnings": [],
+    "soa_end_ugm3": 4.9753491566822605,
+    "gas_end_ugm3": 1.0246508433177355,
+    "mass_closure_max_rel": 2.0724163126336257e-15,
+    "code_version": "749346461e5f72e2"
+  },
+  "pycham_base_cstar100": {
+    "wall_s": 13.204220124986023,
+    "root": "$PYCHAM_BENCH/PyCHAM_S1",
+    "log": "$PYCHAM_BENCH/inputs/S1/pycham_base_cstar100.log",
+    "output": "$PYCHAM_BENCH/outputs/S1_base_cstar100",
+    "checks": {
+      "mw_surr": 200.23164000000003,
+      "mw_poa": 200.23164000000003,
+      "mw_h2o": 18.0,
+      "mw_core": 96.06,
+      "rho_surr_poa_core_g_cm3": [
+        2.169919058,
+        2.169919058,
+        2.169919058
+      ],
+      "rho_h2o_g_cm3": 1.0,
+      "psat_surr_pa": 0.00126575124,
+      "initial_number_max_rel_diff": 3.5349079219315627e-10,
+      "initial_dry_mass_max_rel_diff": 9.846539139601873e-10,
+      "mass_closure_max_rel": 1.6856486576936428e-10
+    }
+  },
+  "pycham_tight_cstar100": {
+    "wall_s": 67.70924295799341,
+    "root": "$PYCHAM_BENCH/PyCHAM_S1",
+    "log": "$PYCHAM_BENCH/inputs/S1/pycham_tight_cstar100.log",
+    "output": "$PYCHAM_BENCH/outputs/S1_tight_cstar100",
+    "checks": {
+      "mw_surr": 200.23164000000003,
+      "mw_poa": 200.23164000000003,
+      "mw_h2o": 18.0,
+      "mw_core": 96.06,
+      "rho_surr_poa_core_g_cm3": [
+        2.169919058,
+        2.169919058,
+        2.169919058
+      ],
+      "rho_h2o_g_cm3": 1.0,
+      "psat_surr_pa": 0.00126575124,
+      "initial_number_max_rel_diff": 3.5349079219315627e-10,
+      "initial_dry_mass_max_rel_diff": 9.846539139601873e-10,
+      "mass_closure_max_rel": 1.5868743356387918e-10
+    }
+  },
+  "pycham_nokelvin_cstar100": {
+    "wall_s": 11.844089166988852,
+    "root": "$PYCHAM_BENCH/PyCHAM_S1_nokelvin",
+    "log": "$PYCHAM_BENCH/inputs/S1/pycham_nokelvin_cstar100.log",
+    "output": "$PYCHAM_BENCH/outputs/S1_nokelvin_cstar100",
+    "checks": {
+      "mw_surr": 200.23164000000003,
+      "mw_poa": 200.23164000000003,
+      "mw_h2o": 18.0,
+      "mw_core": 96.06,
+      "rho_surr_poa_core_g_cm3": [
+        2.169919058,
+        2.169919058,
+        2.169919058
+      ],
+      "rho_h2o_g_cm3": 1.0,
+      "psat_surr_pa": 0.00126575124,
+      "initial_number_max_rel_diff": 3.5349079219315627e-10,
+      "initial_dry_mass_max_rel_diff": 9.846539139601873e-10,
+      "mass_closure_max_rel": 1.6859165915169191e-10
+    }
+  },
+  "ours_base_cstar100": {
+    "cstar": 100.0,
+    "variant": "base",
+    "wall_s": 1.4200184170040302,
+    "warnings": [],
+    "soa_end_ugm3": 0.01087394927328372,
+    "gas_end_ugm3": 5.989126050726713,
+    "mass_closure_max_rel": 2.294460917558657e-15,
+    "code_version": "749346461e5f72e2"
+  },
+  "ours_micro10_cstar100": {
+    "cstar": 100.0,
+    "variant": "micro10",
+    "wall_s": 2.242381416959688,
+    "warnings": [],
+    "soa_end_ugm3": 0.010875361896666668,
+    "gas_end_ugm3": 5.989124638102996,
+    "mass_closure_max_rel": 5.6251299914341267e-14,
+    "code_version": "749346461e5f72e2"
+  },
+  "ours_nokelvin_cstar100": {
+    "cstar": 100.0,
+    "variant": "nokelvin",
+    "wall_s": 1.3096309580141678,
+    "warnings": [],
+    "soa_end_ugm3": 0.011687512273874108,
+    "gas_end_ugm3": 5.988312487726121,
+    "mass_closure_max_rel": 2.146431180941969e-15,
+    "code_version": "749346461e5f72e2"
+  },
+  "ours_nokelvin_pytransfer_cstar100": {
+    "cstar": 100.0,
+    "variant": "nokelvin_pytransfer",
+    "wall_s": 1.2410154580138624,
+    "warnings": [],
+    "soa_end_ugm3": 0.011687506592347633,
+    "gas_end_ugm3": 5.988312493407659,
+    "mass_closure_max_rel": 1.3322676295501878e-15,
+    "code_version": "749346461e5f72e2"
+  },
+  "pycham_bins160_cstar1": {
+    "wall_s": 37.692448625020916,
+    "root": "$PYCHAM_BENCH/PyCHAM_S1",
+    "log": "$PYCHAM_BENCH/inputs/S1/pycham_bins160_cstar1.log",
+    "output": "$PYCHAM_BENCH/outputs/S1_bins160_cstar1",
+    "checks": {
+      "mw_surr": 200.23164000000003,
+      "mw_poa": 200.23164000000003,
+      "mw_h2o": 18.0,
+      "mw_core": 96.06,
+      "rho_surr_poa_core_g_cm3": [
+        2.169919058,
+        2.169919058,
+        2.169919058
+      ],
+      "rho_h2o_g_cm3": 1.0,
+      "psat_surr_pa": 1.271418165e-05,
+      "initial_number_max_rel_diff": 4.339159032085149e-10,
+      "initial_dry_mass_max_rel_diff": 1.2097025603452494e-09,
+      "mass_closure_max_rel": 1.7564690442857986e-10
+    }
+  },
+  "ours_bins80_cstar1": {
+    "cstar": 1.0,
+    "variant": "bins80",
+    "wall_s": 1.650424292020034,
+    "warnings": [],
+    "soa_end_ugm3": 4.942980121908708,
+    "gas_end_ugm3": 1.057019878091268,
+    "mass_closure_max_rel": 4.440892098500626e-15,
+    "code_version": "749346461e5f72e2"
+  },
+  "ours_bins160_cstar1": {
+    "cstar": 1.0,
+    "variant": "bins160",
+    "wall_s": 2.869348792009987,
+    "warnings": [],
+    "soa_end_ugm3": 4.942966532624347,
+    "gas_end_ugm3": 1.0570334673756234,
+    "mass_closure_max_rel": 5.0330110449673766e-15,
+    "code_version": "749346461e5f72e2"
+  },
+  "pycham_bins160_cstar100": {
+    "wall_s": 41.130690749996575,
+    "root": "$PYCHAM_BENCH/PyCHAM_S1",
+    "log": "$PYCHAM_BENCH/inputs/S1/pycham_bins160_cstar100.log",
+    "output": "$PYCHAM_BENCH/outputs/S1_bins160_cstar100",
+    "checks": {
+      "mw_surr": 200.23164000000003,
+      "mw_poa": 200.23164000000003,
+      "mw_h2o": 18.0,
+      "mw_core": 96.06,
+      "rho_surr_poa_core_g_cm3": [
+        2.169919058,
+        2.169919058,
+        2.169919058
+      ],
+      "rho_h2o_g_cm3": 1.0,
+      "psat_surr_pa": 0.00126575124,
+      "initial_number_max_rel_diff": 4.339159032085149e-10,
+      "initial_dry_mass_max_rel_diff": 1.2097025603452494e-09,
+      "mass_closure_max_rel": 1.7101786653483941e-10
+    }
+  },
+  "ours_bins80_cstar100": {
+    "cstar": 100.0,
+    "variant": "bins80",
+    "wall_s": 1.587240541994106,
+    "warnings": [],
+    "soa_end_ugm3": 0.010874137131640645,
+    "gas_end_ugm3": 5.989125862868353,
+    "mass_closure_max_rel": 1.4802973661668755e-15,
+    "code_version": "749346461e5f72e2"
+  },
+  "ours_bins160_cstar100": {
+    "cstar": 100.0,
+    "variant": "bins160",
+    "wall_s": 2.9459260830190033,
+    "warnings": [],
+    "soa_end_ugm3": 0.010874590587131569,
+    "gas_end_ugm3": 5.989125409412848,
+    "mass_closure_max_rel": 3.4046839421838135e-15,
+    "code_version": "749346461e5f72e2"
+  }
+}

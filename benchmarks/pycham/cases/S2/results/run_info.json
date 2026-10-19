@@ -1,0 +1,396 @@
+{
+  "pycham_class": {
+    "wall_s": 44.571370332996594,
+    "output": "$PYCHAM_BENCH/outputs/S2_class",
+    "sha": "7880d81991542ebbcd6597e01ddcf9d93d997a72",
+    "umansysprop_sha": "f6d8645d40f47e57111d4ec77c5427502eeb5d86",
+    "update_step_s": 60.0,
+    "recording_step_s": 300.0,
+    "psat_check": {
+      "max_rel_diff_psat_vs_volP": 4.324607338901387e-11
+    },
+    "other_particle_max_ugm3": 0.0
+  },
+  "pycham_exact": {
+    "wall_s": 47.179083750001155,
+    "output": "$PYCHAM_BENCH/outputs/S2_exact",
+    "sha": "7880d81991542ebbcd6597e01ddcf9d93d997a72",
+    "umansysprop_sha": "f6d8645d40f47e57111d4ec77c5427502eeb5d86",
+    "update_step_s": 60.0,
+    "recording_step_s": 300.0,
+    "psat_check": {
+      "max_rel_diff_psat_vs_volP": 3.7799763319412705e-11
+    },
+    "other_particle_max_ugm3": 0.0
+  },
+  "pycham_nopart": {
+    "wall_s": 13.768144750007195,
+    "output": "$PYCHAM_BENCH/outputs/S2_nopart",
+    "sha": "7880d81991542ebbcd6597e01ddcf9d93d997a72",
+    "umansysprop_sha": "f6d8645d40f47e57111d4ec77c5427502eeb5d86",
+    "update_step_s": 60.0,
+    "recording_step_s": 300.0,
+    "psat_check": {
+      "max_rel_diff_psat_vs_volP": 4.324607338901387e-11
+    }
+  },
+  "pycham_massfrac": {
+    "wall_s": 44.3772421250178,
+    "output": "$PYCHAM_BENCH/outputs/S2_massfrac",
+    "sha": "7880d81991542ebbcd6597e01ddcf9d93d997a72",
+    "umansysprop_sha": "f6d8645d40f47e57111d4ec77c5427502eeb5d86",
+    "update_step_s": 60.0,
+    "recording_step_s": 300.0,
+    "psat_check": {
+      "max_rel_diff_psat_vs_volP": 4.273126297249519e-11
+    },
+    "other_particle_max_ugm3": 0.0
+  },
+  "ro2_pool": {
+    "n_pycham": 146,
+    "n_ours": 146,
+    "identical": true
+  },
+  "transfer_rates": {
+    "weights": "PyCHAM class-centre run, particle-phase mass at 6 h",
+    "t0_tomas_seed": {
+      "cs_ratio_weighted": 0.6903111519227932,
+      "d_ratio_weighted": 0.7867594298812061,
+      "cs_ours_weighted_per_s": 0.003470068744024315,
+      "cs_pycham_weighted_per_s": 0.002395006368862356
+    },
+    "6h_pycham_sizes": {
+      "cs_ratio_weighted": 0.7134789183597933,
+      "d_ratio_weighted": 0.7867594298812061,
+      "cs_ours_weighted_per_s": 0.010850603035311749,
+      "cs_pycham_weighted_per_s": 0.0077414180798429915
+    },
+    "top_species_t0": [
+      {
+        "species": "C823PAN",
+        "diff_vol_pycham": 220.44,
+        "diff_vol_ours": 120.0,
+        "d_ratio": 0.7734677876653657,
+        "cs_ratio": 0.6892301567769048
+      },
+      {
+        "species": "C822PAN",
+        "diff_vol_pycham": 214.32999999999998,
+        "diff_vol_ours": 120.0,
+        "d_ratio": 0.7831064934354633,
+        "cs_ratio": 0.6910637726059902
+      },
+      {
+        "species": "C923PAN",
+        "diff_vol_pycham": 234.85000000000002,
+        "diff_vol_ours": 120.0,
+        "d_ratio": 0.7491458850190197,
+        "cs_ratio": 0.6720540734679232
+      },
+      {
+        "species": "C729PAN",
+        "diff_vol_pycham": 193.81,
+        "diff_vol_ours": 120.0,
+        "d_ratio": 0.8229030322039648,
+        "cs_ratio": 0.7169196844483429
+      },
+      {
+        "species": "C817PAN",
+        "diff_vol_pycham": 220.44,
+        "diff_vol_ours": 120.0,
+        "d_ratio": 0.7734677876653657,
+        "cs_ratio": 0.6892301567769048
+      },
+      {
+        "species": "C731PAN",
+        "diff_vol_pycham": 199.92000000000002,
+        "diff_vol_ours": 120.0,
+        "d_ratio": 0.8089280159255978,
+        "cs_ratio": 0.6998589921937549
+      },
+      {
+        "species": "LIMANO3",
+        "diff_vol_pycham": 208.95,
+        "diff_vol_ours": 120.0,
+        "d_ratio": 0.7869825714817977,
+        "cs_ratio": 0.6708258426322797
+      },
+      {
+        "species": "C622PAN",
+        "diff_vol_pycham": 177.91000000000003,
+        "diff_vol_ours": 120.0,
+        "d_ratio": 0.8528527027206331,
+        "cs_ratio": 0.7141279849058215
+      }
+    ],
+    "attribution_factor": 0.6903111519227932
+  },
+  "ours_dt300": {
+    "wall_s": 7.214903333981056,
+    "gas_solver_steps": 546,
+    "warnings": [],
+    "code_version": "749346461e5f72e2"
+  },
+  "ours_dt60": {
+    "wall_s": 19.236315207963344,
+    "gas_solver_steps": 1873,
+    "warnings": [],
+    "code_version": "749346461e5f72e2"
+  },
+  "ours_dt300_nopart": {
+    "wall_s": 4.845912374963518
+  },
+  "seed_oa_mw_check": {
+    "3h_number_mean_mw": 232.3213222098397,
+    "6h_number_mean_mw": 233.15657427684337
+  },
+  "initial_particles": {
+    "N_cm3": {
+      "pycham": 1999.999998746327,
+      "ours": 1999.999999999999
+    },
+    "dry_ugm3": {
+      "pycham": 2.564415364505981,
+      "ours": 2.564418741888862
+    },
+    "SA_SO4_ugm3": {
+      "pycham": 1.7950907551534114,
+      "ours": 1.7950931193222035
+    },
+    "seed_OA_ugm3": {
+      "pycham": 0.7693246093525693,
+      "ours": 0.7693256225666588
+    },
+    "water_ugm3": {
+      "pycham": 0.769389469263614,
+      "ours": 0.8452534455602531
+    }
+  },
+  "ours_dt60_cs_pycham": {
+    "wall_s": 23.535937207983807,
+    "cs_factor": 0.6903111519227932,
+    "coupling_dt_s": 60.0,
+    "kelvin_off": false,
+    "stdout": "cs factor 0.6903, coupling 60 s, kelvin_off False, runtime 22.9 s"
+  },
+  "setup": {
+    "seed": {
+      "water_to_dry": 0.3296082000000001,
+      "water_per_mass": {
+        "sulfate": 0.3469560000000001,
+        "organic": 0.2891300000000001
+      },
+      "rho_wet_tomas": 1682.0798109950736,
+      "rho_dry_pycham": 2169.9190579914434,
+      "dry_mass_ugm3": 2.564418741888863,
+      "tomas_bins_in_pycham": [
+        4,
+        32
+      ],
+      "n_pycham_bins": 29,
+      "seed_n_min_cm3": 1e-06,
+      "seed_number_left_out_cm3": 1.2602486094692722e-06,
+      "seed_number_cm3": 1999.999999999999,
+      "seed_mole_fractions": {
+        "SA": 0.8467643417471868,
+        "SEEDOA": 0.15323565825281327
+      },
+      "water_diss_wrtw": {
+        "SA": 1.8904953948266667,
+        "SEEDOA": 3.7309576141666696,
+        "condensable_min": 1.7032050764666673,
+        "condensable_max": 4.836855448744447
+      },
+      "pycham_radius_bounds_um": [
+        0.0023955709479320415,
+        0.0030182302638161944,
+        0.003802731842811779,
+        0.004791141895864082,
+        0.006036460527632388,
+        0.007605463685623558,
+        0.009582283791728164,
+        0.012072921055264776,
+        0.015210927371247115,
+        0.01916456758345633,
+        0.02414584211052955,
+        0.03042185474249423,
+        0.03832913516691266,
+        0.0482916842210591,
+        0.06084370948498846,
+        0.0766582703338253,
+        0.09658336844211819,
+        0.1216874189699769,
+        0.1533165406676506,
+        0.19316673688423638,
+        0.2433748379399538,
+        0.3066330813353012,
+        0.38633347376847277,
+        0.4867496758799076,
+        0.6132661626706024,
+        0.7726669475369454,
+        0.9734993517598152,
+        1.2265323253412048,
+        1.5453338950738909,
+        1.9469987035196303
+      ],
+      "pycham_dry_radius_mid_um": [
+        0.002246331410721674,
+        0.002830200229408283,
+        0.003565828844448795,
+        0.004492662821443348,
+        0.005660400458816566,
+        0.00713165768889759,
+        0.008985325642886696,
+        0.011320800917633132,
+        0.014263315377795177,
+        0.017970651285773392,
+        0.022641601835266263,
+        0.028526630755590355,
+        0.03594130257154678,
+        0.04528320367053252,
+        0.05705326151118071,
+        0.07188260514309355,
+        0.09056640734106504,
+        0.1141065230223614,
+        0.1437652102861871,
+        0.18113281468213008,
+        0.2282130460447228,
+        0.2875304205723742,
+        0.36226562936426016,
+        0.4564260920894456,
+        0.5750608411447484,
+        0.7245312587285202,
+        0.9128521841788912,
+        1.1501216822894966,
+        1.4490625174570404
+      ],
+      "pycham_pconc_cm3": [
+        6.644084762400317e-06,
+        0.00011146480733499476,
+        0.0014685491154982657,
+        0.015194530436189362,
+        0.12346225126054053,
+        0.7878239897339081,
+        3.9479560712018884,
+        15.536869683838864,
+        48.017863814216376,
+        116.54408835848236,
+        222.13948646587065,
+        332.51357409866694,
+        390.8778813100505,
+        360.84518382532167,
+        261.60668148380273,
+        148.94463049110178,
+        66.5961268672021,
+        23.384128754821944,
+        6.448244795330003,
+        1.3964003209136224,
+        0.2374796852471252,
+        0.031716926104820985,
+        0.003326624771132856,
+        0.0002740088846123101,
+        1.7724482893186458e-05,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "seed_oa_mw_pycham": 232.2735000000001,
+    "n_pycham_components_overridden": 727,
+    "categories": {
+      "condensable": 245,
+      "gas_only_inorganic": 20,
+      "gas_only_radical": 243,
+      "gas_only_volatile": 217,
+      "nonvolatile": 1,
+      "seed_oa": 1
+    },
+    "condensable_vp_pa_range": {
+      "class": [
+        8.511159599748829e-09,
+        0.23566325501494578
+      ],
+      "exact": [
+        7.523778809118935e-11,
+        0.3077398077493377
+      ],
+      "massfrac": [
+        1.1033963111471494e-08,
+        0.10862789196131785
+      ],
+      "massfrac_nokelvin": [
+        1.1033963111471494e-08,
+        0.10862789196131785
+      ]
+    },
+    "condensable_mw_max_rel_diff_pycham_vs_ours": 1.2636527928044927e-05,
+    "j_constant_per_s": {
+      "J_BIACET": 0.00015297080437661604,
+      "J_C3H7CHO_HCO": 8.813624687083701e-06,
+      "J_C5HPALD1": 0.0002664783347486871,
+      "J_CH3COCH3": 2.069628960697545e-07,
+      "J_CH3NO3": 4.827829155177475e-07,
+      "J_CH3OOH": 2.980081754524612e-06,
+      "J_GLYOX_H2": 9.098458680685986e-06,
+      "J_GLYOX_HCHO": 1.6313135181794945e-05,
+      "J_GLYOX_HCO": 3.991064352664526e-05,
+      "J_H2O2": 3.970294708992342e-06,
+      "J_HCHO_H": 1.7786597740352514e-05,
+      "J_HCHO_H2": 2.598023232669811e-05,
+      "J_HNO3": 3.3733463477244846e-07,
+      "J_HONO": 0.0008120791600835717,
+      "J_IC3H7NO3": 1.3320896414764161e-06,
+      "J_IPRCHO": 2.4386975788094264e-05,
+      "J_MACR_H": 1.3761084860465448e-06,
+      "J_MACR_HCO": 1.3761084860465448e-06,
+      "J_MEK": 2.5842985063279486e-06,
+      "J_MGLYOX": 6.740847556918534e-05,
+      "J_MVK_C2H3": 1.1271859912129325e-06,
+      "J_NC3H7NO3": 1.0245265255435737e-06,
+      "J_NO2": 0.005,
+      "J_NO3_NO": 0.012154137979666415,
+      "J_NO3_NO2": 0.09745831718547582,
+      "J_NOA": 1.565774234483508e-05,
+      "J_O3_O1D": 1.8129821256600335e-05,
+      "J_O3_O3P": 0.00023186981752467854
+    },
+    "temperature_k": 298.15
+  },
+  "pycham_massfrac_nokelvin": {
+    "wall_s": 40.20565337498556,
+    "output": "$PYCHAM_BENCH/outputs/S2_massfrac_nokelvin",
+    "sha": "7880d81991542ebbcd6597e01ddcf9d93d997a72",
+    "umansysprop_sha": "f6d8645d40f47e57111d4ec77c5427502eeb5d86",
+    "update_step_s": 60.0,
+    "recording_step_s": 300.0,
+    "psat_check": {
+      "max_rel_diff_psat_vs_volP": 4.273126297249519e-11
+    },
+    "other_particle_max_ugm3": 0.0
+  },
+  "pycham_native": {
+    "wall_s": 42.83536933301366,
+    "output": "$PYCHAM_BENCH/outputs/S2_native",
+    "sha": "7880d81991542ebbcd6597e01ddcf9d93d997a72",
+    "umansysprop_sha": "f6d8645d40f47e57111d4ec77c5427502eeb5d86",
+    "update_step_s": 60.0,
+    "recording_step_s": 300.0,
+    "psat_check": {
+      "max_rel_diff_psat_vs_volP": 0.0
+    },
+    "other_particle_max_ugm3": 0.0
+  },
+  "ours_dt60_cs_pycham_nokelvin": {
+    "wall_s": 23.705360332969576,
+    "cs_factor": 0.6903111519227932,
+    "coupling_dt_s": 60.0,
+    "kelvin_off": true,
+    "stdout": "cs factor 0.6903, coupling 60 s, kelvin_off True, runtime 23.1 s"
+  },
+  "stored_species": {
+    "store_floor_ppb": 1e-07,
+    "n_species_kept": 546,
+    "max_dropped_per_file": 183
+  }
+}
