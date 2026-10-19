@@ -19,12 +19,15 @@ import functools
 
 import numpy as np
 
-from ..core.config import ICOMP, SRTORG_NUC, SRTSO4, make_grid, XK0
+from ..core.config import (ICOMP, MW_NH4, MW_NO3, MW_SO4, SRTNH4, SRTNIT, SRTORG_NUC, SRTSO4,
+                           make_grid, XK0)
 from ..gaschem.config import AVOGADRO, LIMONENE_EQN
 from ..gaschem.kpp_parser import ParsedMechanism, Reaction, parse_eqn
 
 RHO_SEED_INIT = 1770.0     # [kg/m3] density used to place the seed on the mass grid (as tomas-api)
 RHO_REPORT = 1400.0        # [kg/m3] density for reported dry diameters (as tomas-api)
+MW_AMMONIUM_SULFATE = MW_SO4 + 2.0 * MW_NH4   # 132 g/mol
+MW_AMMONIUM_NITRATE = MW_NO3 + MW_NH4         # 80 g/mol
 
 # --- Tutorial edits to the supplied mechanism (documented in ASSUMPTIONS.md) -----------
 N2O5_HET_LABEL = "34"      # <34> N2O5 = NA + NA : 4e-4 (fixed chamber sink) -> gamma-based uptake
@@ -79,11 +82,18 @@ def bin_diameters_nm(xk: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return d(np.sqrt(xk[:-1] * xk[1:])), d(xk)
 
 
-def seed_distribution(modes, organic_mass_fraction: float, xk: np.ndarray, boxvol_cm3: float):
+def seed_distribution(modes, organic_mass_fraction: float, xk: np.ndarray, boxvol_cm3: float, *,
+                      ammonium_nitrate_mass_fraction: float = 0.0, ammonium: bool = False):
     """Lognormal seed (sum of modes) -> (Nk [#/cell], Mk [kg/cell]); OA in SRTORG_NUC.
 
     Same placement as tomas-api ``_create_lognormal_dist``: dN/dlnDp at the bin
     midpoint (sulfate density) times the bin width in ln Dp.
+
+    Dry composition (ASSUMPTIONS A15): organic_mass_fraction in SRTORG_NUC,
+    ammonium_nitrate_mass_fraction as NH4NO3 (NO3 in SRTNIT), the rest sulfate. With
+    ``ammonium`` the salts carry their ammonium in SRTNH4: (NH4)2SO4 = 96/132 SO4 +
+    36/132 NH4, NH4NO3 = 62/80 NO3 + 18/80 NH4 by mass. Without it (the default and the
+    Level 1-3 presets) SO4 and NO3 are placed alone.
     """
     m_mid = np.sqrt(xk[:-1] * xk[1:])
     dp_mid = (6.0 * m_mid / (np.pi * RHO_SEED_INIT)) ** (1.0 / 3.0)
@@ -95,8 +105,21 @@ def seed_distribution(modes, organic_mass_fraction: float, xk: np.ndarray, boxvo
             -(np.log(dp_mid) - np.log(mode.gmd_nm * 1e-9)) ** 2 / (2 * ln_gsd**2))
         nk += pdf * dlndp * boxvol_cm3
     mk = np.zeros((m_mid.size, ICOMP))
-    mk[:, SRTSO4] = nk * m_mid * (1.0 - organic_mass_fraction)
-    mk[:, SRTORG_NUC] = nk * m_mid * organic_mass_fraction
+    dry = nk * m_mid
+    f_an = ammonium_nitrate_mass_fraction
+    mk[:, SRTORG_NUC] = dry * organic_mass_fraction
+    if not ammonium and f_an == 0.0:
+        mk[:, SRTSO4] = dry * (1.0 - organic_mass_fraction)      # as before 2026-10-19
+        return nk, mk
+    f_as = 1.0 - organic_mass_fraction - f_an
+    if ammonium:
+        mk[:, SRTSO4] = dry * f_as * (MW_SO4 / MW_AMMONIUM_SULFATE)
+        mk[:, SRTNIT] = dry * f_an * (MW_NO3 / MW_AMMONIUM_NITRATE)
+        mk[:, SRTNH4] = dry * (f_as * (2.0 * MW_NH4 / MW_AMMONIUM_SULFATE)
+                               + f_an * (MW_NH4 / MW_AMMONIUM_NITRATE))
+    else:
+        mk[:, SRTSO4] = dry * f_as
+        mk[:, SRTNIT] = dry * f_an
     return nk, mk
 
 

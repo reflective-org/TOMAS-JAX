@@ -26,7 +26,20 @@ class RunResult:
     diameter_edges_nm: list[float]
     dndlog10dp_cm3: list[list[float]]                # [t][bin] dN/dlog10(Dp)
     dmdlog10dp_ugm3: list[list[float]]               # [t][bin] dry mass distribution
-    totals: dict[str, list[float]]                   # [t]: N_cm3, SO4/NIT/SOA/POA/NH4/H2O/dry_ugm3
+    totals: dict[str, list[float]]                   # [t]: N_cm3, SO4/NIT/SOA/POA/NH4/H2O/dry_ugm3,
+                                                     #      S_um2cm3, V_um3cm3 (dry, rho 1400)
+    dsdlog10dp_um2cm3: list[list[float]] = field(default_factory=list)  # [t][bin] pi Dp^2 dN/dlogDp
+    dvdlog10dp_um3cm3: list[list[float]] = field(default_factory=list)  # [t][bin] pi/6 Dp^3 dN/dlogDp
+    # [t]: o_to_c (particle organics), kappa, kappa_organic, kappa_inorganic,
+    # organic_volume_fraction (box/properties.py; NaN where there is no such mass)
+    properties: dict[str, list[float]] = field(default_factory=dict)
+    # cumulative amounts removed since the start, [t] (box/losses.py; all zero when no
+    # loss is on): wall_vapour_ugm3 (condensable organic vapour to walls), o3_surface_ppb,
+    # ventilated_vapour_ugm3 (net out, condensable organic vapour), ventilated_gases_ppb
+    # {species: net out}, deposited_{dry,SOA,POA,inorganic}_ugm3, deposited_N_cm3,
+    # ventilated_{dry,SOA,POA,inorganic}_ugm3 (net out), ventilated_N_cm3 (net out),
+    # emitted_ppb {species}
+    losses: dict = field(default_factory=dict)
     gases_ppb: dict[str, list[float]] = field(default_factory=dict)
     radicals_cm3: dict[str, list[float]] = field(default_factory=dict)
     h2so4_cm3: list[float] = field(default_factory=list)

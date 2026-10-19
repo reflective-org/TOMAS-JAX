@@ -30,7 +30,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from .. import __version__
-from ..core.config import (MW_H2SO4, MW_NO3, N_GAS_SPECIES, N_SOA_CLASSES, SRTH2O, SRTNH4,
+from ..core.config import (ICOMP, MW_H2SO4, MW_NO3, N_GAS_SPECIES, N_SOA_CLASSES, SRTH2O, SRTNH4,
                            SRTNIT, SRTORG_NUC, SRTSO4, SRTSOA1, SV_H2SO4)
 from ..gaschem.config import (CSTAR_TABLE_SOURCES, DHVAP_A_KJ, DHVAP_B_KJ, MECHANISM_DIR,
                               TUVX_CONFIG)
@@ -48,9 +48,11 @@ from .config import AerosolStepConfig
 from .coupling import (NA_HET, N2O5_HET_LABEL, ClassBridge, bin_diameters_nm, cm3_to_kg_cell,
                        kg_cell_to_cm3, kg_cell_to_ugm3, mass_grid, seed_distribution,
                        tutorial_mechanism, ugm3_to_kg_cell)
+from .losses import gas_loss_step, lai_nazaroff_beta, particle_loss_step
+from .properties import kappa_mixture, organic_o_to_c, surface_volume_distributions
 from .result import (N_TOP_CONTRIBUTORS, REPORTED_GASES_PPB, REPORTED_J, REPORTED_RADICALS_CM3,
                      RunResult)
-from .scenario import Scenario, load_preset, list_presets
+from .scenario import Scenario, Seed, load_preset, list_presets
 
 ACCOMMODATION_ORGANIC = 1.0     # SOA mass accommodation coefficient [-] (vbs-jax default)
 COUNTER_SPECIES = ("SA", NA_HET)   # read and reset by the driver; not user inputs
@@ -182,6 +184,77 @@ def code_version() -> str:
     return h.hexdigest()[:16]
 
 
+class _Budget:
+    """Cumulative amounts removed by losses and added by emissions (per cell / per cm3)."""
+
+    def __init__(self, n_species: int, nbins: int):
+        self.wall_vapour_kg = 0.0            # condensable organic vapour lost to walls
+        self.vent_vapour_kg = 0.0            # condensable organic vapour ventilated out, net
+        self.o3_surface_cm3 = 0.0            # O3 lost to surfaces [molec/cm3]
+        self.vent_gas_cm3 = np.zeros(n_species)   # per species, net out [molec/cm3]
+        self.emitted_cm3 = np.zeros(n_species)    # per species [molec/cm3]
+        self.dep_m = np.zeros(ICOMP)         # deposited particle mass per component [kg/cell]
+        self.vent_m = np.zeros(ICOMP)        # ventilated particle mass per component, net out
+        self.dep_n = 0.0                     # deposited particles [#/cell]
+        self.vent_n = 0.0                    # ventilated particles, net out [#/cell]
+
+    def snapshot(self) -> dict:
+        return {k: (v.copy() if isinstance(v, np.ndarray) else v) for k, v in vars(self).items()}
+
+
+class _LossSetup(NamedTuple):
+    """Loss rates and outdoor states a run uses (see ``_loss_setup``)."""
+    lam_s: float                 # air-exchange rate [1/s]
+    beta_s: np.ndarray           # (nbins,) deposition rate [1/s]
+    nk_out: np.ndarray           # (nbins,) outdoor particles [#/cell]
+    mk_out: np.ndarray           # (nbins, ICOMP) outdoor particle mass [kg/cell]
+    y_out: np.ndarray | None     # (n_species,) outdoor gases [molec/cm3]; None without chemistry
+    y_extra: np.ndarray | None   # (n_species,) O3 surface + vapour wall rates [1/s]
+    gc_lam: np.ndarray           # (N_GAS_SPECIES,) ventilation rate per Gc slot [1/s]
+    gc_extra: np.ndarray         # (N_GAS_SPECIES,) wall rate per Gc slot [1/s]
+
+
+def _loss_setup(s: Scenario, xk, boxvol, cfg, index: dict | None, bridge, k_cls: int) -> _LossSetup:
+    """Rates and outdoor states for the loss steps (docs/aaar/coupling.md, "Emissions and
+    losses"). Without chemistry the condensable vapour is the Level 1 surrogate in
+    Gc[SRTSOA1]; with chemistry the condensable species live in y, so their Gc class
+    slots are not ventilated again."""
+    loss, env, nbins = s.losses, s.environment, xk.size - 1
+    lam = loss.ventilation_per_h / 3600.0
+    beta = np.zeros(nbins)
+    if loss.particle_deposition == "lai_nazaroff":
+        room = loss.room
+        m_mid = np.sqrt(xk[:-1] * xk[1:])
+        dp = (6.0 * m_mid / (np.pi * room.particle_density_g_cm3 * 1e3)) ** (1.0 / 3.0)
+        beta = lai_nazaroff_beta(dp, env.temp_k, env.pres_pa, room.friction_velocity_cm_s,
+                                 room.surface_to_volume_per_m, room.height_m,
+                                 room.particle_density_g_cm3)
+    nk_out, mk_out = np.zeros(nbins), np.zeros((nbins, ICOMP))
+    if loss.outdoor_seed is not None and lam > 0:
+        nk_out, mk_out = _seed(loss.outdoor_seed, xk, boxvol)
+        mk_out = np.asarray(equilibrate_water(jnp.asarray(mk_out), env.rh, env.temp_k, cfg.water_scheme))
+    gc_lam, gc_extra = np.zeros(N_GAS_SPECIES), np.zeros(N_GAS_SPECIES)
+    k_w = loss.organic_vapour_wall_per_s
+    if index is None:
+        gc_lam[:] = lam
+        gc_extra[SRTSOA1:SRTSOA1 + k_cls] = k_w
+        return _LossSetup(lam, beta, nk_out, mk_out, None, None, gc_lam, gc_extra)
+    air = air_environment(env.temp_k, env.pres_pa, env.rh)
+    y_out, y_extra = np.zeros(len(index)), np.zeros(len(index))
+    for sp, ppb in loss.outdoor_gases_ppb.items():
+        y_out[index[sp]] = ppb * 1e-9 * air["M"]
+    y_extra[index["O3"]] = loss.o3_surface_per_h / 3600.0
+    y_extra[bridge.idx] += k_w
+    gc_lam[SRTSO4] = lam                  # H2SO4 vapour; the class slots follow y
+    return _LossSetup(lam, beta, nk_out, mk_out, y_out, y_extra, gc_lam, gc_extra)
+
+
+def _seed(seed: Seed, xk, boxvol):
+    return seed_distribution(seed.modes, seed.organic_mass_fraction, xk, boxvol,
+                             ammonium_nitrate_mass_fraction=seed.ammonium_nitrate_mass_fraction,
+                             ammonium=seed.ammonium)
+
+
 def _processes(s: Scenario, has_organics: bool) -> tuple[str, ...]:
     p = s.processes
     out = []
@@ -247,7 +320,7 @@ def run(scenario: Scenario, progress_cb: Callable[[float], None] | None = None,
 
     # --- aerosol initial state ---------------------------------------------------------
     xk = mass_grid(s.numerics.nbins)
-    nk, mk = seed_distribution(s.seed.modes, s.seed.organic_mass_fraction, xk, boxvol)
+    nk, mk = _seed(s.seed, xk, boxvol)
     mk = np.asarray(equilibrate_water(jnp.asarray(mk), env.rh, env.temp_k, cfg.water_scheme))
     gc = np.zeros(N_GAS_SPECIES)
 
@@ -285,21 +358,26 @@ def run(scenario: Scenario, progress_cb: Callable[[float], None] | None = None,
     air = air_environment(env.temp_k, env.pres_pa, env.rh)
     if chem:
         index = {sp: i for i, sp in enumerate(parsed.species)}
-        unknown = sorted((set(s.gases_ppb) | set(s.hold_constant)) - set(index))
+        named = (set(s.gases_ppb) | set(s.hold_constant) | set(s.emissions_ppb_per_h)
+                 | set(s.losses.outdoor_gases_ppb))
+        unknown = sorted(named - set(index))
         if unknown:
             raise ValueError(f"unknown mechanism species: {unknown}")
-        counters = sorted((set(s.gases_ppb) | set(s.hold_constant)) & set(COUNTER_SPECIES))
+        counters = sorted(named & set(COUNTER_SPECIES))
         if counters:
             raise ValueError(f"{counters} are internal counter species and cannot be set or held")
         y = np.zeros(mech.n_species)
         for sp, ppb in s.gases_ppb.items():
             y[index[sp]] = ppb * 1e-9 * air["M"]
+        emission = np.zeros(mech.n_species)          # E [molec/cm3/s], added each interval
+        for sp, rate in s.emissions_ppb_per_h.items():
+            emission[index[sp]] = rate * 1e-9 * air["M"] / 3600.0
         held = np.array([index[sp] for sp in s.hold_constant], dtype=int)
         held_values = y[held].copy()
         k_th, ro2_dep, j_coef = rate_model.at_env(air)
         rates = EnvRates(jnp.asarray(k_th), jnp.asarray(ro2_dep), jnp.asarray(j_coef))
         i_het = rate_model.labels.index(N2O5_HET_LABEL)
-        i_sa, i_na_het, i_n2o5 = index["SA"], index[NA_HET], index["N2O5"]
+        i_sa, i_na_het, i_n2o5, i_o3 = index["SA"], index[NA_HET], index["N2O5"], index["O3"]
         bridge = ClassBridge(class_map, boxvol)
         j_names = rate_model.j_names
         jp = JProvider(j_names, PhotolysisSettings(
@@ -307,10 +385,24 @@ def run(scenario: Scenario, progress_cb: Callable[[float], None] | None = None,
             s.start_utc, s.photolysis.jno2_per_s, s.photolysis.constant_sza_deg))
     else:
         j_names, jp = [], None
+        if s.emissions_ppb_per_h or s.losses.outdoor_gases_ppb:
+            raise ValueError("emissions and outdoor gases need chemistry on (processes.chemistry)")
     h2so4_rate_l1 = cm3_to_kg_cell(s.h2so4_production_cm3_s, MW_H2SO4, boxvol)
 
+    # --- emissions, ventilation, surface and wall losses (all off by default) ---------------
+    loss_on = s.losses.any
+    ls = _loss_setup(s, xk, boxvol, cfg, index if chem else None, bridge if chem else None, k_cls)
+    lam_bins = np.full(nk.size, ls.lam_s)
+    budget = _Budget(mech.n_species if chem else 0, nk.size)
+    j_factor = s.photolysis.j_factor          # cloud fraction: J = J_clear x (1 - 0.75 CF)
+
+    def j_at(t_s):
+        j = jp.at(t_s)
+        return j if j_factor == 1.0 else j * j_factor
+
     # --- outputs -----------------------------------------------------------------------------
-    rec = {key: [] for key in ("t", "nk", "mk", "gc", "y", "cs", "jnuc", "j", "sza")}
+    rec = {key: [] for key in ("t", "nk", "mk", "gc", "y", "cs", "jnuc", "j", "sza", "tracker",
+                               "budget")}
     gas_steps = 0
     soa_bad = 0
     nitrate_expected = nitrate_added = 0.0
@@ -325,8 +417,10 @@ def run(scenario: Scenario, progress_cb: Callable[[float], None] | None = None,
         rec["jnuc"].append(float(diag_jnuc))
         rec["j"].append(j_now)
         rec["sza"].append(None if jp is None else jp.sza_deg(t_s))
+        rec["tracker"].append(bridge.particle.copy() if chem else None)
+        rec["budget"].append(budget.snapshot())
 
-    j_now = None if jp is None else jp.at(0.0)
+    j_now = None if jp is None else j_at(0.0)
     cs0, _ = calc_condensation_sink(state.Nk, state.Mk, state.temp, state.pres, state.boxvol,
                                     MW_H2SO4, SV_H2SO4, cfg.alpha_h2so4, xk=state.xk)
     record(0.0, state, cs0, 0.0, y if chem else None, j_now)
@@ -340,7 +434,10 @@ def run(scenario: Scenario, progress_cb: Callable[[float], None] | None = None,
         h2so4_rate, nitrate_rate = h2so4_rate_l1, 0.0
         weights = jnp.zeros(nk.size)
         if chem:
-            j_now = jp.at(t0 + 0.5 * dt_c)
+            if s.emissions_ppb_per_h:
+                y = y + emission * dt_c                     # constant sources, added up front
+                budget.emitted_cm3 += emission * dt_c
+            j_now = j_at(t0 + 0.5 * dt_c)
             k = rates.k(mech.ro2(jnp.asarray(y)), jnp.asarray(j_now))
             k_het = 0.0
             if s.processes.n2o5_uptake and s.gamma_n2o5 > 0:
@@ -354,6 +451,15 @@ def run(scenario: Scenario, progress_cb: Callable[[float], None] | None = None,
             h2so4_rate = cm3_to_kg_cell(y[i_sa], MW_H2SO4, boxvol) / dt_c
             nitrate_rate = cm3_to_kg_cell(y[i_na_het], MW_NO3, boxvol) / dt_c
             y[i_sa] = y[i_na_het] = 0.0
+            if loss_on:
+                # ventilation toward outdoor air, O3 surface loss, vapour wall loss
+                y, gb = gas_loss_step(y, ls.y_out, ls.lam_s, ls.y_extra, dt_c)
+                budget.vent_gas_cm3 += gb["out"] - gb["in"]
+                budget.o3_surface_cm3 += gb["sink"][i_o3]
+                sink_kg = cm3_to_kg_cell(gb["sink"][bridge.idx], bridge.mw, boxvol)
+                budget.wall_vapour_kg += float(sink_kg.sum())
+                budget.vent_vapour_kg += float(cm3_to_kg_cell(
+                    (gb["out"] - gb["in"])[bridge.idx], bridge.mw, boxvol).sum())
             gas_before = bridge.gas_mass(y)
             gc_new = np.asarray(state.Gc).copy()
             gc_new[SRTSOA1:SRTSOA1 + k_cls] = bridge.class_sum(gas_before)
@@ -362,6 +468,21 @@ def run(scenario: Scenario, progress_cb: Callable[[float], None] | None = None,
                                  jnp.float64(nitrate_rate), jnp.asarray(weights, dtype=jnp.float64))
         state, diag = aerosol_outer_step(state, forcing, soa, dt_c, micro_dt=ts.micro_dt_s,
                                          processes=processes, cfg=cfg)
+        if loss_on:
+            # particle ventilation and deposition per bin, then the vapours in Gc
+            nk_l, mk_l, pb = particle_loss_step(np.asarray(state.Nk), np.asarray(state.Mk),
+                                                ls.nk_out, ls.mk_out, lam_bins, ls.beta_s, dt_c)
+            budget.dep_m += pb["m_deposited"].sum(axis=0)
+            budget.vent_m += (pb["m_out"] - pb["m_in"]).sum(axis=0)
+            budget.dep_n += float(pb["n_deposited"].sum())
+            budget.vent_n += float((pb["n_out"] - pb["n_in"]).sum())
+            gc_l, gcb = gas_loss_step(np.asarray(state.Gc), np.zeros(N_GAS_SPECIES), ls.gc_lam,
+                                      ls.gc_extra, dt_c)
+            if not chem:
+                budget.wall_vapour_kg += float(gcb["sink"][SRTSOA1:SRTSOA1 + k_cls].sum())
+                budget.vent_vapour_kg += float((gcb["out"] - gcb["in"])[SRTSOA1:SRTSOA1 + k_cls].sum())
+            mk_l = equilibrate_water(jnp.asarray(mk_l), state.rh, state.temp, cfg.water_scheme)
+            state = state._replace(Nk=jnp.asarray(nk_l), Mk=mk_l, Gc=jnp.asarray(gc_l))
         soa_bad += int(not bool(diag.soa_time_integrated))
         nitrate_expected += nitrate_rate * dt_c
         nitrate_added += float(diag.nitrate_added)
@@ -376,7 +497,7 @@ def run(scenario: Scenario, progress_cb: Callable[[float], None] | None = None,
                      counts if chem else (0.0, 0.0), bridge if chem else None)
         if (i + 1) % out_every == 0 or i + 1 == n_int:
             record(t0 + dt_c, state, diag.cs_h2so4, diag.j_nuc, y if chem else None,
-                   None if jp is None else jp.at(t0 + dt_c))
+                   None if jp is None else j_at(t0 + dt_c))
         if progress_cb is not None:
             progress_cb((i + 1) / n_int)
     if soa_bad:
@@ -431,9 +552,30 @@ def _assemble(s, rec, xk, boxvol, air, chem, k_cls, cstar, cstar_source, bridge,
         "POA_ugm3": mk[:, :, poa_slots].sum(axis=(1, 2)), "NH4_ugm3": mk[:, :, SRTNH4].sum(axis=1),
         "H2O_ugm3": mk[:, :, SRTH2O].sum(axis=1), "dry_ugm3": dry.sum(axis=1),
     }
+    ds, dv = surface_volume_distributions(nk / dlog10, d_mid)
+    totals["S_um2cm3"] = (ds * dlog10).sum(axis=1)
+    totals["V_um3cm3"] = (dv * dlog10).sum(axis=1)
+    # O:C of the particle organics and kappa (box/properties.py; ASSUMPTIONS A18)
+    mk_cell = np.array(rec["mk"])
+    seed_org = mk_cell[:, :, SRTORG_NUC].sum(axis=1)
+    if chem and bridge is not None:
+        parsed0 = _chemistry()[0]
+        class_map0 = _class_map(s.cstar_table)
+        atoms = [parsed0.atoms[name] for name in class_map0.species]
+        per_kg = 1.0 / (bridge.mw * 1e-3)                                  # mol per kg
+        o_per_kg = np.array([a.get("O", 0) for a in atoms]) * per_kg
+        c_per_kg = np.array([a.get("C", 0) for a in atoms]) * per_kg
+        o_to_c = organic_o_to_c(np.array(rec["tracker"]), o_per_kg, c_per_kg, seed_org,
+                                s.seed.organic_o_to_c)
+    else:
+        o_to_c = organic_o_to_c(np.zeros((len(rec["t"]), 0)), np.zeros(0), np.zeros(0), seed_org,
+                                s.seed.organic_o_to_c)
+    properties = {"o_to_c": o_to_c, **kappa_mixture(mk[:, :, :SRTH2O], k_cls, o_to_c)}
     result = RunResult(
         scenario=_scenario_dict(s), time_h=rec["t"], diameter_nm=d_mid, diameter_edges_nm=d_edges,
         dndlog10dp_cm3=nk / dlog10, dmdlog10dp_ugm3=dry / dlog10, totals=totals,
+        dsdlog10dp_um2cm3=ds, dvdlog10dp_um3cm3=dv, properties=properties,
+        losses=_loss_budget(rec["budget"], s, air, boxvol, chem, k_cls),
         h2so4_cm3=kg_cell_to_cm3(gc[:, SRTSO4], MW_H2SO4, boxvol),
         volatility={"log10_cstar": np.log10(cstar),
                     "gas_ugm3": kg_cell_to_ugm3(gc[:, soa_slots], boxvol),
@@ -463,6 +605,38 @@ def _assemble(s, rec, xk, boxvol, air, chem, k_cls, cstar, cstar_source, bridge,
         result.photolysis = {n: js[:, j_names.index(n)] for n in REPORTED_J}
         result.photolysis["sza_deg"] = rec["sza"]
     return result
+
+
+def _loss_budget(snapshots: list[dict], s: Scenario, air, boxvol, chem: bool, k_cls: int) -> dict:
+    """Cumulative loss and emission amounts at the output times (RunResult.losses)."""
+    soa = slice(SRTSOA1, SRTSOA1 + k_cls)
+    poa = [c for c in range(SRTSOA1 + k_cls, SRTORG_NUC + 1) if c != SRTNIT]
+    inorganic = [SRTSO4, SRTNH4, SRTNIT]
+
+    def series(key):
+        return np.array([snap[key] for snap in snapshots])
+
+    def groups(prefix, m):                            # m: [t, ICOMP] kg/cell
+        ug = kg_cell_to_ugm3(m, boxvol)
+        return {f"{prefix}_dry_ugm3": ug[:, :SRTH2O].sum(axis=1),
+                f"{prefix}_SOA_ugm3": ug[:, soa].sum(axis=1),
+                f"{prefix}_POA_ugm3": ug[:, poa].sum(axis=1),
+                f"{prefix}_inorganic_ugm3": ug[:, inorganic].sum(axis=1)}
+
+    out = {
+        "wall_vapour_ugm3": kg_cell_to_ugm3(series("wall_vapour_kg"), boxvol),
+        "ventilated_vapour_ugm3": kg_cell_to_ugm3(series("vent_vapour_kg"), boxvol),
+        "o3_surface_ppb": series("o3_surface_cm3") / air["M"] * 1e9,
+        **groups("deposited", series("dep_m")), **groups("ventilated", series("vent_m")),
+        "deposited_N_cm3": series("dep_n") / boxvol, "ventilated_N_cm3": series("vent_n") / boxvol,
+        "ventilated_gases_ppb": {}, "emitted_ppb": {},
+    }
+    if chem:
+        index = {sp: i for i, sp in enumerate(_chemistry()[0].species)}
+        vent, emitted = series("vent_gas_cm3"), series("emitted_cm3")
+        out["ventilated_gases_ppb"] = {g: vent[:, index[g]] / air["M"] * 1e9 for g in REPORTED_GASES_PPB}
+        out["emitted_ppb"] = {g: emitted[:, index[g]] / air["M"] * 1e9 for g in s.emissions_ppb_per_h}
+    return out
 
 
 def _formula(atoms: dict[str, int]) -> str:
