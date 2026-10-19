@@ -516,6 +516,14 @@ is assumed, why, where it is implemented and how to change it.
   products is slow. Particles: N 3000 → 4539 cm⁻³ (outdoor air brings 1959 in net,
   deposition removes 210); dry mass 3.8 → 11.1 µg/m³, mostly outdoor seed. O:C stays
   0.50, κ 0.34.
+- Coupling interval (review, 2026-10-19): the losses are split from the chemistry once per
+  300 s interval, and O3 relaxes with a 17 min time scale (λ + k_s = 3.5 h⁻¹), so during
+  each interval the chemistry sees the O3 of the interval start. Against a 60 s interval
+  the 300 s preset gives reacted limonene 7.90 vs 7.52 ppb (+5 %), vapour to walls 7.58 vs
+  7.03 µg/m³ (+8 %), SOA peak 0.232 vs 0.219 µg/m³ (+6 %), OH peak 5.9e5 vs 5.2e5 cm⁻³
+  (+13 %); O3 at 4 h 5.61 vs 5.60 ppb. Options: keep 300 s (the differences are smaller
+  than the parameter uncertainty), split the losses symmetrically (half before and half
+  after the chemistry), or use 60 s for this level (run time about 2.4×).
 - For Shantanu: is this the intended lesson (walls and ventilation take the vapours; O3 is
   at 15 % of outdoor once the room is closed), or should the default hold O3 at 30 ppb
   (`hold_constant = ["O3"]`, SOA peak 1 µg/m³), start with more limonene (100 ppb: SOA peak
