@@ -4,6 +4,18 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-10-19 (Sun) — Series review: volume from the dry mass
+
+- Review of the series work (aaar-stable-2026-10-19 = c8d9794: full suite 702 passed, 650
+  skipped; Level 3 2 h identical to a631e80 to the last bit). The reported volume used the
+  bin-centre diameter, so in the coagulation-only urban run V fell 0.23 % in 6 h while the
+  dry mass stayed to 3e-10. Now dV/dlog10Dp = (dM/dlog10Dp)/ρ and S uses each bin's
+  mean-mass diameter (`box/properties.py`); V is constant to 3e-10, S 704 → 669 µm² cm⁻³
+  (was 663). Tests tightened (V to 1e-6 in the urban preset test, V × 1.4 = dry mass to
+  1e-12). Fingerprints unchanged (S and V are not part of them).
+
+---
+
 ## 2026-10-19 (Sun) — Series levels: urban warm-up and indoor air (model side)
 
 **Branch**: `aaar-series` (from `feat/aaar-tutorial` a631e80)

@@ -1,11 +1,15 @@
 """Reported particle properties (numpy, on recorded states): surface and volume
 distributions, the O:C of the particle organics and the hygroscopicity kappa.
 
-Surface and volume distributions from the number distribution at the dry bin diameter
-Dp (rho = RHO_REPORT):
+Surface and volume distributions from each bin's dry mass and number (rho = RHO_REPORT,
+1.4 g/cm3). The volume is the dry mass over the density, so coagulation (which adds
+volumes) keeps it exactly; the surface uses the bin's mean-mass diameter Dp:
 
-    dS/dlog10Dp = pi Dp^2 dN/dlog10Dp          [um2/cm3]
-    dV/dlog10Dp = (pi/6) Dp^3 dN/dlog10Dp      [um3/cm3]
+    dV/dlog10Dp = (dM/dlog10Dp) / rho = (pi/6) Dp^3 dN/dlog10Dp   [um3/cm3]
+    dS/dlog10Dp = pi Dp^2 dN/dlog10Dp                             [um2/cm3]
+
+with Dp = (6 m / (pi rho))^(1/3) and m = M / N the mean dry mass per particle in the bin
+(the bin-centre diameter where a bin is empty). 1 ug/m3 at 1 g/cm3 is 1 um3/cm3.
 
 O:C of the particle organics (ASSUMPTIONS A18): the SOA species are known from the
 per-species tracker and the mechanism's atom counts, n_O = sum_i P_i O_i / MW_i and
@@ -37,11 +41,20 @@ RHO_ORGANIC_G_CM3 = 1.4
 M_C, M_H, M_O = 12.011, 1.008, 15.999               # [g/mol]
 
 
-def surface_volume_distributions(dndlog10dp_cm3: np.ndarray, diameter_nm: np.ndarray):
-    """(dS/dlog10Dp [um2/cm3], dV/dlog10Dp [um3/cm3]) for [t, bin] number distributions."""
-    dp_um = np.asarray(diameter_nm) * 1e-3
+N_EMPTY_CM3 = 1e-12          # bins with less number than this use the bin-centre diameter
+
+
+def surface_volume_distributions(dndlog10dp_cm3: np.ndarray, dmdlog10dp_ugm3: np.ndarray,
+                                 diameter_nm: np.ndarray, rho_g_cm3: float):
+    """(dS/dlog10Dp [um2/cm3], dV/dlog10Dp [um3/cm3]) for [t, bin] number and dry mass
+    distributions; diameter_nm is the bin centre (used only for empty bins)."""
     dn = np.asarray(dndlog10dp_cm3)
-    return np.pi * dp_um**2 * dn, np.pi / 6.0 * dp_um**3 * dn
+    dv = np.asarray(dmdlog10dp_ugm3) / rho_g_cm3
+    full = dn > N_EMPTY_CM3
+    v_mean_um3 = np.where(full, dv / np.where(full, dn, 1.0), 0.0)
+    dp_um = np.where(full, (6.0 * v_mean_um3 / np.pi) ** (1.0 / 3.0),
+                     np.broadcast_to(np.asarray(diameter_nm) * 1e-3, dn.shape))
+    return np.pi * dp_um**2 * dn, dv
 
 
 def kappa_organic(o_to_c: np.ndarray) -> np.ndarray:

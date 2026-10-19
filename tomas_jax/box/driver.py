@@ -45,7 +45,8 @@ from ..physics.heterogeneous import n2o5_uptake
 from ..physics.water_equilibrium import equilibrate_water
 from .aerosol_step import AerosolForcing, AerosolState, SOAParams, aerosol_outer_step
 from .config import AerosolStepConfig
-from .coupling import (NA_HET, N2O5_HET_LABEL, ClassBridge, bin_diameters_nm, cm3_to_kg_cell,
+from .coupling import (NA_HET, N2O5_HET_LABEL, RHO_REPORT, ClassBridge, bin_diameters_nm,
+                       cm3_to_kg_cell,
                        kg_cell_to_cm3, kg_cell_to_ugm3, mass_grid, seed_distribution,
                        tutorial_mechanism, ugm3_to_kg_cell)
 from .losses import gas_loss_step, lai_nazaroff_beta, particle_loss_step
@@ -552,7 +553,8 @@ def _assemble(s, rec, xk, boxvol, air, chem, k_cls, cstar, cstar_source, bridge,
         "POA_ugm3": mk[:, :, poa_slots].sum(axis=(1, 2)), "NH4_ugm3": mk[:, :, SRTNH4].sum(axis=1),
         "H2O_ugm3": mk[:, :, SRTH2O].sum(axis=1), "dry_ugm3": dry.sum(axis=1),
     }
-    ds, dv = surface_volume_distributions(nk / dlog10, d_mid)
+    # V from the dry mass (exact under coagulation), S at each bin's mean-mass diameter
+    ds, dv = surface_volume_distributions(nk / dlog10, dry / dlog10, d_mid, RHO_REPORT / 1e3)
     totals["S_um2cm3"] = (ds * dlog10).sum(axis=1)
     totals["V_um3cm3"] = (dv * dlog10).sum(axis=1)
     # O:C of the particle organics and kappa (box/properties.py; ASSUMPTIONS A18)

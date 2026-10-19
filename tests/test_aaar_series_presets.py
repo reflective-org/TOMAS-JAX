@@ -28,11 +28,11 @@ def _check_urban(r, s):
     assert np.all(np.array(r.photolysis["J_NO2"]) > 5e-3)   # sunlit throughout
     assert r.gases_ppb["HNO3"][-1] > 1.0                      # NO2 + OH takes NOx out
     np.testing.assert_allclose(r.losses["emitted_ppb"]["NO"], 1.0 * np.array(r.time_h), rtol=1e-9)
-    # particles: coagulation only. N falls, dry mass stays, V (bin-centre volume) within 1 %
+    # particles: coagulation only. N falls; dry mass and volume stay (coagulation adds volumes)
     n, dry, v = (np.array(r.totals[k]) for k in ("N_cm3", "dry_ugm3", "V_um3cm3"))
     assert n[0] == pytest.approx(20003.0, rel=1e-3) and np.all(np.diff(n) < 0)
     np.testing.assert_allclose(dry, dry[0], rtol=1e-6)
-    np.testing.assert_allclose(v, v[0], rtol=1e-2)
+    np.testing.assert_allclose(v, v[0], rtol=1e-6)
     assert np.all(np.diff(r.totals["S_um2cm3"]) < 0)          # surface area falls as N does
     assert r.totals["SOA_ugm3"][-1] == 0.0 and r.totals["NIT_ugm3"][-1] == pytest.approx(r.totals["NIT_ugm3"][0])
     assert r.totals["NH4_ugm3"][0] > 0                         # ammonium salts

@@ -28,8 +28,8 @@ class RunResult:
     dmdlog10dp_ugm3: list[list[float]]               # [t][bin] dry mass distribution
     totals: dict[str, list[float]]                   # [t]: N_cm3, SO4/NIT/SOA/POA/NH4/H2O/dry_ugm3,
                                                      #      S_um2cm3, V_um3cm3 (dry, rho 1400)
-    dsdlog10dp_um2cm3: list[list[float]] = field(default_factory=list)  # [t][bin] pi Dp^2 dN/dlogDp
-    dvdlog10dp_um3cm3: list[list[float]] = field(default_factory=list)  # [t][bin] pi/6 Dp^3 dN/dlogDp
+    dsdlog10dp_um2cm3: list[list[float]] = field(default_factory=list)  # [t][bin] pi Dp^2 dN/dlogDp, Dp = bin mean-mass diameter
+    dvdlog10dp_um3cm3: list[list[float]] = field(default_factory=list)  # [t][bin] (dM/dlogDp) / 1.4 g/cm3
     # [t]: o_to_c (particle organics), kappa, kappa_organic, kappa_inorganic,
     # organic_volume_fraction (box/properties.py; NaN where there is no such mass)
     properties: dict[str, list[float]] = field(default_factory=dict)

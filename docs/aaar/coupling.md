@@ -307,11 +307,14 @@ and 1.6 h⁻¹ at 5 µm.
 
 ## Reported properties and budgets
 
-- Surface and volume distributions at the dry bin-centre diameter Dp (ρ = 1400 kg/m³):
-  dS/dlog10Dp = π Dp² dN/dlog10Dp [µm² cm⁻³], dV/dlog10Dp = (π/6) Dp³ dN/dlog10Dp
-  [µm³ cm⁻³]; `totals["S_um2cm3"]` and `totals["V_um3cm3"]` are their sums over the bins.
-  Because Dp is the bin centre, V × 1.4 g/cm³ equals the dry mass exactly at the start and
-  within about 0.1 % later.
+- Surface and volume distributions from each bin's dry mass M and number N (ρ = 1.4 g/cm³):
+  dV/dlog10Dp = (dM/dlog10Dp) / ρ = (π/6) Dp³ dN/dlog10Dp [µm³ cm⁻³] and
+  dS/dlog10Dp = π Dp² dN/dlog10Dp [µm² cm⁻³], with Dp = (6 m / (π ρ))^{1/3} the bin's
+  mean-mass diameter, m = M/N (1 µg m⁻³ at 1 g cm⁻³ is 1 µm³ cm⁻³). `totals["S_um2cm3"]`
+  and `totals["V_um3cm3"]` are their sums over the bins. V × ρ is the dry mass at every
+  time, so coagulation (which adds volumes) keeps V to rounding (Level 1 urban: 3e-10 over
+  6 h). The first version used the bin-centre diameter for both, which let V drift by
+  0.2 % in 6 h as particles moved inside their bins (fixed 2026-10-19 in review).
 - `properties["o_to_c"]`: O:C of the particle organics from the per-species tracker
   and the mechanism's atom counts, n_O = Σ P_i O_i / MW_i, n_C = Σ P_i C_i / MW_i, plus
   the seed organic at its own O:C (`seed.organic_o_to_c`, 0.5 by default) with mass per

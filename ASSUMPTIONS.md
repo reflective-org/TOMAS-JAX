@@ -492,8 +492,8 @@ is assumed, why, where it is implemented and how to change it.
   as vapour (SO2 is 0). The gases and the particles therefore do not affect each other.
 - Result (2026-10-19): photostationary state k[O3][NO]/(J(NO2)[NO2]) = 0.99–1.00 at every
   output after the first; O3 40 → 36.9 ppb, NO 5 → 7.2, NO2 15 → 12.7, HNO3 → 5.6 ppb;
-  N 20003 → 11757 cm⁻³, S 704 → 663 µm² cm⁻³, V 52.9 → 52.8 µm³ cm⁻³ (bin-centre volume;
-  dry mass 74.09 µg/m³ constant to 1e-9).
+  N 20003 → 11757 cm⁻³, S 704 → 669 µm² cm⁻³, V 52.92 µm³ cm⁻³ constant to 3e-10 (V is
+  the dry mass 74.09 µg/m³ over 1.4 g/cm³; S at each bin's mean-mass diameter).
 
 ### A20 — Indoor air preset (series)
 

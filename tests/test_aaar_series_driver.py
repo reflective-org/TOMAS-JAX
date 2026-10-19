@@ -136,14 +136,17 @@ def test_surface_volume_distributions_and_kappa():
     r = run(load_preset("level1_volatility").replace(duration_h=1.0))
     dn, ds, dv = (np.array(getattr(r, k)) for k in ("dndlog10dp_cm3", "dsdlog10dp_um2cm3",
                                                      "dvdlog10dp_um3cm3"))
+    dm = np.array(r.dmdlog10dp_ugm3)
+    # V is the dry mass over 1.4 g/cm3 (exact at every time); S uses each bin's mean-mass
+    # diameter, which is the bin centre at the start (seed particles sit at the centre)
+    np.testing.assert_allclose(dv, dm / 1.4, rtol=1e-12)
+    full = dn > 1e-12
+    dp_mean_um = (6.0 * dv[full] / (np.pi * dn[full])) ** (1.0 / 3.0)
+    np.testing.assert_allclose(ds[full], np.pi * dp_mean_um**2 * dn[full], rtol=1e-12)
     dp_um = np.array(r.diameter_nm) * 1e-3
-    np.testing.assert_allclose(ds, np.pi * dp_um**2 * dn)
-    np.testing.assert_allclose(dv, np.pi / 6 * dp_um**3 * dn)
-    # dry mass = volume x 1.4 g/cm3 (the reporting density): exact at the start, when every
-    # bin's particles sit at its centre, and within 0.1 % later (V uses the bin-centre Dp)
+    np.testing.assert_allclose(ds[0], np.pi * dp_um**2 * dn[0], rtol=1e-9)
     dry, vol = np.array(r.totals["dry_ugm3"]), np.array(r.totals["V_um3cm3"])
-    assert dry[0] == pytest.approx(1.4 * vol[0], rel=1e-9)
-    np.testing.assert_allclose(dry, 1.4 * vol, rtol=1e-2)
+    np.testing.assert_allclose(dry, 1.4 * vol, rtol=1e-12)
     p = r.properties
     assert p["o_to_c"][0] == pytest.approx(0.5)                   # seed organic only
     assert p["kappa_inorganic"][0] == pytest.approx(0.61)         # sulfate as ammonium sulfate
