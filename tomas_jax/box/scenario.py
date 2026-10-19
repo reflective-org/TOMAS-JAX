@@ -23,6 +23,15 @@ import numpy as np
 
 PRESET_DIR = Path(__file__).parent / "presets"
 PHOTOLYSIS_MODES = ("tuvx", "mcm", "constant", "off")
+PARTICLE_DEPOSITION_MODES = ("off", "lai_nazaroff")
+# Air-exchange rates [1/h] offered as presets for the indoor level (placeholders for
+# Shantanu to confirm, ASSUMPTIONS A17): closed room 0.5 (Murray & Burmaster 1995 median),
+# window open 3, HVAC running 6.
+VENTILATION_PRESETS_PER_H = {"closed_room": 0.5, "window_open": 3.0, "hvac": 6.0}
+# Cloud fraction CF scales every photolysis rate: J = J_clear x (1 - CLOUD_J_LOSS x CF),
+# a tutorial simplification (ASSUMPTIONS A16): full overcast leaves a quarter of the
+# clear-sky rate.
+CLOUD_J_LOSS = 0.75
 
 
 def _number(where: str, value, lo: float | None = None, hi: float | None = None, *,
@@ -63,14 +72,40 @@ class SeedMode:
 
 @dataclass(frozen=True)
 class Seed:
+    """Initial (or outdoor) particles: lognormal modes and a dry composition.
+
+    Dry mass fractions: ``organic_mass_fraction`` is non-volatile, absorbing organic
+    (slot SRTORG_NUC); ``ammonium_nitrate_mass_fraction`` is ammonium nitrate (NO3 in
+    slot SRTNIT); the rest is sulfate. With ``ammonium`` the two salts carry their
+    ammonium in slot SRTNH4 (ASSUMPTIONS A15): (NH4)2SO4 is 96/132 SO4 and 36/132 NH4
+    by mass, NH4NO3 is 62/80 NO3 and 18/80 NH4. Without it (default, the Level 1-3
+    presets) the sulfate is SO4 with no ammonium and nitrate would be NO3 alone.
+    ``organic_o_to_c`` is the O:C of the seed organic, used only for the reported O:C
+    and kappa (A18).
+    """
     modes: tuple[SeedMode, ...] = (SeedMode(2000.0, 80.0, 1.6),)
     organic_mass_fraction: float = 0.3     # non-volatile, absorbing OA; the rest is sulfate
+    ammonium_nitrate_mass_fraction: float = 0.0   # NH4NO3 share of the dry mass [0-1]
+    ammonium: bool = False                 # salts carry their NH4 ((NH4)2SO4, NH4NO3)
+    organic_o_to_c: float = 0.5            # O:C of the seed organic (for O:C and kappa only)
 
     def __post_init__(self):
         if isinstance(self.modes, (str, bytes)) or not all(isinstance(m, SeedMode) for m in self.modes):
             raise ValueError(f"seed.modes must be a list of seed modes, got {self.modes!r}")
         _number("seed.organic_mass_fraction", self.organic_mass_fraction, 0.0, 1.0,
                 hint=_fraction_hint(self.organic_mass_fraction))
+        _number("seed.ammonium_nitrate_mass_fraction", self.ammonium_nitrate_mass_fraction, 0.0, 1.0,
+                hint=_fraction_hint(self.ammonium_nitrate_mass_fraction))
+        if self.organic_mass_fraction + self.ammonium_nitrate_mass_fraction > 1.0 + 1e-12:
+            raise ValueError("seed organic_mass_fraction + ammonium_nitrate_mass_fraction must be at "
+                             f"most 1 (the rest is sulfate), got {self.organic_mass_fraction!r} + "
+                             f"{self.ammonium_nitrate_mass_fraction!r}")
+        _switch("seed.ammonium", self.ammonium)
+        _number("seed.organic_o_to_c", self.organic_o_to_c, 0.0, 2.0)
+
+    @property
+    def sulfate_mass_fraction(self) -> float:
+        return 1.0 - self.organic_mass_fraction - self.ammonium_nitrate_mass_fraction
 
 
 @dataclass(frozen=True)
@@ -95,6 +130,7 @@ class Photolysis:
     longitude_deg: float = -78.9
     jno2_per_s: float = 5e-3               # "constant" mode only
     constant_sza_deg: float = 30.0         # "constant" mode only
+    cloud_fraction: float = 0.0            # J = J_clear x (1 - CLOUD_J_LOSS x CF) [0-1]
 
     def __post_init__(self):
         if self.mode not in PHOTOLYSIS_MODES:
@@ -103,6 +139,80 @@ class Photolysis:
         _number("photolysis.longitude_deg", self.longitude_deg, -180.0, 360.0)
         _number("photolysis.jno2_per_s", self.jno2_per_s, 0.0)
         _number("photolysis.constant_sza_deg", self.constant_sza_deg, 0.0, 90.0)
+        _number("photolysis.cloud_fraction", self.cloud_fraction, 0.0, 1.0,
+                hint=_fraction_hint(self.cloud_fraction))
+
+    @property
+    def j_factor(self) -> float:
+        """Factor on every clear-sky J for this cloud fraction (1 at CF = 0)."""
+        return 1.0 - CLOUD_J_LOSS * float(self.cloud_fraction)
+
+
+@dataclass(frozen=True)
+class Room:
+    """Room parameters of the Lai and Nazaroff (2000) particle deposition model
+    (placeholders for Shantanu to confirm, ASSUMPTIONS A17)."""
+    friction_velocity_cm_s: float = 1.0    # near-surface friction velocity u* [cm/s]
+    surface_to_volume_per_m: float = 3.0   # total surface area / room volume S/V [1/m]
+    height_m: float = 2.5                  # floor and ceiling each give 1/height of S/V
+    particle_density_g_cm3: float = 1.4    # particle density for settling and diffusion
+
+    def __post_init__(self):
+        _number("losses.room.friction_velocity_cm_s", self.friction_velocity_cm_s, 0.0, lo_open=True)
+        _number("losses.room.surface_to_volume_per_m", self.surface_to_volume_per_m, 0.0, lo_open=True)
+        _number("losses.room.height_m", self.height_m, 0.0, lo_open=True)
+        _number("losses.room.particle_density_g_cm3", self.particle_density_g_cm3, 0.0, lo_open=True,
+                hint="density is in g/cm3, e.g. 1.4")
+        if 2.0 / self.height_m > self.surface_to_volume_per_m:
+            raise ValueError("losses.room: floor and ceiling alone (2/height_m = "
+                             f"{2.0 / self.height_m:g} 1/m) exceed surface_to_volume_per_m "
+                             f"{self.surface_to_volume_per_m!r}")
+
+
+@dataclass(frozen=True)
+class Losses:
+    """Exchange with outdoor air and losses to surfaces (all off by default).
+
+    dC/dt = lambda (C_out - C) for every gas and every particle bin (ventilation),
+    dO3/dt = -k_s O3 (surface loss), dG/dt = -k_w G for every condensable organic
+    vapour (irreversible wall loss), dN_i/dt = -beta(Dp_i) N_i per bin (Lai and
+    Nazaroff 2000 deposition). Equations and sources: docs/aaar/coupling.md,
+    ASSUMPTIONS A17.
+    """
+    ventilation_per_h: float = 0.0         # air-exchange rate lambda [1/h]
+    outdoor_gases_ppb: dict[str, float] = field(default_factory=dict)  # C_out; unlisted = 0
+    outdoor_seed: Seed | None = None       # outdoor particles (None = clean outdoor air)
+    o3_surface_per_h: float = 0.0          # k_s [1/h]
+    organic_vapour_wall_per_s: float = 0.0  # k_w [1/s]
+    particle_deposition: str = "off"       # "off" | "lai_nazaroff"
+    room: Room = field(default_factory=Room)
+
+    def __post_init__(self):
+        _number("losses.ventilation_per_h", self.ventilation_per_h, 0.0)
+        if not isinstance(self.outdoor_gases_ppb, dict):
+            raise ValueError("losses.outdoor_gases_ppb must map species names to mixing ratios, "
+                             f"got {self.outdoor_gases_ppb!r}")
+        for sp, ppb in self.outdoor_gases_ppb.items():
+            if not isinstance(sp, str):
+                raise ValueError(f"losses.outdoor_gases_ppb keys must be species names, got {sp!r}")
+            _number(f"losses.outdoor_gases_ppb[{sp!r}]", ppb, 0.0)
+        if not (self.outdoor_seed is None or isinstance(self.outdoor_seed, Seed)):
+            raise ValueError(f"losses.outdoor_seed must be a scenario.Seed object or None, got "
+                             f"{self.outdoor_seed!r}")
+        _number("losses.o3_surface_per_h", self.o3_surface_per_h, 0.0)
+        _number("losses.organic_vapour_wall_per_s", self.organic_vapour_wall_per_s, 0.0, 1.0,
+                hint="the rate is per second, e.g. 1e-4")
+        if self.particle_deposition not in PARTICLE_DEPOSITION_MODES:
+            raise ValueError("losses.particle_deposition must be one of "
+                             f"{list(PARTICLE_DEPOSITION_MODES)}, got {self.particle_deposition!r}")
+        if not isinstance(self.room, Room):
+            raise ValueError(f"losses.room must be a scenario.Room object, got {self.room!r}")
+
+    @property
+    def any(self) -> bool:
+        """True when some loss or exchange is active (the driver skips the step otherwise)."""
+        return bool(self.ventilation_per_h > 0 or self.o3_surface_per_h > 0
+                    or self.organic_vapour_wall_per_s > 0 or self.particle_deposition != "off")
 
 
 @dataclass(frozen=True)
@@ -158,6 +268,8 @@ class Scenario:
     photolysis: Photolysis = field(default_factory=Photolysis)
     gases_ppb: dict[str, float] = field(default_factory=dict)   # initial mixing ratios
     hold_constant: tuple[str, ...] = ()    # species reset to their initial value each interval
+    emissions_ppb_per_h: dict[str, float] = field(default_factory=dict)  # constant sources E
+    losses: Losses = field(default_factory=Losses)   # ventilation, surface and wall losses
     h2so4_production_cm3_s: float = 0.0    # Level 1 (no chemistry) H2SO4 source [molec/cm3/s]
     surrogate: Surrogate | None = None
     gamma_n2o5: float = 0.0                # N2O5 reactive uptake coefficient
@@ -183,6 +295,13 @@ class Scenario:
             if not isinstance(sp, str):
                 raise ValueError(f"gases_ppb keys must be species names, got {sp!r}")
             _number(f"gases_ppb[{sp!r}]", ppb, 0.0)
+        if not isinstance(self.emissions_ppb_per_h, dict):
+            raise ValueError("emissions_ppb_per_h must map species names to rates, got "
+                             f"{self.emissions_ppb_per_h!r}")
+        for sp, rate in self.emissions_ppb_per_h.items():
+            if not isinstance(sp, str):
+                raise ValueError(f"emissions_ppb_per_h keys must be species names, got {sp!r}")
+            _number(f"emissions_ppb_per_h[{sp!r}]", rate, 0.0)
         _number("h2so4_production_cm3_s", self.h2so4_production_cm3_s, 0.0)
         _number("gamma_n2o5", self.gamma_n2o5, 0.0, 1.0)
         for name, cls in _NESTED.items():
@@ -220,19 +339,25 @@ def _to_utc(value: datetime | str) -> datetime:
 
 
 def _build(cls, data: dict):
-    """Construct a (nested) scenario dataclass from plain dicts/lists."""
-    if cls is Seed:
-        unknown = set(data) - {f.name for f in dataclasses.fields(Seed)}
-        if unknown:
-            raise TypeError(f"Seed got unexpected keys {sorted(unknown)}")
-        data = {**{"modes": Seed().modes, "organic_mass_fraction": Seed().organic_mass_fraction}, **data}
-        modes = tuple(m if isinstance(m, SeedMode) else SeedMode(**m) for m in data["modes"])
-        return Seed(modes=modes, organic_mass_fraction=data["organic_mass_fraction"])
-    return cls(**data)
+    """Construct a (nested) scenario dataclass from plain dicts/lists (recursively)."""
+    unknown = set(data) - {f.name for f in dataclasses.fields(cls)}
+    if unknown:
+        raise TypeError(f"{cls.__name__} got unexpected keys {sorted(unknown)}")
+    built = dict(data)
+    for name, inner in _NESTED_FIELDS.get(cls, {}).items():
+        value = built.get(name)
+        if isinstance(value, dict):
+            built[name] = _build(inner, value)
+    if cls is Seed and "modes" in built and not isinstance(built["modes"], (str, bytes)):
+        built["modes"] = tuple(m if isinstance(m, SeedMode) else _build(SeedMode, m)
+                               for m in built["modes"])
+    return cls(**built)
 
 
 _NESTED = {"environment": Environment, "seed": Seed, "photolysis": Photolysis,
-           "surrogate": Surrogate, "processes": Processes, "numerics": Numerics}
+           "surrogate": Surrogate, "processes": Processes, "numerics": Numerics, "losses": Losses}
+# dataclass fields that hold another scenario dataclass (built from dicts by _build)
+_NESTED_FIELDS = {Scenario: _NESTED, Losses: {"outdoor_seed": Seed, "room": Room}}
 
 
 def from_dict(data: dict) -> Scenario:
