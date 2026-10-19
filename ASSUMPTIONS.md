@@ -478,7 +478,7 @@ is assumed, why, where it is implemented and how to change it.
 - Henry's law for the gases: explanation only in the tutorial; the mechanism carries no
   reliable per-species values, so none are reported.
 
-### A19 — Urban warm-up preset (series)
+### A19 — Urban air preset (series)
 
 - 40 °N, 75 °W, 1 July 2026, 10:00–16:00 EDT (14:00–20:00 UTC), TUV-x sun; 298 K, RH 0.5.
   O3 40, NO 5, NO2 15 ppb; CO 200, CH4 1900, H2 500 ppb; SO2 0. The full limonene
@@ -499,35 +499,51 @@ is assumed, why, where it is implemented and how to change it.
 
 - Dark room: photolysis off (window glass removes the ultraviolet that photolyses O3 and
   NO2; a small indoor light level would be a student option). 295 K, RH 0.4. Limonene 20,
-  O3 30 (after an airing), NO 0.5, NO2 2, CO 150, CH4 1900, H2 500 ppb. Outdoor air: O3 40,
-  NO 1, NO2 5 ppb, CO, CH4, H2 as indoors; outdoor particles 5000 cm⁻³ at 100 nm (σ 1.6);
-  indoor seed 3000 cm⁻³ at 80 nm (σ 1.6), 50 % organic, 10 % ammonium nitrate, 40 %
-  ammonium sulfate. Losses as A17 (λ 0.5 h⁻¹, k_s 3 h⁻¹, k_w 1e-4 s⁻¹, Lai–Nazaroff).
-  4 h, coupling 300 s.
-- Result (2026-10-19): O3 falls from 30 to the supply/surface-loss balance
-  λ O3_out/(λ + k_s) = 5.7 ppb within 40 minutes (5.6 at 4 h); limonene 20 → 1.0 ppb
-  (11.1 ventilated out net, 7.9 reacted); OH peak 5.9e5 cm⁻³, HO2 1e8; H2O2 0.1–0.2 ppb,
-  HNO3 0.03, N2O5 3e-4 ppb. SOA peaks at 0.23 µg/m³ and ends at 0.12, while 7.6 µg/m³
-  of condensable vapour went to the walls and 10.5 out of the room, 0.36 of SOA was
-  ventilated and 0.008 deposited; without wall losses and ventilation the same chemistry
-  gives 7 µg/m³ of SOA. The reason: the vapour wall sink (τ 2.8 h) and the ventilation
-  (τ 2 h) are much faster than condensation onto 3000 cm⁻³ of particles (sink τ about a
-  day), and at 5.6 ppb of O3 the second ozonolysis step that makes the low-volatility
-  products is slow. Particles: N 3000 → 4539 cm⁻³ (outdoor air brings 1959 in net,
-  deposition removes 210); dry mass 3.8 → 11.1 µg/m³, mostly outdoor seed. O:C stays
-  0.50, κ 0.34.
+  O3 30, NO 0.5, NO2 2, CO 150, CH4 1900, H2 500 ppb. Outdoor air: O3 40, NO 1, NO2 5 ppb,
+  CO, CH4, H2 as indoors; outdoor particles 5000 cm⁻³ at 100 nm (σ 1.6); indoor seed
+  3000 cm⁻³ at 80 nm (σ 1.6), 50 % organic, 10 % ammonium nitrate, 40 % ammonium
+  sulfate. Losses as A17 (λ 0.5 h⁻¹, k_s 3 h⁻¹, k_w 1e-4 s⁻¹, Lai–Nazaroff). 4 h,
+  coupling 300 s.
+- O3 is held at 30 ppb (`hold_constant = ["O3"]`; Shantanu: "limonene ozonolysis
+  (O3 = 30 ppbv)"). The hold resets O3 to 30 ppb at the end of every coupling interval,
+  so it stands for a steady indoor O3 source that balances the surface loss and the
+  ventilation (the reported `o3_surface_ppb` budget then counts the O3 the surfaces took
+  and the hold replaced: 319 ppb over 4 h). Students can un-hold O3 to see the free case.
+- Result with O3 held (2026-10-19, default): limonene 20 → 0.006 ppb in 4 h (13.3 ppb
+  reacted, 6.7 ventilated out net); OH peak 7.6e5 cm⁻³, HO2 1.0e8; H2O2 0.20, HNO3 0.04,
+  N2O5 0.03 ppb at 4 h. SOA peaks at 0.96 µg/m³ at 1.8 h (LIMALOOH 0.23, C826OOH 0.08,
+  C728OOH 0.02 µg/m³ at the end) and ends at 0.45 µg/m³, while 13.4 µg/m³ of condensable
+  vapour went to the walls, 18.5 out of the room, 1.36 µg/m³ of SOA was ventilated and
+  0.03 deposited. Particles: N 3000 → 4542 cm⁻³ (outdoor air brings 1954 in net,
+  deposition removes 205); dry mass 3.8 → 11.4 µg/m³, mostly outdoor seed. O:C 0.50 →
+  0.503 (the SOA is near the seed's O:C), κ 0.343 → 0.333. Wall time about 8 s warm.
+  Without wall losses, ventilation and deposition the same chemistry gives 9.1 µg/m³ of
+  SOA at 4 h, still rising, with κ falling to 0.18 as the organics take over. With the
+  window open (λ 3 h⁻¹) the limonene leaves before it reacts: SOA peak 0.08 µg/m³,
+  14.2 ppb ventilated out and 5.8 reacted.
+- Free O3 (for Shantanu; `hold_constant = []`): O3 falls from 30 ppb to the
+  supply/surface-loss balance λ O3_out/(λ + k_s) = 5.7 ppb within 40 minutes (5.6 at
+  4 h), limonene 20 → 1.0 ppb (11.1 ventilated out net, 7.9 reacted), OH peak 5.9e5 cm⁻³,
+  and SOA peaks at only 0.23 µg/m³ (0.12 at 4 h) with 7.6 µg/m³ of vapour on the walls
+  and 10.5 out of the room. The reason: the vapour wall sink (τ 2.8 h) and the
+  ventilation (τ 2 h) are much faster than condensation onto 3000 cm⁻³ of particles
+  (sink τ about a day), and at 5.6 ppb of O3 the second ozonolysis step that makes the
+  low-volatility products is slow. This is why the default holds O3: a closed room
+  without an O3 source does not keep O3 at 30 ppb, and the tutorial's lesson is the SOA
+  from the ozonolysis at 30 ppb, with the walls and the ventilation taking most of the
+  vapour.
 - Coupling interval (review, 2026-10-19): the losses are split from the chemistry once per
-  300 s interval, and O3 relaxes with a 17 min time scale (λ + k_s = 3.5 h⁻¹), so during
-  each interval the chemistry sees the O3 of the interval start. Against a 60 s interval
-  the 300 s preset gives reacted limonene 7.90 vs 7.52 ppb (+5 %), vapour to walls 7.58 vs
-  7.03 µg/m³ (+8 %), SOA peak 0.232 vs 0.219 µg/m³ (+6 %), OH peak 5.9e5 vs 5.2e5 cm⁻³
-  (+13 %); O3 at 4 h 5.61 vs 5.60 ppb. Options: keep 300 s (the differences are smaller
-  than the parameter uncertainty), split the losses symmetrically (half before and half
-  after the chemistry), or use 60 s for this level (run time about 2.4×).
-- For Shantanu: is this the intended lesson (walls and ventilation take the vapours; O3 is
-  at 15 % of outdoor once the room is closed), or should the default hold O3 at 30 ppb
-  (`hold_constant = ["O3"]`, SOA peak 1 µg/m³), start with more limonene (100 ppb: SOA peak
-  1.4), or use a smaller k_w?
+  300 s interval. With O3 held, against a 60 s interval the 300 s preset gives reacted
+  limonene 13.3 vs 13.1 ppb (+1 %), vapour to walls 13.4 vs 13.0 µg/m³ (+3 %), SOA peak
+  0.96 vs 1.01 µg/m³ (−4 %), OH peak 7.6e5 vs 8.1e5 cm⁻³ (−6 %); the 60 s run takes
+  2.4× longer. (With O3 free the differences were +5 %, +8 %, +6 %, +13 %, because O3
+  then relaxes with a 17 min time scale and each interval's chemistry sees the O3 of
+  the interval start.) Options: keep 300 s (the differences are smaller than the
+  parameter uncertainty), split the losses symmetrically (half before and half after
+  the chemistry), or use 60 s for this level.
+- For Shantanu: is holding O3 at 30 ppb the intended setup (a steady source), or should
+  the default start at 30 ppb and let O3 fall (SOA peak 0.23 µg/m³), start with more
+  limonene (100 ppb with O3 free: SOA peak 1.4), or use a smaller k_w?
 
 ## Questions for Shantanu
 
@@ -560,5 +576,6 @@ is assumed, why, where it is implemented and how to change it.
    30:20 ammonium sulfate : ammonium nitrate split; the cloud factor J = J_clear (1 − 0.75 CF);
    the room parameters (u* 1 cm/s, S/V 3 m⁻¹, 2.5 m, 1.4 g/cm³) and the window/HVAC
    air-exchange presets 3 and 6 h⁻¹; k_w = 1e-4 s⁻¹ indoors; the seed O:C of 0.5 and
-   κ_org = 0.18 O:C + 0.03 for all particle organics; and the indoor default (A20): dark
-   room with O3 free to fall to 5.6 ppb (SOA 0.2 µg/m³), or O3 held at 30 ppb?
+   κ_org = 0.18 O:C + 0.03 for all particle organics; and the indoor default (A20): O3
+   held at 30 ppb as a steady source (SOA peak 1.0 µg/m³), rather than free to fall to
+   5.6 ppb in the closed room (SOA peak 0.2 µg/m³)?

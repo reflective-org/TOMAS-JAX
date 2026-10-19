@@ -4,6 +4,25 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-10-19 (Sun) — Indoor air holds O3 at 30 ppb; "Urban air"
+
+- `level2_indoor` now holds O3 at 30 ppb (`hold_constant = ["O3"]`; Shantanu: "limonene
+  ozonolysis (O3 = 30 ppbv)"). With O3 free the closed room pulled O3 to 5.6 ppb within
+  40 minutes and the SOA peaked at 0.23 µg/m³; logged for Shantanu in ASSUMPTIONS A20.
+  New default numbers: limonene 20 → 0.006 ppb (13.3 reacted, 6.7 out), OH peak 7.6e5,
+  SOA peak 0.96 µg/m³ at 1.8 h (0.45 at 4 h), walls 13.4 µg/m³, ventilated 18.5, SOA
+  ventilated 1.36 and deposited 0.03; N 3000 → 4542 cm⁻³, dry 3.8 → 11.4 µg/m³, O:C 0.503,
+  κ 0.333; 9.1 µg/m³ SOA with the losses off; window open (3 h⁻¹) SOA peak 0.08; 60 s
+  coupling: SOA peak 1.01 (300 s −4 %), reacted 13.1 (+1 %). Wall about 8 s.
+- Level 1 of the series is "Urban air" (Ali; it was "Urban warm-up"): preset name,
+  comments, tests, A19.
+- Tests: `test_aaar_series_presets.py` checks the held O3, the free-O3 variant (2 h fast,
+  4 h slow: balance 5.7 ppb, SOA peak < 0.3), the no-loss and window-open variants.
+  Levels 1–3 fingerprints unchanged. Full suite (`pytest tests`, tuvx-jax 655668c):
+  703 passed, 650 skipped, exit 0, 343 s. Tag `aaar-stable-2026-10-19b`.
+
+---
+
 ## 2026-10-19 (Sun) — Series review: volume from the dry mass
 
 - Review of the series work (aaar-stable-2026-10-19 = c8d9794: full suite 702 passed, 650
@@ -16,7 +35,7 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
-## 2026-10-19 (Sun) — Series levels: urban warm-up and indoor air (model side)
+## 2026-10-19 (Sun) — Series levels: urban air and indoor air (model side)
 
 **Branch**: `aaar-series` (from `feat/aaar-tutorial` a631e80)
 

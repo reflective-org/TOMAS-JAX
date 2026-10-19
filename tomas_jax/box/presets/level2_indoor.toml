@@ -1,14 +1,16 @@
 # Level 2 (series) — Indoor air: limonene ozonolysis in a dark room (window glass keeps
 # out the ultraviolet light that photolyses O3 and NO2, so photolysis is off; A20). O3
-# starts at 30 ppb after an airing and relaxes toward the balance of outdoor supply and
-# surface loss; the ozonolysis makes OH, oxidation products and SOA. Outdoor air comes in
-# at the air-exchange rate (closed room 0.5 1/h; window open 3; HVAC 6), O3 is lost to
-# surfaces, condensable vapours to the walls, and particles deposit (Lai and Nazaroff
-# 2000; A17). Try: initial limonene and O3, the air-exchange rate, the wall losses.
+# is held at 30 ppb (Shantanu: "O3 = 30 ppbv"; a steady indoor source such as an
+# ioniser or printer, or a well-aired room); the ozonolysis makes OH, oxidation products
+# and SOA. Outdoor air comes in at the air-exchange rate (closed room 0.5 1/h; window
+# open 3; HVAC 6), O3 is lost to surfaces, condensable vapours to the walls, and
+# particles deposit (Lai and Nazaroff 2000; A17). Try: initial limonene and O3 (and
+# un-hold O3 to let it fall to the supply/surface-loss balance), the air-exchange rate,
+# the wall losses.
 name = "Level 2 - Indoor air"
 level = 2
 duration_h = 4.0
-hold_constant = []
+hold_constant = ["O3"]
 cstar_table = "mcm_limonene_cstar_298K.csv"
 
 [gases_ppb]

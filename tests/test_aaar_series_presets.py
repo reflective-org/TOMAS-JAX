@@ -1,6 +1,8 @@
-"""The urban warm-up and indoor air presets (series of 2026-10-19; ASSUMPTIONS A19, A20).
+"""The urban air and indoor air presets (series of 2026-10-19; ASSUMPTIONS A19, A20).
 
 Fast tests run 2 h of each; the full presets (6 h urban, 4 h indoor) are slow tests.
+The indoor preset holds O3 at 30 ppb (Shantanu: "O3 = 30 ppbv"); the free-O3 variant,
+in which O3 relaxes to the balance of outdoor supply and surface loss, is tested too.
 """
 import numpy as np
 import pytest
@@ -62,24 +64,22 @@ def test_urban_full_preset():
 def _check_indoor(r, s):
     assert r.diagnostics["warnings"] == []
     assert np.all(np.array(r.photolysis["J_NO2"]) == 0.0)      # dark room
-    loss = s.losses
-    lam, ks = loss.ventilation_per_h, loss.o3_surface_per_h
-    # O3 relaxes to the balance of outdoor supply and surface loss, lambda O3_out / (lambda + k_s)
-    o3 = np.array(r.gases_ppb["O3"])
-    o3_balance = lam * loss.outdoor_gases_ppb["O3"] / (lam + ks)
-    assert o3[0] == pytest.approx(30.0) and np.all(np.diff(o3[:3]) < 0)
-    assert o3[-1] == pytest.approx(o3_balance, rel=0.15)
+    # O3 is held at 30 ppb: every output shows the held value (the hold is the O3 source)
+    assert s.hold_constant == ("O3",)
+    np.testing.assert_allclose(r.gases_ppb["O3"], 30.0, rtol=1e-9)
     # limonene budget: initial + ventilated in - ventilated out - remaining = reacted
     lim = np.array(r.gases_ppb["LIMONENE"])
     vent = np.array(r.losses["ventilated_gases_ppb"]["LIMONENE"])
     reacted = lim[0] - lim[-1] - vent[-1]
-    assert lim[-1] < lim[0] and vent[-1] > 0 and reacted > 1.0
+    assert lim[-1] < lim[0] and vent[-1] > 0 and reacted > 5.0   # 13 ppb react in 4 h
     # ozonolysis makes OH and products; SOA forms but the walls and the window take most vapour
     assert max(r.radicals_cm3["OH"]) > 1e5
     assert r.totals["SOA_ugm3"][-1] > 0.0 and len(r.top_contributors) > 0
+    assert r.top_contributors[0]["species"] == "LIMALOOH"
     L = r.losses
     assert L["wall_vapour_ugm3"][-1] > 0 and L["ventilated_vapour_ugm3"][-1] > 0
-    assert L["o3_surface_ppb"][-1] > 10.0
+    assert L["wall_vapour_ugm3"][-1] > 5.0 * max(r.totals["SOA_ugm3"])
+    assert L["o3_surface_ppb"][-1] > 10.0                        # the surfaces take O3, the hold replaces it
     assert L["deposited_N_cm3"][-1] > 0 and L["deposited_dry_ugm3"][-1] > 0
     assert L["ventilated_N_cm3"][-1] < 0                        # outdoor air brings particles in
     for key in ("wall_vapour_ugm3", "o3_surface_ppb", "deposited_dry_ugm3", "deposited_N_cm3"):
@@ -90,9 +90,24 @@ def _check_indoor(r, s):
     assert 0.1 < p["kappa"][-1] < 0.65
 
 
+def _check_indoor_free_o3(r, s):
+    """O3 not held: it relaxes to the balance of outdoor supply and surface loss."""
+    loss = s.losses
+    lam, ks = loss.ventilation_per_h, loss.o3_surface_per_h
+    o3 = np.array(r.gases_ppb["O3"])
+    o3_balance = lam * loss.outdoor_gases_ppb["O3"] / (lam + ks)
+    assert o3[0] == pytest.approx(30.0) and np.all(np.diff(o3[:3]) < 0)
+    assert o3[-1] == pytest.approx(o3_balance, rel=0.15)
+
+
 def test_indoor_two_hours():
     s = load_preset("level2_indoor").replace(duration_h=2.0)
     _check_indoor(run(s), s)
+
+
+def test_indoor_two_hours_free_o3():
+    s = load_preset("level2_indoor").replace(duration_h=2.0, hold_constant=())
+    _check_indoor_free_o3(run(s), s)
 
 
 @pytest.mark.slow
@@ -100,11 +115,17 @@ def test_indoor_full_preset_and_wall_loss_switch():
     s = load_preset("level2_indoor")
     r = run(s)
     _check_indoor(r, s)
-    assert 0.05 < max(r.totals["SOA_ugm3"]) < 1.0               # about 0.2 ug/m3 with the walls on
+    assert 0.5 < max(r.totals["SOA_ugm3"]) < 2.0                # about 1 ug/m3 with the walls on
     # without wall losses and ventilation, the same chemistry gives several ug/m3 of SOA
     r_free = run(s.replace(losses={"ventilation_per_h": 0.0, "o3_surface_per_h": 0.0,
                                    "organic_vapour_wall_per_s": 0.0, "particle_deposition": "off"}))
     assert r_free.totals["SOA_ugm3"][-1] > 5.0 and r_free.losses["wall_vapour_ugm3"][-1] == 0.0
-    # opening the window raises indoor O3 (more outdoor supply than surface loss)
+    # opening the window ventilates the limonene before it reacts: less SOA, more out
     r_open = run(s.replace(losses={"ventilation_per_h": 3.0}))
-    assert r_open.gases_ppb["O3"][-1] > 2.0 * r.gases_ppb["O3"][-1]
+    assert max(r_open.totals["SOA_ugm3"]) < 0.5 * max(r.totals["SOA_ugm3"])
+    assert (r_open.losses["ventilated_gases_ppb"]["LIMONENE"][-1]
+            > r.losses["ventilated_gases_ppb"]["LIMONENE"][-1])
+    # O3 free: it falls to lambda O3_out / (lambda + k_s) = 5.7 ppb and SOA stays below 0.3 (A20)
+    r_o3 = run(s.replace(hold_constant=()))
+    _check_indoor_free_o3(r_o3, s)
+    assert max(r_o3.totals["SOA_ugm3"]) < 0.3

@@ -211,7 +211,7 @@ boxvol = 1e10 cm³ (so per-cell thresholds mean 1 #/cm³); outputs µg/m³, ppb,
 | `level2_limonene_soa` | limonene oxidation → ~9 µg/m³ SOA (Jathar c* table, A8), top contributors | 6 h | 300 s | ~6 s |
 | `level3_day_night` | diurnal J/OH/NO3; nitrate 0 → 3.3 → 7.1 µg/m³ for γ = 0, 0.02, 0.1; SOA 0.05 µg/m³ | 24 h | 300 s | ~27 s |
 | `level1_urban` | O3/NO/NO2 in midday sun with 1 ppb/h NO (photostationary state to 1 %); 2e4 → 1.2e4 cm⁻³ by coagulation only, dry mass conserved | 6 h | 300 s | ~5.5 s |
-| `level2_indoor` | dark limonene ozonolysis with ventilation, O3 surface loss, vapour wall loss and deposition; O3 30 → 5.6 ppb; SOA peak 0.2 µg/m³ (7 with the losses off) | 4 h | 300 s | ~7.5 s |
+| `level2_indoor` | dark limonene ozonolysis at O3 held at 30 ppb, with ventilation, O3 surface loss, vapour wall loss and deposition; SOA peak 1.0 µg/m³ (9 with the losses off; 0.2 with O3 free to fall to 5.6 ppb) | 4 h | 300 s | ~8 s |
 
 With nucleation on, every preset runs at 60 s coupling with 5 s micro-steps and takes
 about 14 s, 25 s and 112–125 s ([Time steps with nucleation](#time-steps-with-nucleation)).

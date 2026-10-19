@@ -10,7 +10,7 @@ from tomas_jax.box.scenario import Scenario, list_presets, load_preset
 
 
 def test_presets_load():
-    # the original levels plus the series added 2026-10-19 (urban warm-up, indoor air)
+    # the original levels plus the series added 2026-10-19 (urban air, indoor air)
     assert list_presets() == ["level1_urban", "level1_volatility", "level2_indoor",
                               "level2_limonene_soa", "level3_day_night"]
     assert [load_preset(n).level for n in list_presets()] == [1, 1, 2, 2, 3]

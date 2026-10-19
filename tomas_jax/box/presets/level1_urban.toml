@@ -1,10 +1,10 @@
-# Level 1 (series) — Urban warm-up: O3, NO and NO2 cycling in midday sunlight, and a
+# Level 1 (series) — Urban air: O3, NO and NO2 cycling in midday sunlight, and a
 # three-mode particle population that only coagulates. The two run side by side and
 # neither affects the other (no condensation, no SOA, no nucleation; ASSUMPTIONS A19).
 # Midlatitude summer: 40 N, 75 W, 1 July, 10:00 to 16:00 local (EDT = UTC-4).
 # Try: cloud fraction; initial O3, NO, NO2; temperature; NO emissions; the particle
 # number, mode sizes and inorganic:organic share.
-name = "Level 1 - Urban warm-up"
+name = "Level 1 - Urban air"
 level = 1
 duration_h = 6.0
 start_utc = "2026-07-01T14:00:00+00:00"   # 10:00 EDT
