@@ -108,7 +108,7 @@ S1 and S2; the tables in the case READMEs for G2 and G3).
 | Case | Preset | Duration | Processes in both models | Preset processes switched off (not tested) |
 |---|---|---|---|---|
 | G2 | `level2_limonene_soa` | 6 h, constant light | chemistry | SOA partitioning, H2SO4 condensation, coagulation (seed is a spectator; gas phase checked bit-identical without it) |
-| G3 | `level3_day_night` | 24 h from 12:00 EDT, Buffalo, 1 July | chemistry, NO2 held at 1 ppb | SOA partitioning, H2SO4 condensation, coagulation, N2O5 uptake (preset γ = 0.02) |
+| G3 | `level3_day_night` | 24 h from 12:00 EDT, Buffalo, 1 July (comparison run; the preset itself starts at 00:00 EDT since A25) | chemistry, NO2 held at 1 ppb | SOA partitioning, H2SO4 condensation, coagulation, N2O5 uptake (preset γ = 0.02) |
 | S1 | `level1_volatility` | 12 h | SOA partitioning of one surrogate (c* = 1 and 100 µg m⁻³) | coagulation |
 | S2 | `level2_limonene_soa` | 6 h | chemistry, H2SO4 condensation, SOA partitioning | coagulation |
 

@@ -204,20 +204,23 @@ is assumed, why, where it is implemented and how to change it.
   (Li: −78 %, −79 %, −15 %, +167 %, −35 %). This matches the PyCHAM comparison, where
   PyCHAM's own Nannoolal vapour pressures gave 0.51× the Li SOA and 5 % N-containing
   (S2 `native`, `docs/aaar/pycham_comparison.md`).
-- **Level 3 preset (24 h; 300 s coupling since 2026-10-17, A12):** SOA 0.048 µg/m³ at
-  24 h and particle nitrate 3.28 µg/m³ (at the old 900 s: 0.060 and 3.14; Li at 900 s:
-  7.85 and 5.16). There is no dilution, yet SOA peaks at 0.36 µg/m³ about 2 h in and
-  then falls: 0.24 at 4 h, 0.15 at 6 h, about 0.12 through the night, 0.078 at 22 h and
-  0.048 at 24 h. 2 ppb limonene gives little organic mass to absorb into, and OH (up to
-  1.2×10⁷ cm⁻³ on day 1, 2.5×10⁷ on day 2) oxidises and photolysis destroys the
+- **Level 3 preset (24 h; 300 s coupling since 2026-10-17, A12; starts at 00:00 EDT since
+  2026-10-20, A25):** SOA 0.070 µg/m³ at 24 h and particle nitrate 1.39 µg/m³ (from 12:00
+  EDT, before A25: 0.048 and 3.28; at 900 s from noon: 0.060 and 3.14; Li at 900 s from
+  noon: 7.85 and 5.16). There is no dilution, yet SOA peaks at 0.49 µg/m³ at 10.5 h
+  (10:30 EDT) and then falls: 0.19 at 2 h, 0.31 at 4 h, 0.44 at 6 h, 0.45 at 12 h, 0.08
+  at 18 h and 0.070 at 22-24 h. 2 ppb limonene gives little organic mass to absorb into,
+  and OH (up to 2.2×10⁷ cm⁻³ at 14:30) oxidises and photolysis destroys the
   gas-phase semivolatile hydroperoxides, so the particles evaporate to follow the gas.
-  Nitrate drops against Li because SOA and its water no longer add surface for N2O5
-  uptake; γ 0.002 / 0.02 / 0.1 → 0.40 / 3.28 / 7.15 µg/m³ (900 s: 0.39 / 3.14 / 6.81;
-  Li at 900 s: 0.98 / 5.16 / 7.71). Measured at 900 s only: the table SOA is 2 %
-  N-containing (Li: ~100 %), and k_het rises ×1.22 over the first 4 h (Li ×2.76) and
-  ends 23 % below the chamber's 4×10⁻⁴ s⁻¹ (Li +20 %). Because the SOA is so small, it
+  Nitrate is made only at night and, because the run starts in the dark with NO3 and
+  N2O5 at zero (A25), the first night (00:00-05:47) forms almost none: 0.04 µg/m³ at
+  12 h, 0.34 at 22 h and 1.39 at 24 h, the second evening's build-up. Nitrate drops against
+  Li because SOA and its water no longer add surface for N2O5 uptake; γ 0.002 / 0.02 /
+  0.1 → 0.18 / 1.39 / 3.15 µg/m³ (from noon, 300 s: 0.40 / 3.28 / 7.15; 900 s: 0.39 /
+  3.14 / 6.81; Li at 900 s: 0.98 / 5.16 / 7.71). The measurements in the rest of this
+  bullet (N-containing share, k_het, coupling interval) were made at 900 s from noon only. Because the SOA is so small, it
   is far more sensitive to the coupling interval than nitrate (A12: against a 30 s
-  reference, SOA +10 % at 300 s and +38 % at 900 s, nitrate −2.0 % and −6.4 %).
+  reference, SOA +10 % at 300 s and +38 % at 900 s, nitrate −2.0 % and −6.4 %, both from noon).
 - Level 1, and Levels 2 and 3 with `cstar_table=None`, are bit-identical to 2faa391
   (67 arrays compared). Run times are unchanged (Level 2 median 5.8 s, Level 3 12.8 s).
 - Radicals (odd H + N + Cl + Br) never partition. Species more volatile than
@@ -658,11 +661,29 @@ is assumed, why, where it is implemented and how to change it.
   unchanged (fingerprints). Without SO2 the source is zero and nothing but the time
   steps changes; a daytime burst needs SO2 of 20–50 ppb (a polluted-city value).
 
+### A25 — Level 3 starts at 00:00 local time of the place (2026-10-20, for Shantanu to confirm)
+
+- The Day and night level used to start at 12:00 EDT (16:00 UTC), in the middle of the
+  day. It now starts at local midnight, so the 24 h plot reads 00:00 to 00:00 and shows a
+  whole night, a whole day and the next evening. The preset is Buffalo, NY on 1 July
+  2026 (EDT, UTC−4): `start_utc` = 2026-07-01T04:00:00+00:00.
+- The start in UTC for any place is its local midnight:
+  t_UTC = 00:00 − (UTC offset of the place on that date), for example Buffalo 00:00 − (−4 h)
+  = 04:00 UTC. For a bare latitude and longitude (no time zone) the solar midnight is used,
+  t_UTC = 00:00 − λ/15 h with λ in degrees east (90 °E: 00:00 − 6 h = 18:00 UTC the day before).
+- The run now starts in the dark with no spin-up: NO3, N2O5, HNO3 and particle nitrate start
+  from the preset values (NO3 = N2O5 = 0, no nitrate in the seed), so the first night (here
+  00:00-05:47) builds almost no nitrate and the result is dominated by the second evening.
+  Level 3 at 24 h: SOA 0.070 µg/m³ (was 0.048) and nitrate 1.39 µg/m³ (was 3.28); wall time
+  about 30 s. The fingerprints of Level 3 (1 h and 24 h) were regenerated; Levels 1-2 are unchanged.
+  Alternatives, if the dark start is not wanted: a 24 h spin-up before the plotted day, or
+  starting from a day-two state. For Shantanu to confirm.
+
 ## Questions for Shantanu
 
 1. ~~c* table for the mechanism species~~ — received 2026-10-16 and used by Levels 2
    and 3 (A8). Open: is ignoring particle-phase PAN decomposition acceptable now that
-   23 PANs still condense? Is Level 3 SOA of 0.05 µg/m³ (peak 0.36 at 2 h) acceptable
+   23 PANs still condense? Is Level 3 SOA of 0.07 µg/m³ (peak 0.49 at 10:30 EDT) acceptable
    for the tutorial, or should the Level 3 preset change (more limonene, lower NO2
    hold)? With the table, Level 2 SOA falls with NOx (8.5 µg/m³ at NOx = 0, 1.0 at
    10 ppb) and is 90 % hydroperoxides: does that match your expectation and your own
@@ -698,3 +719,6 @@ is assumed, why, where it is implemented and how to change it.
    H2SO4 condensation switched on with nucleation in the urban level — acceptable, or
    would you rather give the tutorial a HOM yield (a fixed fraction of the limonene
    oxidised) for the organic path and keep c* ≤ 3e-4 µg/m³?
+10. Level 3 start (2026-10-20, A25): 00:00 local time with no spin-up (SOA 0.070,
+   nitrate 1.39 µg/m³, almost no nitrate on the first night) — acceptable, or add a
+   24 h spin-up before the plotted day?

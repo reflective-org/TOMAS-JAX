@@ -4,7 +4,7 @@
 name = "Level 3 - Day and Night"
 level = 3
 duration_h = 24.0
-start_utc = "2026-07-01T16:00:00+00:00"   # 12:00 local (EDT) in Buffalo, NY
+start_utc = "2026-07-01T04:00:00+00:00"   # 00:00 local (EDT) in Buffalo, NY, 1 July (A25)
 hold_constant = ["NO2"]
 gamma_n2o5 = 0.02
 # per-species c* (S. Jathar, Nannoolal via PyCHAM; ASSUMPTIONS A8); omit for Li et al. (2016)

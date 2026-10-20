@@ -6,6 +6,7 @@ Nucleation is off in every preset, so the stored fingerprints
 (tests/test_aaar_presets_unchanged.py) and the series preset tests guard the runs
 without it; these tests cover the inputs and the runs with it on.
 """
+import datetime
 import math
 
 import jax.numpy as jnp
@@ -239,9 +240,14 @@ def test_level2_indoor_high_so2_four_hours():
     assert gain[(d > 4.0) & (d < 10.0)].max() > 0.0
 
 
+_NOON_EDT = datetime.datetime(2026, 7, 1, 16, 0, tzinfo=datetime.timezone.utc)
+
+
 def _l3(hours, **nucleation):
+    # The preset itself starts at 00:00 local (A25); these tests are about the daytime burst
+    # and were measured from 12:00 local, so they keep that start.
     s = load_preset("level3_day_night").replace(processes={"nucleation": True}, duration_h=hours,
-                                                numerics={"output_dt_s": 1800.0})
+                                                start_utc=_NOON_EDT, numerics={"output_dt_s": 1800.0})
     return s.replace(nucleation=nucleation) if nucleation else s
 
 
