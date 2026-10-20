@@ -304,7 +304,9 @@ These numbers were measured with the Li et al. (2016) c\*. With the Jathar c\* t
 that the presets use since 2026-10-16 (ASSUMPTIONS A8), Level 3 nitrate (PPM, nitrate
 gate fix) is 3.137 / 3.134 / 3.134 µg m⁻³ at 40 / 80 / 160 bins (less SOA, so less
 surface for N2O5 uptake). These are at 900 s coupling; at the 300 s interval the
-Level 3 preset uses since 2026-10-17 they are 3.284 / 3.281 / 3.280 µg m⁻³.
+Level 3 preset uses since 2026-10-17 they are 3.284 / 3.281 / 3.280 µg m⁻³. (All Level 3
+numbers in this file were measured from the 12:00 EDT start; the preset has started at
+00:00 EDT since 2026-10-20, ASSUMPTIONS A25, and gives 1.39 µg m⁻³ nitrate at 24 h at 40 bins.)
 
 Both converge to 5.149 µg m⁻³ (5.148 with the 2026-10-16 nitrate gate,
 see Micro-step). At 40 bins PPM was 0.21 % above the 320-bin

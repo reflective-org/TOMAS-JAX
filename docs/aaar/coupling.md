@@ -112,6 +112,10 @@ Level 3 preset (24 h, 40 bins, nucleation off), measured 2026-10-17: final value
 | 30 s | 0.04357 (+0.5 %) | 3.3516 (0.00 %) | 5.5584 (+0.03 %) | 2553.7 (0.00 %) | 151.09 (0.00 %) | 2.506e7 (0.00 %) | 1.757e9 (0.00 %) |
 | 30 s, 2.5 s micro-step | 0.04335 | 3.3514 | 5.5569 | 2553.6 | 151.08 | 2.506e7 | 1.757e9 |
 
+These Level 3 numbers (and the figures in the text below) were measured from the 12:00 EDT
+start; since 2026-10-20 the preset starts at 00:00 EDT (ASSUMPTIONS A25: SOA 0.070,
+nitrate 1.39 µg/m³ at 24 h at 300 s), so the coupling errors are quoted for the old start.
+
 GMD is the number geometric mean diameter, exp(Σ N_i ln D_i / Σ N_i) over the bins.
 Peak OH is at noon of the second day (24 h; 1.19e7 cm⁻³ on day 1, at 4 h) and peak
 NO3 at 00:30 local time (12.5 h). The SOA error is about +0.035 to +0.04 % per second
