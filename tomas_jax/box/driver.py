@@ -13,7 +13,11 @@ Operator split per coupling interval dt_c (``Scenario.numerics.coupling_dt_s``):
 Level 1 (no chemistry) skips 1-3 and 5: one surrogate class with a production rate.
 
 With nucleation on, the coupling interval and the aerosol micro-step are shortened to
-NUCLEATION_MAX_COUPLING_DT_S and NUCLEATION_MAX_MICRO_DT_S (``time_steps``).
+NUCLEATION_MAX_COUPLING_DT_S and NUCLEATION_MAX_MICRO_DT_S (``time_steps``); the
+nucleation inputs besides H2SO4 (``Scenario.nucleation``: ion-pair production, NH3 and
+the nucleating organic vapour BioOxOrg, the gas-phase sum of the mechanism's lowest-c*
+species re-read every interval) go to the aerosol step through ``AerosolForcing``; and
+H2SO4 condensation is on so the new particles grow (``_processes``; ASSUMPTIONS A21-A24).
 """
 from __future__ import annotations
 
@@ -263,7 +267,9 @@ def _processes(s: Scenario, has_organics: bool) -> tuple[str, ...]:
         out.append("nucleation")
     if p.coagulation:
         out.append("coagulation")
-    if p.h2so4_condensation:
+    # New particles grow by H2SO4 condensation: nucleation turns it on even where the
+    # scenario keeps gases and particles apart (Level 1 urban air; ASSUMPTIONS A24)
+    if p.h2so4_condensation or p.nucleation:
         out.append("h2so4_condensation")
     if p.soa_partitioning and has_organics:
         out.append("soa_partitioning")
@@ -316,6 +322,10 @@ def run(scenario: Scenario, progress_cb: Callable[[float], None] | None = None,
     dt_c, n_int = ts.coupling_dt_s, n_req * ts.split
     out_every = max(1, int(round(s.numerics.output_dt_s / dt_req))) * ts.split
     warnings: list[str] = _time_step_warning(ts)
+    if s.processes.nucleation and not s.processes.h2so4_condensation:
+        # shown to students in the web app, so no reference to repository files here
+        warnings.append("H2SO4 condensation is on as well, because nucleation is on: the new "
+                        "particles need it to grow.")
     if s.processes.chemistry and s.surrogate is not None:
         raise ValueError("a scenario uses either the surrogate organic or chemistry, not both")
 
@@ -390,6 +400,22 @@ def run(scenario: Scenario, progress_cb: Callable[[float], None] | None = None,
             raise ValueError("emissions and outdoor gases need chemistry on (processes.chemistry)")
     h2so4_rate_l1 = cm3_to_kg_cell(s.h2so4_production_cm3_s, MW_H2SO4, boxvol)
 
+    # --- nucleation inputs besides H2SO4 (docs/aaar/coupling.md "Nucleation inputs") ------
+    # ions and NH3 are constants; BioOxOrg is re-read from the gas state every interval
+    nucl = s.nucleation
+    nucleating = s.processes.nucleation
+    nh3_cm3 = nucl.nh3_ppb * 1e-9 * air["M"]                 # [molec/cm3]
+    org_idx = np.zeros(0, dtype=int)                        # mechanism indices of BioOxOrg
+    if nucleating and chem and nucl.organic:
+        org_idx = class_map.species_idx[class_map.log10_cstar <= nucl.organic_log10_cstar_max]
+    nucl_inputs = None
+    if nucleating:
+        nucl_inputs = {"ion_pairs_cm3_s": float(nucl.ion_pairs_cm3_s), "nh3_cm3": float(nh3_cm3),
+                       "organic_log10_cstar_max": float(nucl.organic_log10_cstar_max),
+                       "organic_species": [class_map.species[k] for k in
+                                           np.where(class_map.log10_cstar <= nucl.organic_log10_cstar_max)[0]]
+                       if chem and nucl.organic else []}
+
     # --- emissions, ventilation, surface and wall losses (all off by default) ---------------
     loss_on = s.losses.any
     ls = _loss_setup(s, xk, boxvol, cfg, index if chem else None, bridge if chem else None, k_cls)
@@ -403,12 +429,14 @@ def run(scenario: Scenario, progress_cb: Callable[[float], None] | None = None,
 
     # --- outputs -----------------------------------------------------------------------------
     rec = {key: [] for key in ("t", "nk", "mk", "gc", "y", "cs", "jnuc", "j", "sza", "tracker",
-                               "budget")}
+                               "budget", "bioox")}
     gas_steps = 0
     soa_bad = 0
     nitrate_expected = nitrate_added = 0.0
+    org_conc = 0.0                                           # BioOxOrg [molec/cm3], per interval
 
     def record(t_s, st, diag_cs, diag_jnuc, y_now, j_now):
+        rec["bioox"].append(float(org_conc))
         rec["t"].append(t_s / 3600.0)
         rec["nk"].append(np.asarray(st.Nk))
         rec["mk"].append(np.asarray(st.Mk))
@@ -465,8 +493,17 @@ def run(scenario: Scenario, progress_cb: Callable[[float], None] | None = None,
             gc_new = np.asarray(state.Gc).copy()
             gc_new[SRTSOA1:SRTSOA1 + k_cls] = bridge.class_sum(gas_before)
             state = state._replace(Gc=jnp.asarray(gc_new))
+            if org_idx.size:
+                org_conc = float(y[org_idx].sum())           # the gas the aerosol step sees
+        # the nucleation inputs are passed only with nucleation on, so runs without it
+        # build the same forcing as before
+        nucl_kw = {}
+        if nucleating:
+            nucl_kw = dict(nh3_conc=jnp.float64(nh3_cm3), fion=jnp.float64(nucl.ion_pairs_cm3_s),
+                           org_conc=jnp.float64(org_conc))
         forcing = AerosolForcing(jnp.float64(h2so4_rate), jnp.asarray(org_rate, dtype=jnp.float64),
-                                 jnp.float64(nitrate_rate), jnp.asarray(weights, dtype=jnp.float64))
+                                 jnp.float64(nitrate_rate), jnp.asarray(weights, dtype=jnp.float64),
+                                 **nucl_kw)
         state, diag = aerosol_outer_step(state, forcing, soa, dt_c, micro_dt=ts.micro_dt_s,
                                          processes=processes, cfg=cfg)
         if loss_on:
@@ -516,7 +553,10 @@ def run(scenario: Scenario, progress_cb: Callable[[float], None] | None = None,
                       "requested_micro_dt_s": ts.requested_micro_dt_s,
                       "micro_dt_s": ts.micro_dt_s,
                       "processes": list(processes),
-                      "aerosol_cfg": _cfg_changes(cfg)})
+                      "aerosol_cfg": _cfg_changes(cfg),
+                      # nucleation inputs (None with nucleation off); BioOxOrg per output time
+                      "nucleation_inputs": nucl_inputs,
+                      "nucleating_organic_cm3": rec["bioox"]})
 
 
 def _cfg_changes(cfg: AerosolStepConfig) -> dict:

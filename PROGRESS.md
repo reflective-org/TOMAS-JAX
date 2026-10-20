@@ -4,6 +4,52 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-10-20 (Tue) — Nucleation inputs: ions, NH3, organic vapour; Level 1 H2SO4 reaches the particles
+
+**Branch**: `aaar-nucleation-inputs` (from `dev` 617b52b). Ali (2026-10-20, verbatim):
+"If I unlock all inputs both in level one and level two, when I have nucleation on with
+large amount of SO2, the size distribution shows no nucleation. ... We should see
+nucleation without ions, NH3, and organic as well. Right? The nucleation should work in
+different setup. ... We can document the assumptions".
+
+- Cause: with nucleation on the Riccobono/Dunne scheme got NH3 = ions = organic = 0 (pure
+  binary neutral nucleation, J 1e-8 cm⁻³ s⁻¹ at the preset temperatures), and in the
+  urban level the chemistry's H2SO4 never reached the particles (condensation off, no SO2).
+- `box/scenario.py`: new `Nucleation` block (`Scenario.nucleation`, TOML `[nucleation]`):
+  `ion_pairs_cm3_s` (q, 0–1e4, default 4), `nh3_ppb` (0–1e4, default 3; 30 in the indoor
+  preset; hint for molec/cm³ values), `organic` (True/False) and
+  `organic_log10_cstar_max` (−15 to 10, default −0.5 = c* ≤ 0.3 µg/m³). Checked in
+  `__post_init__` like the other inputs; read only with `processes.nucleation` on.
+- `box/driver.py`: passes `fion`, `nh3_conc` [molec/cm³] and `org_conc` through
+  `AerosolForcing` only when nucleation is on (runs without it build the same forcing as
+  before; fingerprints unchanged). BioOxOrg = Σ gas of the mechanism's closed-shell
+  organics with log10 c* ≤ the threshold, from the gas state handed to the aerosol step
+  each interval (13 LVOC species with the Jathar table; the MCM has no ELVOC). With
+  nucleation on `_processes` adds `h2so4_condensation` (urban level) with a warning line
+  so the new particles grow. New diagnostics `nucleation_inputs` and
+  `nucleating_organic_cm3`.
+- Presets: `[nucleation]` sections in `level1_urban`, `level2_indoor` (NH3 30 ppb),
+  `level3_day_night`; nucleation stays off everywhere.
+- Measured (laptop, defaults): Level 3 24 h bursts in daylight, N 3000 → 23345 cm⁻³ at
+  16:30 (H2SO4 5.9e7, J 10.6 at 15:30), mode grown to 42 nm by 24 h, 118 s; inputs off
+  one by one: J 1.7e-8 / 4.6e-4 / 9.0 / 10.6. Level 1 urban + SO2 30 ppb: H2SO4 4.4e7,
+  J 1.0 at noon, 222 cm⁻³ below 10 nm, N still falls (12609 vs 11533 without SO2); 50
+  ppb: 940 cm⁻³ below 10 nm. Level 2 indoor + SO2 30 ppb: ozonolysis OH gives H2SO4
+  9.1e7 in 10 min, J 167 (NH3 30 ppb), N 3000 → 74105 at 20 min → 4599 at 4 h. Wall
+  times unchanged (28–33 s for 4–6 h). Table: `docs/aaar/coupling.md` "Nucleation inputs".
+- Docs: ASSUMPTIONS A13 rewritten, A21 (ions, Laakso 2004 / Hirsikko 2011), A22 (NH3,
+  Ampollini 2019 / Behera 2013), A23 (BioOxOrg, Riccobono 2014 / Yu 2017 / Donahue 2012 /
+  Schervish & Donahue 2020), A24 (Level 1 coupling), question 9 for Shantanu; coupling.md,
+  aerosol_step.md, CLAUDE.md. DOIs verified via Crossref; links only.
+- Tests: `tests/test_aaar_nucleation_inputs.py` (checks, rate order binary < ions < NH3 <
+  organic at the defaults and inside a Level 3 run, urban + SO2 new particles, indoor + SO2
+  burst, Level 3 daylight burst; slow: the full 6 h / 4 h / 24 h runs). Fingerprints not
+  regenerated.
+- Open: 30 ppb of SO2 indoors is a stress test; the organic path is an LVOC stand-in for
+  HOM the mechanism lacks (A23); tomas-api/tomas-fe mirror of the new inputs is piece 2/3.
+
+---
+
 ## 2026-10-19 (Sun) — Indoor air holds O3 at 30 ppb; "Urban air"
 
 - `level2_indoor` now holds O3 at 30 ppb (`hold_constant = ["O3"]`; Shantanu: "limonene

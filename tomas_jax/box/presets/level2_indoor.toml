@@ -66,6 +66,16 @@ h2so4_condensation = true
 soa_partitioning = true
 n2o5_uptake = false
 
+# Nucleation inputs, used only when nucleation is switched on (ASSUMPTIONS A21-A24):
+# indoor NH3 is tens of ppb (people, cleaning products, cooking); ion-pair production
+# as outdoors near the ground. There is no sunlight, so OH (and H2SO4 from SO2) comes
+# from the ozonolysis only.
+[nucleation]
+ion_pairs_cm3_s = 4.0
+nh3_ppb = 30.0
+organic = true
+organic_log10_cstar_max = -0.5
+
 [numerics]
 coupling_dt_s = 300.0
 output_dt_s = 600.0

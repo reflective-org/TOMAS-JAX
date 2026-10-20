@@ -3,7 +3,7 @@
 `box.driver.run(scenario, progress_cb=None, cancel=None) -> RunResult` couples the
 MCM gas chemistry and TUV-x photolysis (`gaschem`, see `gaschem.md`) to TOMAS with
 c*-class SOA partitioning and N2O5 uptake (`aerosol_step.md`, `soa_partitioning.md`,
-`heterogeneous.md`). Modelling assumptions are in `ASSUMPTIONS.md` (A1–A20).
+`heterogeneous.md`). Modelling assumptions are in `ASSUMPTIONS.md` (A1–A24).
 
 ## Inputs and outputs
 
@@ -35,6 +35,12 @@ c*-class SOA partitioning and N2O5 uptake (`aerosol_step.md`, `soa_partitioning.
   `particle_deposition` "off" | "lai_nazaroff", `room` with u*, S/V, height and particle
   density) and the seed salts (`seed.ammonium_nitrate_mass_fraction`, `seed.ammonium`,
   `seed.organic_o_to_c`). Equations below; sources in ASSUMPTIONS A15–A20.
+- Nucleation inputs (2026-10-20, read only with `processes.nucleation` on, so every
+  preset is still bit-identical): `nucleation.ion_pairs_cm3_s` (q, 0–1e4),
+  `nucleation.nh3_ppb` (0–1e4, with a hint when a molec/cm³ value is given),
+  `nucleation.organic` (True/False) and `nucleation.organic_log10_cstar_max` (−15 to 10).
+  TOML table `[nucleation]`. Equations and defaults in
+  [Nucleation inputs](#nucleation-inputs); sources in ASSUMPTIONS A21–A24.
 
 `run(scenario, progress_cb=None, cancel=None, observer=None, aerosol_cfg=None,
 nucleation_caps=True)`: the optional
@@ -51,11 +57,15 @@ the run.
 2. Gas chemistry over Δt_c (`integrate_interval`). `SA` (from SO3 + H2O) and
    `NA_HET` (from `<34>`, renamed — A1) are counters: read, converted to rates
    (kg/cell/s) for the aerosol step, reset to zero.
-3. Gather: condensable species (ClassMap) → class gas mass in `Gc[1:1+K]`.
+3. Gather: condensable species (ClassMap) → class gas mass in `Gc[1:1+K]`. With
+   nucleation on, the same gas state gives BioOxOrg, the sum of the lowest-c* species
+   ([Nucleation inputs](#nucleation-inputs)), held constant over the interval.
 4. `aerosol_outer_step` over Δt_c in 60 s micro-steps (5 s with nucleation, see
    below): sources (H2SO4, nitrate by
    uptake weights, PPM remap) → MNFIX → nucleation → coagulation → H2SO4 condensation
-   → SOA partitioning (PPM remap) → water.
+   → SOA partitioning (PPM remap) → water. H2SO4 condensation is on whenever
+   nucleation is, even in a preset that switches it off (Level 1 urban air), so the
+   new particles grow; the run says so in a warning line.
 5. Scatter (`ClassBridge`): the class gas change goes back to species — condensation
    by gas share, evaporation by share of the per-species particle tracker P_i — then
    P_i is rescaled to the size-resolved class mass. "Hold constant" species are reset.
@@ -203,6 +213,102 @@ worker's job path, one thread). The API's tutorial job limit is 480 s for this r
 Units: gas state molec/cm³; hand-off kg/cell; TOMAS #/cell and kg/cell with
 boxvol = 1e10 cm³ (so per-cell thresholds mean 1 #/cm³); outputs µg/m³, ppb, cm⁻³.
 
+## Nucleation inputs
+
+Until 2026-10-20 the nucleation scheme saw H2SO4 and temperature only (NH3, ions and
+the organic vapour were 0, so only the binary neutral path of Dunne et al. 2016 was
+active, and at the preset temperatures nothing nucleated), and in the urban preset the
+chemistry's H2SO4 never reached the particles. `Scenario.nucleation` now supplies the
+other inputs; they are read only when `processes.nucleation` is on, so every run
+without nucleation is unchanged (ASSUMPTIONS A13, A21–A24).
+
+The rate the aerosol step uses (`physics/nucleation.py::ricco_dunne_nucleation_rate`),
+with C the H2SO4 concentration, A the NH3 concentration (both in units of 1e6 cm⁻³ in
+the Dunne terms), T the temperature and n± the small-ion concentration:
+
+- Dunne et al. (2016), four paths, J = J_bn + J_tn + J_bi + J_ti [cm⁻³ s⁻¹]:
+  J_bn = k_bn(T) C^3.95 (binary neutral), J_bi = k_bi(T) n± C^3.37 (binary ion-induced),
+  J_tn = k_tn(T) f_n(C, A) and J_ti = k_ti(T) n± f_i(C, A) (ternary with NH3), where
+  f_n = A C^2.89 / (1.6e-6 + C^2.89 / A^8), f_i = A C^3.14 / (4.85e-3 + C^3.14 / A^3.07)
+  and each k(T) = exp(u − exp(v (T/1000 − w))) with the paper's u, v, w per path.
+- Small ions from the ion-pair production rate q [pairs cm⁻³ s⁻¹] in steady state with
+  recombination: n± = √(q / α), α = 6e-8 √(300/T) + 6e-26 M (300/T)^4 cm³ s⁻¹ (M the
+  air number density). q = 0 switches both ion paths off; A = 0 both ternary paths.
+- Riccobono et al. (2014) with the Yu et al. (2017) temperature factor:
+  J_org = k_m [H2SO4]² [BioOxOrg] exp(ΔH/k_B (1/T − 1/T₀)), k_m = 3.27e-21 cm⁶ s⁻¹,
+  ΔH = 2.66e-19 J, T₀ = 278 K.
+
+Inputs (`box/scenario.py::Nucleation`, TOML `[nucleation]`):
+
+| field | meaning | unit | default | presets |
+|---|---|---|---|---|
+| `ion_pairs_cm3_s` | q, ion-pair production | pairs cm⁻³ s⁻¹ | 4 | 4 in all three (A21) |
+| `nh3_ppb` | NH3 mixing ratio, constant | ppb | 3 | 3 urban and day & night, 30 indoor (A22) |
+| `organic` | Riccobono path from the mechanism's vapours | True/False | True | True |
+| `organic_log10_cstar_max` | BioOxOrg = gas-phase sum of the closed-shell organics with log10 c* ≤ this | log10 µg/m³ at 298 K | −0.5 (c* ≤ 0.3 µg/m³) | −0.5 (A23) |
+
+The driver converts NH3 to molec/cm³ once (A × 1e-9 × M), takes BioOxOrg from the gas
+state it hands to the aerosol step (after the interval's chemistry and gas losses, the
+same state the SOA partitioning sees) as Σ_i y_i over the species with
+log10 c*_i ≤ `organic_log10_cstar_max` from the scenario's c* table, and passes all
+three through `AerosolForcing` (`fion`, `nh3_conc`, `org_conc`), constant over the
+interval. Without chemistry (Level 1 volatility) BioOxOrg is 0. The organic path does
+not consume the vapour (the nucleated organic mass, 10 % of the cluster, is created in
+`SRTORG_NUC` as before, AC2). `diagnostics["nucleation_inputs"]` records q, NH3
+[molec/cm³], the threshold and the species BioOxOrg sums (None with nucleation off),
+and `diagnostics["nucleating_organic_cm3"]` BioOxOrg at every output time.
+
+Why c* ≤ 0.3 µg/m³: Riccobono's BioOxOrg were the highly oxygenated pinanediol
+oxidation products seen by a nitrate chemical-ionisation mass spectrometer, i.e. the
+ELVOC/LVOC end of the volatility scale. The MCM limonene mechanism has no autoxidation,
+so its lowest c* in the Jathar table is 2.3e-3 µg/m³ (HPC52CO3H) and the ELVOC boundary
+of Donahue et al. (2012), 3e-4 µg/m³, selects nothing. The default therefore takes the
+LVOC and below (13 species at −0.5: C925OOH, C825OOH, C734OOH, INDOOH, INDHPCO3H,
+HPC52PAN, HPC52CO3H, C537OOH and five nitro-acids); it is an upper-bound stand-in, and
+the threshold is an input so it can be tightened (−3.5 gives the ELVOC definition and
+no organic nucleation with this mechanism).
+
+Level 1 urban air keeps gases and particles apart by switching H2SO4 condensation and
+SOA partitioning off. With nucleation on, `_processes` adds `h2so4_condensation`, so
+the H2SO4 the chemistry makes from SO2 both nucleates and condenses, dC/dt = P − CS·C
+with CS the condensation sink of the particles, and the new particles grow. The run
+warns "H2SO4 condensation is on as well, because nucleation is on: the new particles
+need it to grow." Without SO2 in the urban preset the H2SO4 source is zero, so nothing
+changes but the time steps; add SO2 (20–50 ppb) for a daytime burst (A24).
+
+Measured 2026-10-20 (laptop, 40 bins, nucleation on with the default inputs; N in cm⁻³,
+H2SO4 in cm⁻³, J in cm⁻³ s⁻¹, "< 10 nm" the number below 10 nm):
+
+| run | peak H2SO4 (when) | peak J (when) | N start / peak (when) / end | < 10 nm peak / end | new mode grew to | wall |
+|---|---|---|---|---|---|---|
+| Level 1 urban, 6 h, no SO2 (preset) | 0 | 0 | 20003 / 20003 / 11533 | 10 / 0 | – | 33 s |
+| Level 1 urban, 6 h, SO2 30 ppb | 4.4e7 (2.8 h) | 1.0 (3.0 h, solar noon) | 20003 / 20003 / 12609 | 222 (3 h) / 28 | stays at 2 nm | 28 s |
+| Level 1 urban, 6 h, SO2 50 ppb | 6.8e7 (2.7 h) | 3.8 (2.8 h) | 20003 / 20003 / 13124 | 940 (2.7 h) / 105 | stays at 2 nm | 28 s |
+| Level 2 indoor, 4 h, no SO2 (preset) | 0 | 0 | 3000 / 4540 / 4540 (outdoor air) | 0 / 0 | – | 29 s |
+| Level 2 indoor, 4 h, SO2 30 ppb | 9.1e7 (10 min) | 167 (10 min) | 3000 / 74105 (20 min) / 4599 | 70822 (20 min) / 54 | 8 nm | 28 s |
+| Level 3 day & night, 24 h (preset) | 5.9e7 (3.5 h, 15:30) | 10.6 (3.5 h) | 3000 / 23345 (4.5 h) / 9775 | 18615 (4 h) / 5209 (second morning) | 42 nm by 24 h | 118 s |
+
+- Level 1 urban: the chemistry's H2SO4 now reaches the particles; with 30 ppb SO2 it
+  reaches 4.4e7 cm⁻³ against a condensation sink of 2e4 cm⁻³ of seed, J peaks at 1
+  cm⁻³ s⁻¹ at solar noon and a few hundred new particles per cm³ sit below 10 nm; they
+  are scavenged before they grow (total N still falls by coagulation, ending 1100
+  cm⁻³ above the no-SO2 run). With 50 ppb the sub-10 nm number reaches 940 cm⁻³.
+- Level 2 indoor: no sunlight, but the ozonolysis OH (peak 8e5 cm⁻³) oxidises 30 ppb
+  of SO2 onto only 3000 cm⁻³ of particles, so H2SO4 reaches 9.1e7 cm⁻³ within 10
+  minutes and with 30 ppb NH3 the ternary rate reaches 167 cm⁻³ s⁻¹: N jumps to 7.4e4
+  cm⁻³ at 20 minutes and falls back to 4.6e3 by 4 h as the limonene (and so OH and
+  H2SO4, down to 1.5e5 cm⁻³) runs out and the 2 nm particles coagulate; some grow to
+  8 nm. (30 ppb of SO2 indoors is a stress test, not a typical room.) Without SO2
+  there is no H2SO4 and no nucleation; BioOxOrg is 4e6 cm⁻³.
+- Level 3: with the default inputs the preset bursts in daylight (N 3000 → 2.3e4 cm⁻³
+  at 16:30 local), the mode grows past 25 nm overnight by H2SO4, SOA and nitrate (to
+  the 42 nm bin by 24 h), N falls to 5.0e3 cm⁻³ by 20 h and the second morning starts
+  a new burst (9.8e3 at 24 h, J 6.8). J at night is below 3e-4. Switching the inputs
+  off one by one in the first 6 h: binary alone J 1.7e-8 (no new particles), with ions
+  4.6e-4 (about 1 cm⁻³), with ions and NH3 9.0 (N peak 2.0e4), with the organic path
+  as well 10.6 (2.3e4); BioOxOrg peaks at 5.1e6 cm⁻³.
+- Wall time is unchanged by the inputs (about 28–33 s for 4–6 h, 118 s for 24 h).
+
 ## Presets and runtime (warm process, laptop CPU)
 
 | Preset | What it shows | Duration | Δt_c | Wall time |
@@ -214,7 +320,10 @@ boxvol = 1e10 cm³ (so per-cell thresholds mean 1 #/cm³); outputs µg/m³, ppb,
 | `level2_indoor` | dark limonene ozonolysis at O3 held at 30 ppb, with ventilation, O3 surface loss, vapour wall loss and deposition; SOA peak 1.0 µg/m³ (9 with the losses off; 0.2 with O3 free to fall to 5.6 ppb) | 4 h | 300 s | ~8 s |
 
 With nucleation on, every preset runs at 60 s coupling with 5 s micro-steps and takes
-about 14 s, 25 s and 112–125 s ([Time steps with nucleation](#time-steps-with-nucleation)).
+about 14 s, 25 s and 112–125 s ([Time steps with nucleation](#time-steps-with-nucleation));
+since 2026-10-20 the nucleation inputs make the Level 3 preset burst in daylight
+(3000 → 2.3e4 cm⁻³), and Levels 1–2 burst with 20–50 ppb SO2
+([Nucleation inputs](#nucleation-inputs)).
 Δt_c is the coupling interval, a numerical solver setting
 ([Coupling interval](#coupling-interval-numerical-solver-setting)); Level 3 used 900 s
 (~13 s) until 2026-10-17.

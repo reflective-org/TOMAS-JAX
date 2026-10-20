@@ -55,6 +55,16 @@ h2so4_condensation = false
 soa_partitioning = false
 n2o5_uptake = false
 
+# Nucleation inputs, used only when nucleation is switched on (ASSUMPTIONS A21-A24):
+# near-surface ion-pair production (cosmic rays plus radon and terrestrial gamma rays)
+# and an urban NH3 of a few ppb. With nucleation on, H2SO4 condensation is on as well so
+# the new particles grow; add SO2 (20-50 ppb) to see a daytime burst.
+[nucleation]
+ion_pairs_cm3_s = 4.0
+nh3_ppb = 3.0
+organic = true
+organic_log10_cstar_max = -0.5
+
 [numerics]
 coupling_dt_s = 300.0
 output_dt_s = 600.0

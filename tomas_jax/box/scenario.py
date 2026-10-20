@@ -32,6 +32,11 @@ VENTILATION_PRESETS_PER_H = {"closed_room": 0.5, "window_open": 3.0, "hvac": 6.0
 # a tutorial simplification (ASSUMPTIONS A16): full overcast leaves a quarter of the
 # clear-sky rate.
 CLOUD_J_LOSS = 0.75
+# Nucleating organic vapour (BioOxOrg of Riccobono et al. 2014): the mechanism's closed-shell
+# organics with c* at or below 0.3 ug/m3 at 298 K, the LVOC/SVOC boundary of Donahue et al.
+# (2012); the MCM limonene mechanism has no autoxidation products below 2e-3 ug/m3, so the
+# ELVOC boundary (3e-4 ug/m3) would select nothing (ASSUMPTIONS A23).
+NUCLEATION_ORGANIC_LOG10_CSTAR_MAX = -0.5
 
 
 def _number(where: str, value, lo: float | None = None, hi: float | None = None, *,
@@ -231,6 +236,35 @@ class Surrogate:
 
 
 @dataclass(frozen=True)
+class Nucleation:
+    """Inputs of the nucleation rate besides H2SO4 and temperature (used only when
+    ``processes.nucleation`` is on; docs/aaar/coupling.md "Nucleation inputs",
+    ASSUMPTIONS A13, A21-A24).
+
+    J = J_bn + J_tn + J_bi + J_ti (Dunne et al. 2016: binary and ternary H2SO4-NH3,
+    neutral and ion-induced; the ion paths need ``ion_pairs_cm3_s`` > 0, the ternary
+    paths ``nh3_ppb`` > 0) + k_m [H2SO4]^2 [BioOxOrg] f(T) (Riccobono et al. 2014).
+    BioOxOrg is the gas-phase sum of the mechanism's closed-shell organics with
+    log10 c* <= ``organic_log10_cstar_max`` (c* at 298 K in ug/m3, from the scenario's
+    c* table), taken once per coupling interval from the gas state handed to the aerosol
+    step; it is 0 without chemistry or with ``organic`` off.
+    """
+    ion_pairs_cm3_s: float = 4.0           # ion-pair production rate q [pairs cm-3 s-1]
+    nh3_ppb: float = 3.0                   # NH3 mixing ratio, constant [ppb]
+    organic: bool = True                   # Riccobono path from the mechanism's low-volatility vapours
+    organic_log10_cstar_max: float = NUCLEATION_ORGANIC_LOG10_CSTAR_MAX   # BioOxOrg: log10 c* <= this
+
+    def __post_init__(self):
+        _number("nucleation.ion_pairs_cm3_s", self.ion_pairs_cm3_s, 0.0, 1e4,
+                hint="near the ground it is a few (2-10) ion pairs per cm3 per second")
+        _number("nucleation.nh3_ppb", self.nh3_ppb, 0.0, 1e4,
+                hint="NH3 is in ppb (a few ppb outdoors, tens of ppb indoors), not molec/cm3")
+        _switch("nucleation.organic", self.organic)
+        _number("nucleation.organic_log10_cstar_max", self.organic_log10_cstar_max, -15.0, 10.0,
+                hint="it is log10 of c* in ug/m3 at 298 K, e.g. -0.5 for c* = 0.3 ug/m3")
+
+
+@dataclass(frozen=True)
 class Processes:
     chemistry: bool = False                # MCM limonene gas-phase chemistry
     nucleation: bool = False
@@ -278,6 +312,7 @@ class Scenario:
     # presets use gaschem.config.DEFAULT_CSTAR_TABLE (ASSUMPTIONS A8).
     cstar_table: str | None = None
     processes: Processes = field(default_factory=Processes)
+    nucleation: Nucleation = field(default_factory=Nucleation)   # used only with processes.nucleation
     numerics: Numerics = field(default_factory=Numerics)
 
     def __post_init__(self):
@@ -355,7 +390,8 @@ def _build(cls, data: dict):
 
 
 _NESTED = {"environment": Environment, "seed": Seed, "photolysis": Photolysis,
-           "surrogate": Surrogate, "processes": Processes, "numerics": Numerics, "losses": Losses}
+           "surrogate": Surrogate, "processes": Processes, "nucleation": Nucleation,
+           "numerics": Numerics, "losses": Losses}
 # dataclass fields that hold another scenario dataclass (built from dicts by _build)
 _NESTED_FIELDS = {Scenario: _NESTED, Losses: {"outdoor_seed": Seed, "room": Room}}
 
