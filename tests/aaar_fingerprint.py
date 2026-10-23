@@ -40,7 +40,10 @@ CASES = (
 TOTALS_KEYS = ("H2O_ugm3", "NH4_ugm3", "NIT_ugm3", "N_cm3", "POA_ugm3", "SO4_ugm3", "SOA_ugm3",
                "dry_ugm3")
 SERIES_KEYS = {
-    "gases_ppb": ("CO", "H2O2", "HCHO", "HNO3", "LIMONENE", "N2O5", "NO", "NO2", "O3", "SO2"),
+    # TOLUENE (2026-10-23) exists only in runs that integrate the toluene subset; a key that
+    # a result lacks is skipped, so it leaves every earlier fingerprint unchanged
+    "gases_ppb": ("CO", "H2O2", "HCHO", "HNO3", "LIMONENE", "N2O5", "NO", "NO2", "O3", "SO2",
+                  "TOLUENE"),
     "radicals_cm3": ("HO2", "NO3", "OH"),
     "photolysis": ("J_HCHO_H", "J_NO2", "J_NO3_NO2", "J_O3_O1D", "sza_deg"),
 }

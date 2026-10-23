@@ -21,8 +21,9 @@ import numpy as np
 
 from ..core.config import (ICOMP, MW_NH4, MW_NO3, MW_SO4, SRTNH4, SRTNIT, SRTORG_NUC, SRTSO4,
                            make_grid, XK0)
-from ..gaschem.config import AVOGADRO, LIMONENE_EQN
+from ..gaschem.config import AVOGADRO, LIMONENE_EQN, TOLUENE_EQN
 from ..gaschem.kpp_parser import ParsedMechanism, Reaction, parse_eqn
+from ..gaschem.merge import MergeReport, merge_mechanisms
 
 RHO_SEED_INIT = 1770.0     # [kg/m3] density used to place the seed on the mass grid (as tomas-api)
 RHO_REPORT = 1400.0        # [kg/m3] density for reported dry diameters (as tomas-api)
@@ -35,9 +36,39 @@ NA_HET = "NA_HET"          # counter for particle nitrate from <34> (A1); <33>'s
 
 
 @functools.lru_cache(maxsize=1)
-def tutorial_mechanism() -> ParsedMechanism:
-    """The limonene mechanism with <34>'s product renamed to the NA_HET counter."""
-    parsed = parse_eqn(LIMONENE_EQN)
+def toluene_merge() -> tuple[ParsedMechanism, MergeReport]:
+    """The limonene subset with the MCM toluene subset merged in (gaschem.merge), as
+    exported: no tutorial edits yet."""
+    return merge_mechanisms(parse_eqn(LIMONENE_EQN), parse_eqn(TOLUENE_EQN))
+
+
+@functools.lru_cache(maxsize=1)
+def toluene_only_species() -> frozenset[str]:
+    """Species the toluene subset adds to the limonene mechanism (TOLUENE and its products)."""
+    return frozenset(toluene_merge()[1].new_species)
+
+
+def uses_toluene(gases_ppb: dict, emissions_ppb_per_h: dict, hold_constant=(),
+                 outdoor_gases_ppb: dict | None = None) -> bool:
+    """True when a scenario gives a toluene-subset species a non-zero amount or holds one.
+
+    The toluene chemistry (181 species, 505 reactions) is integrated only then; with every
+    toluene species at zero the run uses the limonene mechanism alone and gives the same
+    numbers as before the toluene subset existed (ASSUMPTIONS A27).
+    """
+    extra = toluene_only_species()
+    named = {sp for sp, v in gases_ppb.items() if v > 0}
+    named |= {sp for sp, v in emissions_ppb_per_h.items() if v > 0}
+    named |= {sp for sp, v in (outdoor_gases_ppb or {}).items() if v > 0}
+    named |= set(hold_constant)
+    return bool(named & extra)
+
+
+@functools.lru_cache(maxsize=2)
+def tutorial_mechanism(toluene: bool = False) -> ParsedMechanism:
+    """The limonene mechanism (with the toluene subset merged in when ``toluene``) with
+    <34>'s product renamed to the NA_HET counter."""
+    parsed = toluene_merge()[0] if toluene else parse_eqn(LIMONENE_EQN)
     reactions = []
     for r in parsed.reactions:
         if r.label == N2O5_HET_LABEL:

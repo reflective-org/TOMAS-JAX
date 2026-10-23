@@ -20,6 +20,10 @@ NO2 = 15.0
 CO = 200.0
 CH4 = 1900.0
 H2 = 500.0
+# Toluene (traffic VOC) toggle: 0 = off (the limonene mechanism alone is integrated, bit-
+# identical to the preset before the toggle existed). The web app's "on" sets the typical
+# urban level of ASSUMPTIONS A27 and integrates the MCM v3.3.1 toluene subset merged in.
+TOLUENE = 0.0
 
 # NO source: 24 h mean E [ppb/h], shaped over the day by the on-road traffic profile below.
 # 0.5 ppb/h = 12 ppb of NO per day: nothing dilutes the layer, so it is half the 1 ppb/h of
