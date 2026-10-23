@@ -37,10 +37,18 @@ MECHANISM_DIR = Path(__file__).parent / "mechanisms"
 # MCM v3.3.1 limonene subset (SCENTS 04272022) supplied by S. Jathar, kept
 # byte-identical; tutorial-specific edits are applied in code (see ASSUMPTIONS.md).
 LIMONENE_EQN = MECHANISM_DIR / "limonene_mcm.eqn"
-# MCM v3.3.1 TOLUENE subset exported from the MCM website (KPP, inorganic + generic
-# rates), kept byte-identical (provenance and sha256 in mechanisms/toluene_mcm.provenance.md).
-# Merged with the limonene subset in code (gaschem.merge) for scenarios with toluene.
-TOLUENE_EQN = MECHANISM_DIR / "toluene_mcm.eqn"
+# MCM v3.3.1 aromatic subsets exported from the MCM website (KPP, inorganic + generic
+# rates), kept byte-identical (provenance and sha256 in mechanisms/<name>_mcm.provenance.md).
+# Each is merged with the limonene subset in code (gaschem.merge) for the runs that use it
+# (box.coupling.aromatics_used); the Urban level's VOC selector (ASSUMPTIONS A27). Keyed by the
+# parent VOC's MCM name; the label prefix keeps the added reactions' labels unique.
+AROMATIC_EQN = {
+    "BENZENE": MECHANISM_DIR / "benzene_mcm.eqn",
+    "TOLUENE": MECHANISM_DIR / "toluene_mcm.eqn",
+    "MXYL": MECHANISM_DIR / "mxyl_mcm.eqn",
+}
+AROMATIC_LABEL_PREFIX = {"BENZENE": "B", "TOLUENE": "T", "MXYL": "X"}
+TOLUENE_EQN = AROMATIC_EQN["TOLUENE"]
 # Per-species c* (298.15 K) of the limonene mechanism supplied by S. Jathar, kept
 # byte-identical (provenance and sha256 in mechanisms/*.provenance.md; ASSUMPTIONS A8).
 # Default `cstar_table` of the Level 2 and 3 presets.
