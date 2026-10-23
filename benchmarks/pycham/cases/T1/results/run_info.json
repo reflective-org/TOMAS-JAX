@@ -1,0 +1,33 @@
+{
+  "pycham": {
+    "wall_s": 15.02659333399788,
+    "sha": "7880d81991542ebbcd6597e01ddcf9d93d997a72",
+    "umansysprop_sha": "f6d8645d40f47e57111d4ec77c5427502eeb5d86",
+    "update_step_s": 60.0,
+    "root": "/Users/ali/Documents/GitHub/aerosol-microphysics/tomas-aaar/pycham-bench/PyCHAM_T1",
+    "output": "/Users/ali/Documents/GitHub/aerosol-microphysics/tomas-aaar/pycham-bench/outputs/T1",
+    "log": "/Users/ali/Documents/GitHub/aerosol-microphysics/tomas-aaar/pycham-bench/inputs/T1/pycham_T1.log"
+  },
+  "ro2_pool": {
+    "n_pycham": 183,
+    "n_ours": 183,
+    "identical": true,
+    "only_pycham": [],
+    "only_ours": []
+  },
+  "n_species_pycham": 909,
+  "ours_dt300": {
+    "wall_s": 9.394526333002432,
+    "gas_solver_steps": 519,
+    "code_version": "a30fe8cdca2d68fa"
+  },
+  "m_air_cm3": {
+    "ours": 2.4614924955148243e+19,
+    "pycham": 2.4614924955148247e+19
+  },
+  "ours_dt60": {
+    "wall_s": 33.84014133400342,
+    "gas_solver_steps": 2011,
+    "code_version": "a30fe8cdca2d68fa"
+  }
+}

@@ -1,0 +1,451 @@
+{
+  "all_species": {
+    "TOMAS-JAX (coupling 300 s)": {
+      "n_species_compared": 175,
+      "frac_max_rel_dev_within_band": 1.0,
+      "frac_abs_nmb_within_band": 1.0,
+      "median_abs_nmb": 0.0005635141508806418,
+      "p95_abs_nmb": 0.004521664294901809,
+      "n_species_1h": 90,
+      "frac_within_band_1h": 1.0,
+      "median_abs_log10_ratio_1h": 0.00014621646371546995,
+      "n_ours_only_1h": 0,
+      "n_species_3h": 153,
+      "frac_within_band_3h": 1.0,
+      "median_abs_log10_ratio_3h": 0.000171547776995733,
+      "n_ours_only_3h": 0,
+      "n_species_6h": 155,
+      "frac_within_band_6h": 1.0,
+      "median_abs_log10_ratio_6h": 0.0006762279059336195,
+      "n_ours_only_6h": 0,
+      "strict_threshold": {
+        "n_species_compared": 90,
+        "frac_max_rel_dev_within_band": 1.0,
+        "frac_abs_nmb_within_band": 1.0,
+        "median_abs_nmb": 0.0002733342303466344,
+        "p95_abs_nmb": 0.0015790954533977187,
+        "n_species_1h": 47,
+        "frac_within_band_1h": 1.0,
+        "median_abs_log10_ratio_1h": 9.302419423594247e-05,
+        "n_ours_only_1h": 0,
+        "n_species_3h": 69,
+        "frac_within_band_3h": 1.0,
+        "median_abs_log10_ratio_3h": 0.00013178678530068898,
+        "n_ours_only_3h": 0,
+        "n_species_6h": 67,
+        "frac_within_band_6h": 1.0,
+        "median_abs_log10_ratio_6h": 0.00027141549162269205,
+        "n_ours_only_6h": 0
+      },
+      "worst_nmb_species": [
+        {
+          "species": "CH3OH",
+          "nmb": -0.012261380335767317,
+          "pycham_max_ppb": 0.002228342927992344
+        },
+        {
+          "species": "EPXMDLCO2H",
+          "nmb": -0.007160811794931344,
+          "pycham_max_ppb": 8.699893805896863e-05
+        },
+        {
+          "species": "MXCTEC1OOH",
+          "nmb": -0.0058735519279123115,
+          "pycham_max_ppb": 0.00020872862660326064
+        },
+        {
+          "species": "CH3CO2H",
+          "nmb": -0.005610769656103099,
+          "pycham_max_ppb": 0.016265517100691795
+        },
+        {
+          "species": "MXY1OOH",
+          "nmb": -0.005354744934495846,
+          "pycham_max_ppb": 0.0002809780999086797
+        },
+        {
+          "species": "MXYLCO2H",
+          "nmb": -0.0053239229428276216,
+          "pycham_max_ppb": 0.000374632072634995
+        },
+        {
+          "species": "C23O3CCO2H",
+          "nmb": -0.004883532950851657,
+          "pycham_max_ppb": 0.001784748281352222
+        },
+        {
+          "species": "MXY1O2",
+          "nmb": -0.004729475380677611,
+          "pycham_max_ppb": 3.20677827403415e-05
+        },
+        {
+          "species": "MXCATEC1O2",
+          "nmb": -0.0045370680359874205,
+          "pycham_max_ppb": 0.00010490144632058218
+        },
+        {
+          "species": "C23O3MCO2H",
+          "nmb": -0.004515062691579404,
+          "pycham_max_ppb": 0.00033096622792072594
+        },
+        {
+          "species": "C5134CO2OH",
+          "nmb": -0.004409056806595252,
+          "pycham_max_ppb": 6.443941674660891e-05
+        },
+        {
+          "species": "C6CO2OHOOH",
+          "nmb": -0.0043608203230889545,
+          "pycham_max_ppb": 2.737350769166369e-05
+        },
+        {
+          "species": "C5DICAROOH",
+          "nmb": -0.004213139142850908,
+          "pycham_max_ppb": 4.7725290642119944e-05
+        },
+        {
+          "species": "C4MALOHOOH",
+          "nmb": -0.003977923886061732,
+          "pycham_max_ppb": 1.8834769434761256e-05
+        },
+        {
+          "species": "NMXYOLOOH",
+          "nmb": -0.003933425444004878,
+          "pycham_max_ppb": 2.2449517928180285e-05
+        }
+      ]
+    },
+    "TOMAS-JAX (coupling 60 s)": {
+      "n_species_compared": 175,
+      "frac_max_rel_dev_within_band": 1.0,
+      "frac_abs_nmb_within_band": 1.0,
+      "median_abs_nmb": 0.0005823148381730334,
+      "p95_abs_nmb": 0.0037703029484232897,
+      "n_species_1h": 90,
+      "frac_within_band_1h": 1.0,
+      "median_abs_log10_ratio_1h": 0.0005364322929870306,
+      "n_ours_only_1h": 0,
+      "n_species_3h": 153,
+      "frac_within_band_3h": 1.0,
+      "median_abs_log10_ratio_3h": 0.0001791743707378309,
+      "n_ours_only_3h": 0,
+      "n_species_6h": 155,
+      "frac_within_band_6h": 1.0,
+      "median_abs_log10_ratio_6h": 0.0010950415609877796,
+      "n_ours_only_6h": 0,
+      "strict_threshold": {
+        "n_species_compared": 90,
+        "frac_max_rel_dev_within_band": 1.0,
+        "frac_abs_nmb_within_band": 1.0,
+        "median_abs_nmb": 0.0002663764505065164,
+        "p95_abs_nmb": 0.0012891246337928945,
+        "n_species_1h": 47,
+        "frac_within_band_1h": 1.0,
+        "median_abs_log10_ratio_1h": 0.00018005417710384254,
+        "n_ours_only_1h": 0,
+        "n_species_3h": 69,
+        "frac_within_band_3h": 1.0,
+        "median_abs_log10_ratio_3h": 0.0001569893402878201,
+        "n_ours_only_3h": 0,
+        "n_species_6h": 67,
+        "frac_within_band_6h": 1.0,
+        "median_abs_log10_ratio_6h": 0.0002468111008291394,
+        "n_ours_only_6h": 0
+      },
+      "worst_nmb_species": [
+        {
+          "species": "MXCTEC1OOH",
+          "nmb": -0.005694608578165453,
+          "pycham_max_ppb": 0.00020872862660326064
+        },
+        {
+          "species": "MXY1OOH",
+          "nmb": -0.005349987634954591,
+          "pycham_max_ppb": 0.0002809780999086797
+        },
+        {
+          "species": "MXY1O2",
+          "nmb": -0.005248820575030519,
+          "pycham_max_ppb": 3.20677827403415e-05
+        },
+        {
+          "species": "MXCATEC1O2",
+          "nmb": -0.005211475696498283,
+          "pycham_max_ppb": 0.00010490144632058218
+        },
+        {
+          "species": "C6CO2OHOOH",
+          "nmb": -0.0043699015186976515,
+          "pycham_max_ppb": 2.737350769166369e-05
+        },
+        {
+          "species": "C5DICAROOH",
+          "nmb": -0.004239851706550725,
+          "pycham_max_ppb": 4.7725290642119944e-05
+        },
+        {
+          "species": "C5134CO2OH",
+          "nmb": -0.004171469169625404,
+          "pycham_max_ppb": 6.443941674660891e-05
+        },
+        {
+          "species": "C4MALOHOOH",
+          "nmb": -0.003995441223764442,
+          "pycham_max_ppb": 1.8834769434761256e-05
+        },
+        {
+          "species": "NMXYOLOOH",
+          "nmb": -0.00378776363814724,
+          "pycham_max_ppb": 2.2449517928180285e-05
+        },
+        {
+          "species": "MXYMUCOOH",
+          "nmb": -0.0037628197956844542,
+          "pycham_max_ppb": 0.0004188481834717095
+        },
+        {
+          "species": "C5CO14OOH",
+          "nmb": -0.003743260752652084,
+          "pycham_max_ppb": 3.635193934314884e-05
+        },
+        {
+          "species": "MXYOLOOH",
+          "nmb": -0.003601196224819875,
+          "pycham_max_ppb": 0.00012284336844459176
+        },
+        {
+          "species": "MXYBPEROOH",
+          "nmb": -0.0033974032294221295,
+          "pycham_max_ppb": 0.000598694896325469
+        },
+        {
+          "species": "CO23C3CHO",
+          "nmb": -0.003357211499324766,
+          "pycham_max_ppb": 2.783222407742869e-05
+        },
+        {
+          "species": "CH3COCO3H",
+          "nmb": -0.003239350068081073,
+          "pycham_max_ppb": 3.3875716326292604e-05
+        }
+      ]
+    }
+  },
+  "key_species": {
+    "TOMAS-JAX (coupling 300 s)": {
+      "MXYL": {
+        "max_rel_dev": 0.017129024127431617,
+        "nmb": -0.00010526984522301907,
+        "pycham_max_ppb": 5.0,
+        "ours_end_ppb": 0.006898424122482538,
+        "pycham_end_ppb": 0.007018646690994501
+      },
+      "O3": {
+        "max_rel_dev": 0.00012650319742065063,
+        "nmb": -2.089134895170456e-05,
+        "pycham_max_ppb": 94.91304779052734,
+        "ours_end_ppb": 94.9206771850586,
+        "pycham_end_ppb": 94.91304779052734
+      },
+      "NO": {
+        "max_rel_dev": 0.0009082411047321238,
+        "nmb": 7.408627695260378e-05,
+        "pycham_max_ppb": 5.704099178314209,
+        "ours_end_ppb": 0.2891736924648285,
+        "pycham_end_ppb": 0.28936100006103516
+      },
+      "NO2": {
+        "max_rel_dev": 0.0007477987703157489,
+        "nmb": -3.816670910470893e-05,
+        "pycham_max_ppb": 15.0,
+        "ours_end_ppb": 1.5666511058807373,
+        "pycham_end_ppb": 1.5675265789031982
+      },
+      "OH": {
+        "max_rel_dev": 0.0005093081780350923,
+        "nmb": 0.00014371717119053283,
+        "pycham_max_ppb": 0.0009156141895800829,
+        "ours_end_ppb": 0.0007736401166766882,
+        "pycham_end_ppb": 0.0007735604885965586
+      },
+      "HO2": {
+        "max_rel_dev": 0.0009399280139711073,
+        "nmb": 0.0004840008958934048,
+        "pycham_max_ppb": 0.02701742760837078,
+        "ours_end_ppb": 0.027017461135983467,
+        "pycham_end_ppb": 0.027007587254047394
+      },
+      "NO3": {
+        "max_rel_dev": 0.0002517111529124641,
+        "nmb": -1.573539856805189e-05,
+        "pycham_max_ppb": 0.00040447598439641297,
+        "ours_end_ppb": 0.00040447612991556525,
+        "pycham_end_ppb": 0.00040447598439641297
+      },
+      "HNO3": {
+        "max_rel_dev": 0.00038921842936835905,
+        "nmb": -3.3757128724293854e-05,
+        "pycham_max_ppb": 10.922041893005371,
+        "ours_end_ppb": 10.923535346984863,
+        "pycham_end_ppb": 10.922041893005371
+      },
+      "HCHO": {
+        "max_rel_dev": 0.0008321273991312026,
+        "nmb": 0.0003246482350460649,
+        "pycham_max_ppb": 2.9099674224853516,
+        "ours_end_ppb": 2.2458505630493164,
+        "pycham_end_ppb": 2.2457311153411865
+      },
+      "PAN": {
+        "max_rel_dev": 0.0009061761484085282,
+        "nmb": 0.00040744423962966764,
+        "pycham_max_ppb": 1.4219590425491333,
+        "ours_end_ppb": 1.1706970930099487,
+        "pycham_end_ppb": 1.1705702543258667
+      },
+      "MXYLOL": {
+        "max_rel_dev": 0.01723580983127479,
+        "nmb": -9.407935838781693e-05,
+        "pycham_max_ppb": 0.11856983602046967,
+        "ours_end_ppb": 0.00029910009470768273,
+        "pycham_end_ppb": 0.00030434574000537395
+      },
+      "GLYOX": {
+        "max_rel_dev": 0.001598789102895945,
+        "nmb": -0.00012197468750023352,
+        "pycham_max_ppb": 0.2375846803188324,
+        "ours_end_ppb": 0.0666700154542923,
+        "pycham_end_ppb": 0.0667739063501358
+      },
+      "MGLYOX": {
+        "max_rel_dev": 0.005492581878344704,
+        "nmb": -0.00015117706404940993,
+        "pycham_max_ppb": 1.3397248983383179,
+        "ours_end_ppb": 0.15759098529815674,
+        "pycham_end_ppb": 0.15846134722232819
+      },
+      "H2O2": {
+        "max_rel_dev": 0.003760252788261255,
+        "nmb": -0.0011584668129154651,
+        "pycham_max_ppb": 0.46043574810028076,
+        "ours_end_ppb": 0.46034425497055054,
+        "pycham_end_ppb": 0.46043574810028076
+      },
+      "CO": {
+        "max_rel_dev": 3.2520183070111215e-05,
+        "nmb": 8.539736992992175e-06,
+        "pycham_max_ppb": 206.06753540039062,
+        "ours_end_ppb": 205.5271453857422,
+        "pycham_end_ppb": 205.52098083496094
+      }
+    },
+    "TOMAS-JAX (coupling 60 s)": {
+      "MXYL": {
+        "max_rel_dev": 0.016974883788379858,
+        "nmb": -4.0835689905568246e-05,
+        "pycham_max_ppb": 5.0,
+        "ours_end_ppb": 0.006900282576680183,
+        "pycham_end_ppb": 0.007018646690994501
+      },
+      "O3": {
+        "max_rel_dev": 0.0003404120990139131,
+        "nmb": -3.862011848112794e-05,
+        "pycham_max_ppb": 94.91304779052734,
+        "ours_end_ppb": 94.9190673828125,
+        "pycham_end_ppb": 94.91304779052734
+      },
+      "NO": {
+        "max_rel_dev": 0.0031679792167215418,
+        "nmb": 0.00010291880832868694,
+        "pycham_max_ppb": 5.723276615142822,
+        "ours_end_ppb": 0.28844431042671204,
+        "pycham_end_ppb": 0.28936100006103516
+      },
+      "NO2": {
+        "max_rel_dev": 0.0011046589197953019,
+        "nmb": -3.858472872344922e-06,
+        "pycham_max_ppb": 15.0,
+        "ours_end_ppb": 1.5675488710403442,
+        "pycham_end_ppb": 1.5675265789031982
+      },
+      "OH": {
+        "max_rel_dev": 0.013814572940307728,
+        "nmb": 7.229592010227022e-05,
+        "pycham_max_ppb": 0.0009156141895800829,
+        "ours_end_ppb": 0.0007678220863454044,
+        "pycham_end_ppb": 0.0007735604885965586
+      },
+      "HO2": {
+        "max_rel_dev": 0.011048847183066892,
+        "nmb": 0.00039477124902723767,
+        "pycham_max_ppb": 0.02701742760837078,
+        "ours_end_ppb": 0.026909444481134415,
+        "pycham_end_ppb": 0.027007587254047394
+      },
+      "NO3": {
+        "max_rel_dev": 0.0037173243458277806,
+        "nmb": -1.862344430167427e-05,
+        "pycham_max_ppb": 0.00040447598439641297,
+        "ours_end_ppb": 0.00040485532372258604,
+        "pycham_end_ppb": 0.00040447598439641297
+      },
+      "HNO3": {
+        "max_rel_dev": 0.013936892140945291,
+        "nmb": -7.016938975167015e-05,
+        "pycham_max_ppb": 10.922041893005371,
+        "ours_end_ppb": 10.923452377319336,
+        "pycham_end_ppb": 10.922041893005371
+      },
+      "HCHO": {
+        "max_rel_dev": 0.014970355958475344,
+        "nmb": 0.00029852730094227596,
+        "pycham_max_ppb": 2.909999132156372,
+        "ours_end_ppb": 2.245958089828491,
+        "pycham_end_ppb": 2.2457311153411865
+      },
+      "PAN": {
+        "max_rel_dev": 0.01758534263714255,
+        "nmb": 0.0003587166902967502,
+        "pycham_max_ppb": 1.422268271446228,
+        "ours_end_ppb": 1.1706770658493042,
+        "pycham_end_ppb": 1.1705702543258667
+      },
+      "MXYLOL": {
+        "max_rel_dev": 0.017124977527531164,
+        "nmb": -0.00011667528276461328,
+        "pycham_max_ppb": 0.11859410256147385,
+        "ours_end_ppb": 0.0002991338260471821,
+        "pycham_end_ppb": 0.00030434574000537395
+      },
+      "GLYOX": {
+        "max_rel_dev": 0.014708833460096918,
+        "nmb": -0.0001374517936026187,
+        "pycham_max_ppb": 0.23766005039215088,
+        "ours_end_ppb": 0.06667361408472061,
+        "pycham_end_ppb": 0.0667739063501358
+      },
+      "MGLYOX": {
+        "max_rel_dev": 0.014714373534868857,
+        "nmb": -0.0001611237205371856,
+        "pycham_max_ppb": 1.33986496925354,
+        "ours_end_ppb": 0.1576114296913147,
+        "pycham_end_ppb": 0.15846134722232819
+      },
+      "H2O2": {
+        "max_rel_dev": 0.003909887811899478,
+        "nmb": -0.0012647047514898354,
+        "pycham_max_ppb": 0.46043574810028076,
+        "ours_end_ppb": 0.46029430627822876,
+        "pycham_end_ppb": 0.46043574810028076
+      },
+      "CO": {
+        "max_rel_dev": 3.274241666740127e-05,
+        "nmb": 7.804073517632744e-06,
+        "pycham_max_ppb": 206.06788635253906,
+        "ours_end_ppb": 205.5272674560547,
+        "pycham_end_ppb": 205.52098083496094
+      }
+    }
+  },
+  "threshold_ppb": 1e-05
+}

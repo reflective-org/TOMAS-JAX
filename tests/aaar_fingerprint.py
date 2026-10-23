@@ -27,7 +27,32 @@ CASES = (
     ("level1_volatility", 12.0, True),
     ("level2_limonene_soa", 6.0, True),
     ("level3_day_night", 24.0, True),
+    # Level 1 urban air as a whole day with traffic emissions (2026-10-22, A26); the earlier
+    # 6 h midday urban preset was not fingerprinted
+    ("level1_urban", 1.0, False),
+    ("level1_urban", 24.0, True),
+    # the Urban VOC selector (2026-10-23, A27): the limonene mechanism with one aromatic subset
+    ("level1_urban+toluene", 1.0, False),
+    ("level1_urban+toluene", 24.0, True),
+    ("level1_urban+benzene", 1.0, False),
+    ("level1_urban+benzene", 24.0, True),
+    ("level1_urban+mxylene", 1.0, False),
+    ("level1_urban+mxylene", 24.0, True),
 )
+# Named variants of a preset: "<preset>+<variant>" -> gases_ppb overrides on top of the preset
+VARIANTS = {"toluene": {"TOLUENE": 5.0}, "benzene": {"BENZENE": 5.0},    # box.scenario.URBAN_VOC_PPB_ON
+            "mxylene": {"MXYL": 5.0}}
+
+
+def scenario_of(name: str, hours: float | None = None):
+    """The Scenario of a fingerprint case name (a preset or "<preset>+<variant>")."""
+    from tomas_jax.box.scenario import load_preset
+
+    preset, _, variant = name.partition("+")
+    s = load_preset(preset)
+    if variant:
+        s = s.replace(gases_ppb={**s.gases_ppb, **VARIANTS[variant]})
+    return s if hours is None else s.replace(duration_h=hours)
 
 
 # The outputs that existed before 2026-10-19 (sorted names). New outputs added later (surface
@@ -36,7 +61,10 @@ CASES = (
 TOTALS_KEYS = ("H2O_ugm3", "NH4_ugm3", "NIT_ugm3", "N_cm3", "POA_ugm3", "SO4_ugm3", "SOA_ugm3",
                "dry_ugm3")
 SERIES_KEYS = {
-    "gases_ppb": ("CO", "H2O2", "HCHO", "HNO3", "LIMONENE", "N2O5", "NO", "NO2", "O3", "SO2"),
+    # TOLUENE (2026-10-23) exists only in runs that integrate the toluene subset; a key that
+    # a result lacks is skipped, so it leaves every earlier fingerprint unchanged
+    "gases_ppb": ("CO", "H2O2", "HCHO", "HNO3", "LIMONENE", "N2O5", "NO", "NO2", "O3", "SO2",
+                  "TOLUENE"),
     "radicals_cm3": ("HO2", "NO3", "OH"),
     "photolysis": ("J_HCHO_H", "J_NO2", "J_NO3_NO2", "J_O3_O1D", "sza_deg"),
 }
@@ -87,11 +115,10 @@ def case_key(name: str, duration_h: float) -> str:
 
 def main() -> None:
     from tomas_jax.box.driver import run
-    from tomas_jax.box.scenario import load_preset
 
     out = {}
     for name, hours, _ in CASES:
-        out[case_key(name, hours)] = fingerprint(run(load_preset(name).replace(duration_h=hours)))
+        out[case_key(name, hours)] = fingerprint(run(scenario_of(name, hours)))
         print(case_key(name, hours), out[case_key(name, hours)])
     FINGERPRINT_FILE.parent.mkdir(exist_ok=True)
     FINGERPRINT_FILE.write_text(json.dumps(out, indent=2) + "\n")
