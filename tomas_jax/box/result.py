@@ -12,9 +12,10 @@ from datetime import datetime
 import numpy as np
 
 # Gas species reported as time series. Mixing ratios in ppb, radicals in molec/cm3.
-# TOLUENE is present only in runs that integrate the toluene subset (box.coupling.uses_toluene)
-REPORTED_GASES_PPB = ("LIMONENE", "TOLUENE", "O3", "NO", "NO2", "HNO3", "N2O5", "HCHO", "CO", "SO2",
-                      "H2O2")
+# BENZENE, TOLUENE and MXYL are present only in runs that integrate their aromatic subset
+# (box.coupling.aromatics_used, the Urban VOC selector)
+REPORTED_GASES_PPB = ("LIMONENE", "BENZENE", "TOLUENE", "MXYL", "O3", "NO", "NO2", "HNO3", "N2O5",
+                      "HCHO", "CO", "SO2", "H2O2")
 REPORTED_RADICALS_CM3 = ("OH", "HO2", "NO3")
 REPORTED_J = ("J_NO2", "J_O3_O1D", "J_HCHO_H", "J_NO3_NO2")
 N_TOP_CONTRIBUTORS = 15

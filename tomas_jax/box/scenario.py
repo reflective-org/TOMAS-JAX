@@ -43,12 +43,16 @@ NUCLEATION_ORGANIC_LOG10_CSTAR_MAX = -0.5
 # beginning at h:00 local time. They sum to 24 (mean 1); two rush-hour peaks (08:00 and 17:00)
 # and a minimum of 0.05 at 03:00.
 # https://atmosphere.copernicus.eu/sites/default/files/2019-07/MACC_TNO_del_1_3_v2.pdf
-# Toluene (traffic VOC) toggle of the Urban air level (ASSUMPTIONS A27): the preset carries
-# TOLUENE = 0 (off, the limonene mechanism alone is integrated); "on" sets this initial mixing
-# ratio and integrates the MCM v3.3.1 toluene subset. 5 ppb is the upper end of US city means
-# (Baker et al. 2008) and stands in for the whole urban VOC mix the level has no other member of;
-# the web app and the API's prewarm list use this value.
-URBAN_TOLUENE_PPB_ON = 5.0
+# VOC selector of the Urban air level (ASSUMPTIONS A27): none, benzene, toluene or m-xylene,
+# each at the SAME initial mixing ratio so the comparison isolates the OH reactivity
+# (k_OH at 298 K in the MCM: benzene 1.2e-12, toluene 5.6e-12, m-xylene 2.3e-11 cm3 s-1). The
+# preset carries no aromatic (the limonene mechanism alone is integrated); a choice sets this
+# initial mixing ratio of that VOC and integrates its MCM v3.3.1 subset. 5 ppb is the upper
+# end of US city means of toluene (Baker et al. 2008) and stands in for the urban VOC mix;
+# the web app and the API's prewarm list use these.
+URBAN_VOC_SPECIES = ("BENZENE", "TOLUENE", "MXYL")
+URBAN_VOC_PPB_ON = 5.0
+URBAN_TOLUENE_PPB_ON = URBAN_VOC_PPB_ON          # the first version of the selector (toluene only)
 TRAFFIC_HOURLY_WEIGHTS = (
     0.19, 0.09, 0.06, 0.05, 0.09, 0.22, 0.86, 1.84, 1.86, 1.41, 1.24, 1.20,
     1.32, 1.44, 1.45, 1.59, 2.03, 2.08, 1.51, 1.06, 0.74, 0.62, 0.61, 0.44)

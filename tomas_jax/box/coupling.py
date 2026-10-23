@@ -21,7 +21,7 @@ import numpy as np
 
 from ..core.config import (ICOMP, MW_NH4, MW_NO3, MW_SO4, SRTNH4, SRTNIT, SRTORG_NUC, SRTSO4,
                            make_grid, XK0)
-from ..gaschem.config import AVOGADRO, LIMONENE_EQN, TOLUENE_EQN
+from ..gaschem.config import AROMATIC_EQN, AROMATIC_LABEL_PREFIX, AVOGADRO, LIMONENE_EQN
 from ..gaschem.kpp_parser import ParsedMechanism, Reaction, parse_eqn
 from ..gaschem.merge import MergeReport, merge_mechanisms
 
@@ -35,40 +35,91 @@ N2O5_HET_LABEL = "34"      # <34> N2O5 = NA + NA : 4e-4 (fixed chamber sink) -> 
 NA_HET = "NA_HET"          # counter for particle nitrate from <34> (A1); <33>'s NA stays a gas sink (A2)
 
 
-@functools.lru_cache(maxsize=1)
-def toluene_merge() -> tuple[ParsedMechanism, MergeReport]:
-    """The limonene subset with the MCM toluene subset merged in (gaschem.merge), as
-    exported: no tutorial edits yet."""
-    return merge_mechanisms(parse_eqn(LIMONENE_EQN), parse_eqn(TOLUENE_EQN))
+# The MCM aromatic subsets of the Urban level's VOC selector, in the order they are merged
+# (ASSUMPTIONS A27). Keyed by the parent VOC's MCM name.
+AROMATICS: tuple[str, ...] = tuple(AROMATIC_EQN)
+
+
+@functools.lru_cache(maxsize=8)
+def aromatic_merge(name: str) -> tuple[ParsedMechanism, MergeReport]:
+    """The limonene subset with one MCM aromatic subset merged in (gaschem.merge), as
+    exported: no tutorial edits yet. The report counts what that subset adds."""
+    if name not in AROMATIC_EQN:
+        raise ValueError(f"unknown aromatic subset {name!r}; known: {AROMATICS}")
+    return merge_mechanisms(parse_eqn(LIMONENE_EQN), parse_eqn(AROMATIC_EQN[name]),
+                            label_prefix=AROMATIC_LABEL_PREFIX[name])
+
+
+@functools.lru_cache(maxsize=8)
+def aromatic_species(name: str) -> frozenset[str]:
+    """Species an aromatic subset adds to the limonene mechanism (the VOC and its products;
+    subsets share some products, e.g. phenol-type ones between benzene and toluene)."""
+    return frozenset(aromatic_merge(name)[1].new_species)
 
 
 @functools.lru_cache(maxsize=1)
-def toluene_only_species() -> frozenset[str]:
-    """Species the toluene subset adds to the limonene mechanism (TOLUENE and its products)."""
-    return frozenset(toluene_merge()[1].new_species)
+def all_aromatic_species() -> frozenset[str]:
+    """Every species some aromatic subset adds (valid names at zero in any run)."""
+    return frozenset().union(*(aromatic_species(n) for n in AROMATICS))
 
 
-def uses_toluene(gases_ppb: dict, emissions_ppb_per_h: dict, hold_constant=(),
-                 outdoor_gases_ppb: dict | None = None) -> bool:
-    """True when a scenario gives a toluene-subset species a non-zero amount or holds one.
+def aromatics_used(gases_ppb: dict, emissions_ppb_per_h: dict, hold_constant=(),
+                   outdoor_gases_ppb: dict | None = None) -> tuple[str, ...]:
+    """The aromatic subsets a scenario needs: every subset that contains a species given a
+    non-zero initial amount, emission or outdoor value, or held (in merge order).
 
-    The toluene chemistry (181 species, 505 reactions) is integrated only then; with every
-    toluene species at zero the run uses the limonene mechanism alone and gives the same
-    numbers as before the toluene subset existed (ASSUMPTIONS A27).
+    Only those subsets are merged in and integrated, so a run with one VOC pays for that
+    subset alone; with every aromatic species at zero the run uses the limonene mechanism
+    alone and gives the same numbers as before the subsets existed (ASSUMPTIONS A27).
     """
-    extra = toluene_only_species()
     named = {sp for sp, v in gases_ppb.items() if v > 0}
     named |= {sp for sp, v in emissions_ppb_per_h.items() if v > 0}
     named |= {sp for sp, v in (outdoor_gases_ppb or {}).items() if v > 0}
     named |= set(hold_constant)
-    return bool(named & extra)
+    return tuple(n for n in AROMATICS if named & aromatic_species(n))
 
 
-@functools.lru_cache(maxsize=2)
-def tutorial_mechanism(toluene: bool = False) -> ParsedMechanism:
-    """The limonene mechanism (with the toluene subset merged in when ``toluene``) with
-    <34>'s product renamed to the NA_HET counter."""
-    parsed = toluene_merge()[0] if toluene else parse_eqn(LIMONENE_EQN)
+def uses_toluene(gases_ppb: dict, emissions_ppb_per_h: dict, hold_constant=(),
+                 outdoor_gases_ppb: dict | None = None) -> bool:
+    """True when the run needs the toluene subset (see :func:`aromatics_used`)."""
+    return "TOLUENE" in aromatics_used(gases_ppb, emissions_ppb_per_h, hold_constant, outdoor_gases_ppb)
+
+
+def toluene_merge() -> tuple[ParsedMechanism, MergeReport]:
+    """The limonene + toluene merge (see :func:`aromatic_merge`)."""
+    return aromatic_merge("TOLUENE")
+
+
+def toluene_only_species() -> frozenset[str]:
+    """Species the toluene subset adds (see :func:`aromatic_species`)."""
+    return aromatic_species("TOLUENE")
+
+
+@functools.lru_cache(maxsize=8)
+def merged_mechanism(aromatics: tuple[str, ...] = ()) -> ParsedMechanism:
+    """The limonene subset with the given aromatic subsets merged in, in AROMATICS order
+    (a reaction two subsets share is kept once, under the label of the first); no tutorial
+    edits yet."""
+    unknown = [n for n in aromatics if n not in AROMATIC_EQN]
+    if unknown:
+        raise ValueError(f"unknown aromatic subsets {unknown}; known: {AROMATICS}")
+    parsed = parse_eqn(LIMONENE_EQN)
+    for name in AROMATICS:
+        if name in aromatics:
+            parsed, _ = merge_mechanisms(parsed, parse_eqn(AROMATIC_EQN[name]),
+                                         label_prefix=AROMATIC_LABEL_PREFIX[name])
+    return parsed
+
+
+@functools.lru_cache(maxsize=8)
+def tutorial_mechanism(aromatics: tuple[str, ...] | bool = ()) -> ParsedMechanism:
+    """The limonene mechanism, with the aromatic subsets in ``aromatics`` merged in, with
+    <34>'s product renamed to the NA_HET counter. ``True`` means the toluene subset."""
+    if aromatics is True:
+        aromatics = ("TOLUENE",)
+    elif aromatics is False:
+        aromatics = ()
+    parsed = merged_mechanism(tuple(n for n in AROMATICS if n in aromatics))
     reactions = []
     for r in parsed.reactions:
         if r.label == N2O5_HET_LABEL:

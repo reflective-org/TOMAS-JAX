@@ -31,12 +31,17 @@ CASES = (
     # 6 h midday urban preset was not fingerprinted
     ("level1_urban", 1.0, False),
     ("level1_urban", 24.0, True),
-    # the Urban toluene toggle on (2026-10-23, A27): the merged limonene + toluene mechanism
+    # the Urban VOC selector (2026-10-23, A27): the limonene mechanism with one aromatic subset
     ("level1_urban+toluene", 1.0, False),
     ("level1_urban+toluene", 24.0, True),
+    ("level1_urban+benzene", 1.0, False),
+    ("level1_urban+benzene", 24.0, True),
+    ("level1_urban+mxylene", 1.0, False),
+    ("level1_urban+mxylene", 24.0, True),
 )
 # Named variants of a preset: "<preset>+<variant>" -> gases_ppb overrides on top of the preset
-VARIANTS = {"toluene": {"TOLUENE": 5.0}}     # box.scenario.URBAN_TOLUENE_PPB_ON
+VARIANTS = {"toluene": {"TOLUENE": 5.0}, "benzene": {"BENZENE": 5.0},    # box.scenario.URBAN_VOC_PPB_ON
+            "mxylene": {"MXYL": 5.0}}
 
 
 def scenario_of(name: str, hours: float | None = None):
