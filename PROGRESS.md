@@ -4,44 +4,54 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
-## 2026-10-23 (Fri) — Urban air: toluene (MCM v3.3.1) toggle, stacked on the full-day Urban (B1)
+## 2026-10-23 (Fri) — Urban air: VOC selector benzene / toluene / m-xylene (MCM v3.3.1), stacked on the full-day Urban (B1)
 
-**Branch**: `urban-toluene` (from `urban-full-day`, PR #30). Shantanu (2026-10-22, verbatim):
+**Branch**: `urban-toluene` (from `urban-full-day`, PR #30); PR #31. Shantanu (2026-10-22, verbatim):
 "Another idea here would be to add a toggle for a VOC like naphthalene that can react to convert
 NO to NO2 and boost O3. This would demonstrate concepts around O3-NOx cycle, VOC effect on O3
-production, and aerosol coagulation (separately)." Naphthalene is not in MCM v3.3.1; Ali:
-"OK, let's do toluene if naphthalene does not exist".
+production, and aerosol coagulation (separately)." Naphthalene is not in MCM v3.3.1; Ali: "OK,
+let's do toluene if naphthalene does not exist". Then Shantanu: "May be use one for m-xylene? I
+don't want to use benzene or toluene since they react too slowly. 0.5 ppb/h is good enough."
+(the 0.5 ppb/h confirms the A26 NO emission); Ali: "yes. let's do it" — a four-way selector.
 
-- `gaschem/mechanisms/toluene_mcm.eqn`: the MCM website's TOLUENE export in KPP format
-  (inorganic + generic rates), byte-identical, with `toluene_mcm.provenance.md` (URL,
-  2026-10-23, sha256 186f1032…, MCM citation). `kpp_parser` skips the export's section markers.
-- `gaschem/merge.py`: `merge_mechanisms(base, extra)` keeps a reaction once when reactants,
-  products and rate expression agree (326 of 831; every reaction of the 110 shared species),
-  raises on a conflicting duplicate (none) or atom conflict (none), adds the 505 others with
-  `T` labels, RO2 = union (183). 725 → 906 species (907 with NA_HET), 2135 → 2640 reactions.
-- `gaschem/photolysis.py`: J_CH3CHO (TUV-x acetaldehyde) and J_MVK_CO (TUV-x MVK total with
-  the MCM branching); every J of the merged mechanism has a source (a missing one raises).
-- `box/coupling.py`: `tutorial_mechanism(toluene)`, `uses_toluene()`, `toluene_only_species()`;
-  `box/driver.py` picks the mechanism per run: the toluene subset is integrated only when a
-  toluene-subset species is above zero, emitted, outdoor or held. Levels 1–3 and Indoor are
-  bit-identical (fingerprints kept; merging everywhere was measured: 1e-7–1e-5 on gases,
-  1e-3 on Level 2 SOA, class MW +52 %). TOLUENE is reported when present; the c* fallback
-  warning only where SOA partitioning or nucleation is on; `warmup()` compiles the toluene
-  variant of presets that carry the toggle.
-- `level1_urban` preset: `TOLUENE = 0` (off); `scenario.URBAN_TOLUENE_PPB_ON` = 5 ppb (on, not
-  emitted; A27). Full day on: O3 maximum 41.8 ppb at 17:30 (off: 30.9 at 10:00), +16 ppb at
-  18:00, 32.8 at midnight (14.1 off); tables in `docs/aaar/coupling.md` and A27.
-- PyCHAM check, case T1 (`benchmarks/pycham/cases/T1`, `pycham_inputs.write_merged_eqn`): same
-  RO2 pool (183); max relative difference over 6 h of sunlight 3.8e-4 toluene, 2.4e-4 O3,
-  7.1e-4 NO, 4.4e-4 NO2, 5.3e-4 OH, 1.0e-3 HO2; 131 species all within 10 %.
-- Cost: 1.6× per solver step with the merged mechanism (9.9 → 15.9 ms; Urban 24 h 27 → 43 s,
-  Indoor 4 h 8.6 → 13.7 s, Day and night 24 h 25 → 39 s); zero when toluene is off.
-- Tests: `tests/test_aaar_toluene.py` (12 tests), fingerprints `level1_urban+toluene@1h/@24h`
-  added (nothing regenerated), `test_gaschem` adjusted for the two extra J sources.
-- Docs: `docs/aaar/gaschem.md`, `coupling.md`, `pycham_comparison.md` (T1), ASSUMPTIONS A27
+- `gaschem/mechanisms/{benzene,toluene,mxyl}_mcm.eqn`: the MCM website's BENZENE, TOLUENE and
+  MXYL exports in KPP format (inorganic + generic rates), byte-identical, each with a
+  `.provenance.md` (URL, 2026-10-23, sha256, MCM citation); `config.AROMATIC_EQN`. `kpp_parser`
+  skips the exports' section markers.
+- `gaschem/merge.py`: `merge_mechanisms(base, extra, label_prefix)` keeps a reaction once when
+  reactants, products and rate expression agree, raises on a conflicting duplicate or atom
+  conflict (none in any subset), adds the others with the prefix, RO2 = union. Against
+  limonene: benzene 105 shared / 331 new reactions (121 new species), toluene 326 / 505 (181),
+  m-xylene 326 / 534 (191); all three chained 1097 species, 3173 reactions, 225 RO2.
+- `gaschem/photolysis.py`: J_CH3CHO (TUV-x acetaldehyde) and J_MVK_CO (TUV-x MVK total with the
+  MCM branching); every J of every merge has a source (a missing one raises).
+- `box/coupling.py`: `aromatic_merge`, `aromatic_species`, `all_aromatic_species`,
+  `aromatics_used`, `merged_mechanism`, `tutorial_mechanism(aromatics)`; `box/driver.py` picks
+  the subsets per run (a run with one VOC pays for its subset alone). Levels 1–3, Indoor and
+  the Urban preset are bit-identical (fingerprints kept; merging everywhere was measured:
+  1e-7–1e-5 on gases, 1e-3 on Level 2 SOA, class MW +52 %). The VOC is reported when present;
+  the c* fallback warning only where SOA partitioning or nucleation is on; `warmup()` compiles
+  the three variants of the urban preset.
+- `level1_urban` preset: no aromatic; `scenario.URBAN_VOC_SPECIES`, `URBAN_VOC_PPB_ON` = 5 ppb
+  for all three (the same level isolates k_OH: 1.2e-12 / 5.6e-12 / 2.3e-11 cm³ s⁻¹ at 298 K;
+  A27). Full day: O3 maximum none 30.9 ppb at 10:00, benzene 31.0, toluene 41.8 at 17:30,
+  m-xylene 94.5 at 19:00 (the VOC used up by 16:00); tables in `docs/aaar/coupling.md` and A27.
+- PyCHAM checks, cases T1 (toluene), T2 (benzene), T3 (m-xylene) (`benchmarks/pycham/cases/T1`,
+  `pycham_inputs.write_merged_eqn(aromatics)`): same RO2 pools; max relative difference over 6 h
+  of sunlight at 300 s coupling: toluene 3.8e-4 / O3 2.4e-4 / NO 7.1e-4 / NO2 4.4e-4 / OH 5.3e-4
+  / HO2 1.0e-3; benzene 4.2e-5 / 7.2e-5 / 2.1e-4 / 1.5e-4 / 5.1e-4 / 6.8e-4; m-xylene O3 1.3e-4
+  / NO 9.1e-4 / NO2 7.5e-4 / OH 5.1e-4 / HO2 9.4e-4 (the VOC 1.7e-2 on its 0.007 ppb remainder);
+  131 / 54 / 175 species all within 10 %.
+- Cost: 10.0 → 14.0 / 15.7 / 16.0 ms per solver step (benzene / toluene / m-xylene), the Urban
+  day 27 → 38 / 44 / 48 s (1.4 / 1.6 / 1.75×); zero when no VOC is chosen.
+- Tests: `tests/test_aaar_aromatics.py` (21), fingerprints `level1_urban+benzene/+toluene/
+  +mxylene@1h/@24h` added (nothing regenerated), `test_gaschem` adjusted for the two extra J
+  sources.
+- Docs: `docs/aaar/gaschem.md`, `coupling.md`, `pycham_comparison.md` (T1–T3), ASSUMPTIONS A27
   and question 12, CLAUDE.md.
-- Open: a Nannoolal c* table for the 181 toluene species (they fall back to Li et al. 2016);
-  the "on" level (5 ppb) and the night-time HO2 with toluene on, for Shantanu.
+- Open: a Nannoolal c* table for the aromatic products (they fall back to Li et al. 2016); the
+  5 ppb level for all three (m-xylene gives O3 above 90 ppb in the undiluted layer) and the
+  night-time HO2 with a VOC on, for Shantanu.
 
 ## 2026-10-20 (Tue) — Nucleation inputs: ions, NH3, organic vapour; Level 1 H2SO4 reaches the particles
 

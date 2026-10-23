@@ -12,7 +12,7 @@
   (inorganic `<1>`–`<35>` and generic rate names as in the limonene export). The
   aromatic ring-opening scheme is that of Jenkin et al. (2003) and Bloss et al. (2005).
 - **Use:** merged in code with the limonene subset (`gaschem/merge.py`,
-  `box/coupling.tutorial_mechanism(toluene=True)`) when a scenario sets toluene or one of
+  `box/coupling.tutorial_mechanism(("TOLUENE",))`) when a scenario sets toluene or one of
   its products (ASSUMPTIONS A27). The 326 reactions it shares with the limonene file are
   identical (reactants, products and rate expression) and are kept once; 505 reactions
   and 181 species are new.
