@@ -369,6 +369,54 @@ the night O3 loss is NO2 + O3 → NO3 → N2O5, a reservoir that returns NOx and
 the titration; a daytime maximum of 30.9 ppb at 10:00; no net afternoon O3 production without
 VOCs (Ox falls 42.5 → 38.1 ppb from 06:00 to 18:00 as NO2 + OH makes HNO3).
 
+### Toluene (traffic VOC) toggle (Urban air, 2026-10-23, ASSUMPTIONS A27)
+
+The Urban preset carries `TOLUENE = 0` (off). "On" sets 5 ppb of toluene at 00:00
+(`box.scenario.URBAN_TOLUENE_PPB_ON`; not emitted, see A27) and the run integrates the MCM
+v3.3.1 toluene subset merged with the limonene mechanism (`docs/aaar/gaschem.md`, "The toluene
+subset and the merge"): toluene + OH → RO2, RO2 + NO → NO2 + RO, NO2 + hν → NO + O(³P) → O3,
+so NO is turned into NO2 without using O3 and the photostationary balance shifts to more O3.
+Off is bit-identical to the preset before the toggle existed (the limonene mechanism alone is
+integrated). Full day, default preset otherwise (ppb; OH and HO2 in 1e6 cm⁻³; 2026-10-23,
+off 32 s / on 44 s on the laptop):
+
+| local | O3 off | O3 on | NO off | NO on | NO2 off | NO2 on | OH off | OH on | HO2 off | HO2 on | toluene |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 00:00 | 30.00 | 30.00 | 0.50 | 0.50 | 15.00 | 15.00 | 0.00 | 0.00 | 0.0 | 0.0 | 5.00 |
+| 01:00 | 28.19 | 28.19 | 0.00 | 0.00 | 13.46 | 13.46 | 0.00 | 0.00 | 0.0 | 0.0 | 5.00 |
+| 02:00 | 27.08 | 27.08 | 0.00 | 0.00 | 11.96 | 11.96 | 0.00 | 0.00 | 0.0 | 0.0 | 5.00 |
+| 03:00 | 26.12 | 26.12 | 0.00 | 0.00 | 10.91 | 10.91 | 0.00 | 0.00 | 0.0 | 0.0 | 5.00 |
+| 04:00 | 25.26 | 25.26 | 0.00 | 0.00 | 10.17 | 10.17 | 0.00 | 0.00 | 0.0 | 0.0 | 5.00 |
+| 05:00 | 24.47 | 24.47 | 0.00 | 0.00 | 9.72 | 9.72 | 0.00 | 0.00 | 0.0 | 0.0 | 5.00 |
+| 06:00 | 27.32 | 27.32 | 0.63 | 0.63 | 15.21 | 15.21 | 0.00 | 0.00 | 0.1 | 0.1 | 5.00 |
+| 07:00 | 29.40 | 29.40 | 3.16 | 3.16 | 13.10 | 13.10 | 0.05 | 0.06 | 0.1 | 0.2 | 5.00 |
+| 08:00 | 30.47 | 30.51 | 5.18 | 5.17 | 11.94 | 11.94 | 0.26 | 0.28 | 0.4 | 0.7 | 4.98 |
+| 09:00 | 30.84 | 31.01 | 6.47 | 6.43 | 11.36 | 11.36 | 0.68 | 0.80 | 0.8 | 1.7 | 4.93 |
+| 10:00 | 30.94 | 31.46 | 7.23 | 7.09 | 10.90 | 10.88 | 1.26 | 1.58 | 1.4 | 3.2 | 4.81 |
+| 11:00 | 30.86 | 32.10 | 7.64 | 7.30 | 10.48 | 10.44 | 1.88 | 2.53 | 1.9 | 5.4 | 4.62 |
+| 12:00 | 30.63 | 33.11 | 7.81 | 7.13 | 10.11 | 10.02 | 2.38 | 3.50 | 2.5 | 8.3 | 4.34 |
+| 13:00 | 30.26 | 34.61 | 7.83 | 6.68 | 9.84 | 9.66 | 2.65 | 4.33 | 2.8 | 11.6 | 4.01 |
+| 14:00 | 29.79 | 36.53 | 7.77 | 6.05 | 9.72 | 9.37 | 2.59 | 4.81 | 2.8 | 14.6 | 3.65 |
+| 15:00 | 29.21 | 38.64 | 7.63 | 5.35 | 9.77 | 9.15 | 2.21 | 4.78 | 2.5 | 16.7 | 3.31 |
+| 16:00 | 28.47 | 40.52 | 7.46 | 4.69 | 10.10 | 9.13 | 1.61 | 4.11 | 1.9 | 16.6 | 3.03 |
+| 17:00 | 27.39 | 41.63 | 7.27 | 4.15 | 10.88 | 9.53 | 0.93 | 2.91 | 1.1 | 13.7 | 2.82 |
+| 18:00 | 25.87 | 41.76 | 6.75 | 3.54 | 12.22 | 10.43 | 0.40 | 1.62 | 0.5 | 9.6 | 2.70 |
+| 19:00 | 23.58 | 40.85 | 5.23 | 2.47 | 14.41 | 11.87 | 0.11 | 0.65 | 0.2 | 6.1 | 2.64 |
+| 20:00 | 19.69 | 38.85 | 1.90 | 0.72 | 18.25 | 13.99 | 0.01 | 0.13 | 0.1 | 4.4 | 2.62 |
+| 21:00 | 16.95 | 36.89 | 0.00 | 0.00 | 19.66 | 13.86 | 0.00 | 0.02 | 0.2 | 16.5 | 2.62 |
+| 22:00 | 15.90 | 35.30 | 0.00 | 0.00 | 18.78 | 12.41 | 0.00 | 0.07 | 0.7 | 24.6 | 2.62 |
+| 23:00 | 14.96 | 33.94 | 0.00 | 0.00 | 18.27 | 11.47 | 0.00 | 0.09 | 0.8 | 20.1 | 2.61 |
+| 24:00 | 14.11 | 32.75 | 0.00 | 0.00 | 17.81 | 10.73 | 0.00 | 0.11 | 0.8 | 18.2 | 2.61 |
+
+What it shows: with toluene an afternoon O3 build-up appears — O3 climbs from 31 ppb at 10:00 to
+a maximum of 41.8 ppb at 17:30 (off: 30.9 at 10:00 and falling), is 16 ppb above "off" at
+18:00, and the evening titration brings it to 32.8 ppb at midnight instead of 14.1; Ox = O3 +
+NO2 grows from 42.5 to 52.2 ppb over the sunlit hours instead of falling to 38.1; daytime NO
+is lower and OH and HO2 higher (RO2 + NO → NO2 + RO, RO + O2 → HO2 + carbonyl); 2.4 of the
+5 ppb of toluene are oxidised by midnight. The night-time HO2 of 1–2e7 cm⁻³ with toluene on
+comes from the NO3 and O3 reactions of the ring-opening products (for Shantanu, A27).
+The sensitivity to the toluene level (1, 2, 5, 10 ppb; emitted instead) is in A27.
+
 ## Presets and runtime (warm process, laptop CPU)
 
 | Preset | What it shows | Duration | Δt_c | Wall time |
@@ -377,6 +425,7 @@ VOCs (Ox falls 42.5 → 38.1 ppb from 06:00 to 18:00 as NO2 + OH makes HNO3).
 | `level2_limonene_soa` | limonene oxidation → ~9 µg/m³ SOA (Jathar c* table, A8), top contributors | 6 h | 300 s | ~6 s |
 | `level3_day_night` | diurnal J/OH/NO3; nitrate 0 → 3.3 → 7.1 µg/m³ for γ = 0, 0.02, 0.1; SOA 0.05 µg/m³ | 24 h | 300 s | ~27 s |
 | `level1_urban` | a whole day from 00:00 local: O3 30 ppb at the start, traffic-shaped NO emission (0.5 ppb/h mean), no dilution, no O3 deposition; night loss, evening titration, photostationary state in daylight (1 %); 2e4 → 6.7e3 cm⁻³ by coagulation only, dry mass conserved (A26) | 24 h | 300 s | ~32 s |
+| `level1_urban` + toluene 5 ppb | the toluene toggle on (A27): the merged limonene + toluene mechanism (2640 reactions); afternoon O3 maximum 41.8 ppb at 17:30, 32.8 at midnight | 24 h | 300 s | ~44 s |
 | `level2_indoor` | dark limonene ozonolysis at O3 held at 30 ppb, with ventilation, O3 surface loss, vapour wall loss and deposition; SOA peak 1.0 µg/m³ (9 with the losses off; 0.2 with O3 free to fall to 5.6 ppb) | 4 h | 300 s | ~8 s |
 
 With nucleation on, every preset runs at 60 s coupling with 5 s micro-steps and takes

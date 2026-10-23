@@ -14,7 +14,44 @@ frequencies). `gaschem` does not import TOMAS so it can be split out later.
 | `solver.py` | `integrate_interval(mech, y, k, dt)` — diffrax Kvaerno3 |
 | `environment.py` | `air_environment(T, P, RH)` -> M, O2, N2, H2O [molec/cm³] |
 | `photolysis.py` | `JProvider` — TUV-x / MCM / constant / off |
+| `merge.py` | `merge_mechanisms(base, extra) -> (ParsedMechanism, MergeReport)` (limonene + toluene, in code) |
 | `volatility.py` | c* table loader, Li et al. (2016) c* fallback, closed-shell filter, `assign_classes` |
+
+## The toluene subset and the merge (2026-10-23, ASSUMPTIONS A27)
+
+`gaschem/mechanisms/toluene_mcm.eqn` is the MCM v3.3.1 TOLUENE subset exported from the
+MCM website in KPP format with the inorganic and generic rates (byte-identical; URL,
+retrieval date and sha256 in `toluene_mcm.provenance.md`; cite the MCM website and the
+aromatic protocol papers Jenkin et al. 2003, https://doi.org/10.5194/acp-3-181-2003, and
+Bloss et al. 2005, https://doi.org/10.5194/acp-5-641-2005): 292 declared species (291 used),
+831 reactions, 56 peroxy radicals, J_CH3CHO and J_MVK_CO besides the limonene J's. The
+parser skips the export's `#INCLUDE atoms`, `#DEFVAR` and `#EQUATIONS` markers.
+
+`merge.merge_mechanisms(base, extra)` (`merge.py`) joins the two subsets in code:
+
+- species: the union in base order then the extra file's order; a shared species must have
+  the same atom composition (110 shared, 181 new, no conflict);
+- reactions: a reaction of the extra file that the base has with the same reactants (as a
+  multiset), the same products and coefficients and the same rate expression (whitespace
+  ignored) is kept once under its base label — 326 of the 831 (every reaction of the shared
+  species); the same reactants and products with a different rate expression would be a
+  conflict and raises (none); the 505 others are added with labels prefixed `T`;
+- RO2 sum: the union, base order first (146 + 37 = 183).
+
+Merged: 906 species (907 with NA_HET), 2640 reactions, 30 J. `MergeReport` carries the
+counts. `box.coupling.tutorial_mechanism(toluene)` applies the `<34>` edit to either
+mechanism; `box.coupling.uses_toluene(...)` decides per scenario: the toluene subset is
+integrated only when a toluene-subset species is given a non-zero initial amount, emission or
+outdoor value, or is held. With every toluene species at zero (the Urban preset's default,
+Levels 2–3, Indoor) the limonene mechanism alone runs and the numbers are bit-identical to
+before. Merging everywhere was measured and rejected: at toluene = 0 the results move by
+1e-7–1e-5 (gases) and up to 1e-3 (Level 2 SOA), because the stiff solver's error norm spans
+25 % more components and the toluene products raise the c*-class mean molecular weights by up
+to 52 %. The toluene products are not in the Jathar c* table, so they take the Li et al.
+(2016) estimate (289 condensable species instead of 228); the fallback warning is given only
+where SOA partitioning or nucleation is on. Cost: a solver step is 1.6 times dearer with the
+merged mechanism (9.9 → 15.9 ms per step; dense 907² LU), so a run with toluene on takes 1.6
+times as long; the number of steps is unchanged. Tests: `tests/test_aaar_toluene.py`.
 
 ## Rate constants (KPP semantics)
 

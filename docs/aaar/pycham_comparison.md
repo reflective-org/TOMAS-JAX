@@ -21,6 +21,7 @@ time) are numerical experiments done in benchmark code; they never change the mo
 | Photolysis and day/night (G3) | **Agree once the coupling is short.** 900 s (the Level 3 preset until 2026-10-17): median \|NMB\| 10 % over 361 species, HNO3 −9 %, NO −11 % by day. 60 s: 0.6 %, every species within 2.6 % at all times. All differences removed: 1.5e-6. | How NO2 is "held": TOMAS-JAX resets it after each interval, PyCHAM fixes it inside the solver. Plus J and RO2 frozen for 900 s. |
 | Condensation / evaporation (S1) | **Mass agrees within ~1 % at 12 h; the size distribution differs by the Kelvin term and transfer coefficient only; early uptake is faster.** c* = 1 SOA +0.7 % at 12 h (max +4.1 % at 1–3 h), c* = 100 −0.3 %. Number-mean dry diameter +2.3 % and GSD −3.2 % at 12 h, the same at 40 and 160 bins (TOMAS-JAX moves by ≤ 0.1 % with resolution). With Kelvin off in both and PyCHAM's transfer coefficient in TOMAS-JAX: −0.2 to +0.1 % in diameter and −0.4 to +0.1 % in GSD at 40–160 bins. | vbs-jax's transfer coefficient (up to 1.5× PyCHAM's and above the kinetic limit) and the Kelvin term. Until 2026-10-15 TOMAS-JAX moved growing particles with MNFIX, which spread the distribution (diameter −12.6 % at 40 bins); it now uses a PPM remap. |
 | SOA partitioning with chemistry (S2) | **Total SOA within 1–4.2 % after 1 h (+1.1 % at 6 h), +13 % at 30 min.** Per c* class within ~11 %. | Operator split and transfer rate early on; per-species apportionment inside a class off by up to 4×. The volatility itself is not tested (identical c* by construction). |
+| Toluene chemistry, merged mechanism (T1, 2026-10-23) | **Same ODE system.** The limonene + toluene mechanism written as one KPP file for PyCHAM gives the same 183-member RO2 pool; over 6 h of sunlight with 5 ppb toluene the largest relative difference at 300 s coupling is 3.8e-4 (toluene), 2.4e-4 (O3), 7.1e-4 (NO), 4.4e-4 (NO2), 5.3e-4 (OH), 1.0e-3 (HO2), 2.7e-3 (H2O2); 131 species above 1e-5 ppb all within 10 %, median \|NMB\| 5e-4. | Solver tolerances and water vapour, as in G2. |
 
 What this means for the tutorial: the gas-phase chemistry and the partitioning
 numerics are sound. Three TOMAS-JAX behaviours deserve a decision (they are model
@@ -457,6 +458,57 @@ Runtime: PyCHAM ~45 s per 6 h run; TOMAS-JAX 9 s (300 s), 23 s (60 s).
 More figures: [all gas-phase species with particles present](figures/pycham/S2_gas_scatter.png).
 
 ---
+
+## Case T1: toluene + NOx + O3 in sunlight, merged mechanism (2026-10-23)
+
+*Added with the Urban air toluene toggle (tomas-jax ASSUMPTIONS A27). Harness:
+`benchmarks/pycham/cases/T1/`.*
+
+Set-up: the `level1_urban` gases (O3 30, NO 0.5, NO2 15, CO 200, CH4 1900, H2 500 ppb) with
+5 ppb of toluene, 6 h from 10:00 EDT on 1 July at 40 °N, 75 °W, TUV-x photolysis prescribed to
+PyCHAM per 300 s coupling interval, no NO emission (PyCHAM would need a time-varying influx;
+left out of this check), T = 298.15 K, P = 101325 Pa, RH = 0.5, gas phase only. TOMAS-JAX
+integrates the limonene + toluene mechanism because toluene is non-zero
+(`box.coupling.uses_toluene`); PyCHAM reads the same merged mechanism written as one KPP file
+by `pycham_inputs.write_merged_eqn` (the limonene file's declarations and reactions, the 181
+toluene species' declarations, one RO2 sum of 183 members, then the 505 toluene reactions the
+limonene file lacks, verbatim from the MCM export; the file is parsed back and checked to equal
+the in-code merge reaction by reaction). `<34>` has rate 0 in the file (γ = 0 in TOMAS-JAX).
+PyCHAM ran in 15 s (update step 60 s); TOMAS-JAX 9.4 s at 300 s coupling (519 solver steps) and
+34 s at 60 s (2011 steps).
+
+Checks built in: PyCHAM's RO2 pool equals ours (183 members); the air number density agrees to
+2e-16; the J file carries J_CH3CHO (MCM 13) and J_MVK_CO (23) besides the limonene J's.
+
+Results at the preset 300 s coupling (PyCHAM as reference; max relative deviation over the
+6 h, 300 s grid, species above 1e-5 ppb; end values at 16:00 EDT):
+
+| species | max rel. dev. | NMB | end, TOMAS-JAX | end, PyCHAM |
+|---|---|---|---|---|
+| toluene | 3.8e-4 | +1.1e-4 | 2.365 ppb | 2.364 ppb |
+| O3 | 2.4e-4 | −1.2e-4 | 55.08 ppb | 55.09 ppb |
+| NO | 7.1e-4 | +1.9e-4 | 1.609 ppb | 1.608 ppb |
+| NO2 | 4.4e-4 | +1.0e-4 | 4.424 ppb | 4.422 ppb |
+| OH | 5.3e-4 | −3.7e-4 | 9.78e6 cm⁻³ | 9.79e6 cm⁻³ |
+| HO2 | 1.0e-3 | −7.2e-4 | 9.84e7 cm⁻³ | 9.85e7 cm⁻³ |
+| NO3 | 4.4e-4 | −2.6e-4 | | |
+| HNO3 | 3.8e-4 | −3.4e-4 | 8.138 ppb | 8.141 ppb |
+| HCHO | 4.1e-4 | −1.8e-4 | 1.479 ppb | 1.479 ppb |
+| PAN | 7.8e-4 | −4.3e-4 | 0.194 ppb | 0.194 ppb |
+| cresol | 3.9e-4 | +2.4e-4 | 0.0516 ppb | 0.0516 ppb |
+| benzaldehyde | 2.8e-4 | +0.8e-4 | 0.0738 ppb | 0.0738 ppb |
+| glyoxal | 2.6e-4 | −0.2e-4 | 0.418 ppb | 0.418 ppb |
+| methylglyoxal | 2.3e-4 | −0.3e-4 | 0.223 ppb | 0.223 ppb |
+| H2O2 | 2.7e-3 | −2.5e-3 | 0.0084 ppb | 0.0084 ppb |
+
+All 131 species above 1e-5 ppb are within 10 % at every snapshot (1, 3, 6 h); median |NMB|
+4.9e-4, 95th percentile 3.2e-3. The toluene decay (5 → 2.36 ppb in 6 h, OH up to 1e7 cm⁻³)
+and the O3 production (30 → 55 ppb) agree to better than 4e-4. The 60 s coupling run is not an
+apples-to-apples comparison here (the J file was written for the 300 s intervals, so its J
+timing differs; max rel. dev. up to 1.4e-2 in the first interval, NMB unchanged at 1e-4). The
+residual is the solver tolerance and water vapour difference measured in G2.
+
+Figure: `figures/pycham/T1_key_species.png`.
 
 ## Verdict per process and what it means for the tutorial
 

@@ -746,6 +746,88 @@ particles and the processes of A19 are unchanged).
 - Library (tomas-fe): the visible inputs are cloud fraction, NO emission strength and total
   particle number; initial O3, NO and NO2 move under "Unlock all inputs".
 
+### A27 — Toluene (traffic VOC) toggle in Urban air, MCM v3.3.1 toluene subset (2026-10-23, for Shantanu to confirm)
+
+Shantanu (2026-10-22): "Another idea here would be to add a toggle for a VOC like naphthalene
+that can react to convert NO to NO2 and boost O3. This would demonstrate concepts around O3-NOx
+cycle, VOC effect on O3 production, and aerosol coagulation (separately)." Naphthalene is not in
+MCM v3.3.1 (checked: the MCM website species search, the full MCM export, and Lannuque and
+Sartelet 2024, https://doi.org/10.5194/acp-24-8589-2024). Ali: "OK, let's do toluene if
+naphthalene does not exist".
+
+- Mechanism: the MCM v3.3.1 TOLUENE subset exported from the MCM website in KPP format with
+  the inorganic and generic rates (`gaschem/mechanisms/toluene_mcm.eqn`, byte-identical;
+  URL, retrieval date 2026-10-23 and sha256 in `toluene_mcm.provenance.md`): 292 declared
+  species, 831 reactions, 56 peroxy radicals. Citation, as the MCM requires: the MCM website
+  (http://mcm.york.ac.uk/) and the aromatic protocol papers Jenkin et al. (2003),
+  https://doi.org/10.5194/acp-3-181-2003, and Bloss et al. (2005),
+  https://doi.org/10.5194/acp-5-641-2005 (with Jenkin et al. 1997 and Saunders et al. 2003
+  for the non-aromatic parts).
+- Merged with the limonene subset in code (`gaschem/merge.py`), never by editing a file: a
+  reaction of the toluene file that the limonene file already has (same reactants, same
+  products and coefficients, same rate expression) is kept once — 326 of the 831, every
+  reaction of the 110 shared species; none has the same reactants and products with a
+  different rate (a conflict would raise, not pick a side); 505 reactions and 181 species are
+  new (labels prefixed `T`). Together: 725 → 906 species (907 with the NA_HET counter),
+  2135 → 2640 reactions, RO2 sum 146 → 183 members (the union). The toluene products use
+  two photolysis frequencies the limonene subset does not, J_CH3CHO (TUV-x acetaldehyde,
+  pressure-dependent quantum yield) and J_MVK_CO (the TUV-x MVK total split with the MCM
+  branching, as J_MVK_C2H3 already was); every J of the merged mechanism has a source, and a
+  missing one raises. Atom balance: no new exception (the toluene export's two C-gaining
+  photolysis reactions are the limonene file's <7727>/<7729>, kept once).
+- When it is used: only when a scenario gives a toluene-subset species a non-zero initial
+  amount, emission or outdoor value, or holds one. The Urban preset carries `TOLUENE = 0`
+  ("off"): it, Levels 2–3 and Indoor integrate the limonene mechanism alone and their numbers
+  are bit-identical to before (fingerprints kept, not regenerated). Investigated: with the
+  merged mechanism forced on every run at toluene = 0, Levels 2, 3, Indoor and Urban change
+  by 1e-7 to 1e-5 (gases) and up to 1e-3 (Level 2 SOA) because the stiff solver's error norm
+  spans 25 % more components (fewer accepted steps) and the toluene products raise the
+  c*-class mean molecular weights by up to 52 %; selecting the mechanism per run avoids both.
+- c* of the toluene products: not in Shantanu's table (A8), so they take the Li et al. (2016)
+  estimate (61 more condensable species, 228 → 289). In the Urban level nothing condenses or
+  nucleates by default, so this changes nothing there and the run does not warn; with SOA
+  partitioning or nucleation on (Levels 2–3 with toluene added by a user) the run warns as a
+  partial table always did. Open: a Nannoolal table for the toluene products (question 12).
+- "On" level: 5 ppb of toluene at 00:00, not emitted. Toluene is among the most abundant
+  anthropogenic hydrocarbons in US cities, with city means of the order of 1 ppb (Baker et al.
+  2008, https://doi.org/10.1016/j.atmosenv.2007.09.007); 5 ppb is the upper end of that range
+  and stands in for the whole urban VOC mix, of which the level has no other member (CO and
+  CH4 only). Emitting it with the traffic profile was tried and not used: at the toluene-to-NOx
+  ratio of exhaust (a few per cent by mole: on-road toluene-to-CO emission ratios of a few
+  ppb per ppm, Borbon et al. 2013, https://doi.org/10.1002/jgrd.50059, with CO/NOx of order
+  5–10) the traffic source of toluene would be about 0.02 ppb/h and invisible; even 0.1 ppb/h
+  (a fifth of the NO emission) adds 2 ppb of toluene by midnight and 2 ppb of O3 at most.
+  Sensitivity of the full day (initial toluene; O3 in ppb, local time):
+
+  | toluene at 00:00 | O3 maximum | O3 at 15:00 | O3 at 18:00 | Ox 06:00 → 18:00 | OH at 13:00 | HNO3 at 24:00 |
+  |---|---|---|---|---|---|---|
+  | 0 (off) | 30.9 at 10:00 | 29.2 | 25.9 | 42.5 → 38.1 | 2.7e6 | 4.9 |
+  | 1 ppb | 31.1 at 10:30 | 30.5 | 27.8 | 42.5 → 39.9 | 2.9e6 | 5.5 |
+  | 2 ppb | 32.0 at 15:00 | 32.0 | 30.3 | 42.5 → 42.1 | 3.2e6 | 6.3 |
+  | **5 ppb (on)** | **41.8 at 17:30** | **38.6** | **41.8** | **42.5 → 52.2** | **4.3e6** | **9.4** |
+  | 10 ppb | 81.7 at 19:30 | 58.8 | 79.2 | 42.5 → 85.0 | 7.0e6 | 15.0 |
+  | 0 + 0.1 ppb/h emitted (traffic profile) | 31.0 at 10:30 | 30.4 | 27.9 | 42.5 → 40.0 | 2.9e6 | 5.6 |
+
+  With 5 ppb an afternoon O3 build-up appears: O3 rises from 31 ppb at 10:00 to 41.8 ppb at
+  17:30 (+16 ppb over "off" at 18:00) and the evening titration only brings it to 32.8 ppb at
+  midnight (14.1 off); Ox grows by 10 ppb over the sunlit hours instead of falling by 4; OH
+  at 13:00 is 4.3e6 instead of 2.7e6 cm⁻³ and HO2 up to 1.7e7 instead of 2.8e6 cm⁻³
+  (RO2 + NO → NO2 + RO, RO + O2 → HO2); 2.4 ppb of the toluene is oxidised by OH (lifetime
+  about 18 h at the "off" OH). At night with toluene on, HO2 stays at 1–2e7 cm⁻³
+  (NO3 and O3 reactions of the ring-opening products): honest, worth a look by Shantanu.
+  The whole-day table (hourly O3, NO, NO2, OH, HO2 and toluene, off and on) is in
+  `docs/aaar/coupling.md`.
+- Check against PyCHAM (case T1, `docs/aaar/pycham_comparison.md`): the same merged
+  mechanism written as one KPP file for PyCHAM, 6 h of sunlight from 10:00 EDT with the
+  Urban gases and 5 ppb toluene, no emissions, gas phase only. PyCHAM reads 183 RO2 members
+  (identical pool). At the preset 300 s coupling the largest relative difference over 6 h is
+  3.8e-4 for toluene, 2.4e-4 for O3, 7.1e-4 NO, 4.4e-4 NO2, 5.3e-4 OH, 1.0e-3 HO2 (H2O2
+  2.7e-3); 131 species above 1e-5 ppb, all within 10 %, median |NMB| 5e-4.
+- Cost: the merged mechanism makes one solver step 1.6 times dearer (9.9 → 15.9 ms on the
+  laptop, 726 → 907 species; a dense LU), so a run with toluene on takes 1.6 times as long
+  (Urban 24 h 27 → 43 s, Indoor 4 h 8.6 → 13.7 s, Day and night 24 h 25 → 39 s; the number of
+  solver steps is unchanged). Runs with toluene at zero pay nothing.
+
 ## Questions for Shantanu
 
 1. ~~c* table for the mechanism species~~ — received 2026-10-16 and used by Levels 2
@@ -795,3 +877,11 @@ particles and the processes of A19 are unchanged).
    afternoon O3 build-up (O3 peaks at 30.9 ppb at 10:00 and the night loss is mostly N2O5
    formation, not NO titration). Is that the diurnal cycle you wanted for Level 1, with the
    naphthalene toggle as the source of net O3?
+12. Toluene toggle (2026-10-23, A27): toluene instead of naphthalene (not in MCM v3.3.1);
+   "on" = 5 ppb at 00:00, not emitted, as a stand-in for the urban VOC mix (afternoon O3
+   maximum 41.8 ppb at 17:30 against 30.9 ppb at 10:00 without; 2 ppb gives only +2 ppb and
+   10 ppb gives 82 ppb). Is 5 ppb the level you want, or an emission with the traffic profile
+   at a chosen toluene-to-NOx ratio? The toluene products' c* fall back to Li et al. (2016):
+   could you extend the Nannoolal table (A8) to the 181 toluene species? And the night-time
+   HO2 of 1-2e7 cm⁻³ with toluene on (NO3 and O3 chemistry of the ring-opening products):
+   expected?
