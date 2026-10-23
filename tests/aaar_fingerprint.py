@@ -31,7 +31,23 @@ CASES = (
     # 6 h midday urban preset was not fingerprinted
     ("level1_urban", 1.0, False),
     ("level1_urban", 24.0, True),
+    # the Urban toluene toggle on (2026-10-23, A27): the merged limonene + toluene mechanism
+    ("level1_urban+toluene", 1.0, False),
+    ("level1_urban+toluene", 24.0, True),
 )
+# Named variants of a preset: "<preset>+<variant>" -> gases_ppb overrides on top of the preset
+VARIANTS = {"toluene": {"TOLUENE": 5.0}}     # box.scenario.URBAN_TOLUENE_PPB_ON
+
+
+def scenario_of(name: str, hours: float | None = None):
+    """The Scenario of a fingerprint case name (a preset or "<preset>+<variant>")."""
+    from tomas_jax.box.scenario import load_preset
+
+    preset, _, variant = name.partition("+")
+    s = load_preset(preset)
+    if variant:
+        s = s.replace(gases_ppb={**s.gases_ppb, **VARIANTS[variant]})
+    return s if hours is None else s.replace(duration_h=hours)
 
 
 # The outputs that existed before 2026-10-19 (sorted names). New outputs added later (surface
@@ -94,11 +110,10 @@ def case_key(name: str, duration_h: float) -> str:
 
 def main() -> None:
     from tomas_jax.box.driver import run
-    from tomas_jax.box.scenario import load_preset
 
     out = {}
     for name, hours, _ in CASES:
-        out[case_key(name, hours)] = fingerprint(run(load_preset(name).replace(duration_h=hours)))
+        out[case_key(name, hours)] = fingerprint(run(scenario_of(name, hours)))
         print(case_key(name, hours), out[case_key(name, hours)])
     FINGERPRINT_FILE.parent.mkdir(exist_ok=True)
     FINGERPRINT_FILE.write_text(json.dumps(out, indent=2) + "\n")
