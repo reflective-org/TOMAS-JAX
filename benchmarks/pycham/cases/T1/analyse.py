@@ -1,12 +1,13 @@
-"""Case T1 analysis: metrics and a figure from the saved results (no model runs).
+"""Cases T1-T3 analysis: metrics and a figure from the saved results (no model runs).
 
-    cd tomas-jax && .venv/bin/python -m benchmarks.pycham.cases.T1.analyse
+    cd tomas-jax && .venv/bin/python -m benchmarks.pycham.cases.T1.analyse [--case T1|T2|T3]
 
-Writes ``results/species_stats.csv``, ``results/summary.json`` and ``figures/T1_key_species.png``
+Writes ``results/species_stats.csv``, ``results/summary.json`` and ``figures/<case>_key_species.png``
 (copied to docs/aaar/figures/pycham/). Raises if a result file is missing.
 """
 from __future__ import annotations
 
+import argparse
 import json
 import shutil
 
@@ -14,8 +15,8 @@ import numpy as np
 
 from ... import metrics, ours, plotting
 from ...config import (ABUNDANCE_THRESHOLD_PPB, COLORS, DOC_FIG_DIR, LABEL_OURS, LABEL_PYCHAM,
-                       SNAPSHOT_TIMES_H, STRICT_THRESHOLD_PPB, T1)
-from . import case
+                       SNAPSHOT_TIMES_H, STRICT_THRESHOLD_PPB)
+from .case import DEFAULT_CASE, AromaticCase
 
 RADICALS_CM3 = ("OH", "HO2", "NO3")
 
@@ -26,16 +27,17 @@ def _need(path):
     return path
 
 
-def _run_labels() -> dict[int, str]:
+def _run_labels(case: AromaticCase) -> dict[int, str]:
+    T1 = case.cfg
     return {int(T1["coupling_dt_s"]): f"{LABEL_OURS} (coupling {T1['coupling_dt_s']:.0f} s)",
             int(T1["coupling_dt_sensitivity_s"]):
                 f"{LABEL_OURS} (coupling {T1['coupling_dt_sensitivity_s']:.0f} s)"}
 
 
-def all_species_comparison() -> tuple[dict, dict]:
+def all_species_comparison(case: AromaticCase) -> tuple[dict, dict]:
     py = dict(np.load(_need(case.PYCHAM_NPZ)))
     stats, summ = {}, {}
-    for dt, label in _run_labels().items():
+    for dt, label in _run_labels(case).items():
         o = ours.load_npz(_need(case.OURS_NPZ[dt]))
         names = metrics.common_species(o["species"], py["species"])
         ia, ib = metrics.common_times(o["t_s"], py["t_s"])
@@ -55,12 +57,12 @@ def all_species_comparison() -> tuple[dict, dict]:
     return stats, summ
 
 
-def key_species_comparison() -> dict:
+def key_species_comparison(case: AromaticCase) -> dict:
     """Max relative difference and NMB of each key species (PyCHAM as reference), per run."""
     k = dict(np.load(_need(case.KEY_NPZ)))
     keys = [str(s) for s in k["species"]]
     out = {}
-    for dt, label in _run_labels().items():
+    for dt, label in _run_labels(case).items():
         ia, ib = metrics.common_times(k[f"ours_dt{dt}_t_s"], k["pycham_t_s"])
         x = k[f"ours_dt{dt}_ppb"][ia].astype(float)
         r = k["pycham_ppb"][ib].astype(float)
@@ -72,7 +74,7 @@ def key_species_comparison() -> dict:
     return out
 
 
-def figure(summ_key: dict) -> None:
+def figure(case: AromaticCase) -> None:
     k = dict(np.load(_need(case.KEY_NPZ)))
     py = dict(np.load(_need(case.PYCHAM_NPZ)))
     keys = [str(s) for s in k["species"]]
@@ -94,25 +96,28 @@ def figure(summ_key: dict) -> None:
 
     series.append(plotting.Series(LABEL_PYCHAM, COLORS["pycham"], k["pycham_t_s"],
                                   values("pycham_t_s", "pycham_ppb", 60), is_reference=True))
-    for dt, label in _run_labels().items():
+    for dt, label in _run_labels(case).items():
         series.append(plotting.Series(label, COLORS["ours"] if dt == 300 else COLORS["ours_alt"],
                                       k[f"ours_dt{dt}_t_s"], values(f"ours_dt{dt}_t_s", f"ours_dt{dt}_ppb", dt),
                                       linestyle="-" if dt == 300 else "--"))
     case.FIG_DIR.mkdir(parents=True, exist_ok=True)
-    path = plotting.timeseries_grid(keys, series, case.FIG_DIR / "T1_key_species.png", units=units,
-                                    title="T1: toluene + NOx + O3 in sunlight, gas phase only",
+    path = plotting.timeseries_grid(keys, series, case.FIG_DIR / f"{case.CASE}_key_species.png", units=units,
+                                    title=f"{case.CASE}: {case.VOC} + NOx + O3 in sunlight, gas phase only",
                                     log_species=("OH", "HO2", "NO3"))
     DOC_FIG_DIR.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(path, DOC_FIG_DIR / path.name)
 
 
-def main() -> int:
-    stats, summ = all_species_comparison()
-    key = key_species_comparison()
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--case", default=DEFAULT_CASE)
+    case = AromaticCase(ap.parse_args(argv).case)
+    stats, summ = all_species_comparison(case)
+    key = key_species_comparison(case)
     metrics.write_stats_csv(case.RESULTS_DIR / "species_stats.csv", stats)
     out = {"all_species": summ, "key_species": key, "threshold_ppb": ABUNDANCE_THRESHOLD_PPB}
     case.SUMMARY_JSON.write_text(json.dumps(out, indent=2, default=float) + "\n")
-    figure(key)
+    figure(case)
     for label, d in key.items():
         print(label)
         for name, v in d.items():

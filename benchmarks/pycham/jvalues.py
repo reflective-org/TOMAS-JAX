@@ -17,7 +17,7 @@ from pathlib import Path
 
 import numpy as np
 
-from tomas_jax.box.driver import _chemistry, _uses_toluene
+from tomas_jax.box.driver import _aromatics, _chemistry
 from tomas_jax.box.scenario import Scenario
 from tomas_jax.gaschem.photolysis import JProvider, PhotolysisSettings
 
@@ -26,7 +26,7 @@ from .config import MCM_J_NUMBER, N_PYCHAM_J, PYCHAM_PYTHON, WRITE_J_XLSX, XLSX_
 
 def j_per_interval(scenario: Scenario) -> tuple[np.ndarray, list[str], np.ndarray]:
     """(interval start times [s], J names, J [n_intervals, nJ]) exactly as driver.run uses them."""
-    j_names = _chemistry(_uses_toluene(scenario))[1].j_names
+    j_names = _chemistry(_aromatics(scenario))[1].j_names
     p = scenario.photolysis
     jp = JProvider(j_names, PhotolysisSettings(p.mode, p.latitude_deg, p.longitude_deg,
                                                scenario.start_utc, p.jno2_per_s,
