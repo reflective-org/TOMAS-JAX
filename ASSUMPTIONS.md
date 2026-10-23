@@ -728,7 +728,7 @@ particles and the processes of A19 are unchanged).
   (NO + NO2) is 15.5 ppb at the start, 17.7 ppb at 13:00 and peaks at 20.2 ppb at 20:00, and
   the total oxidised nitrogen (NO + NO2 + HNO3 + 2 N2O5) grows from 15.5 to 27.5 ppb by midnight,
   of the order of the 10-50 ppb NOx often quoted for polluted cities (an assumption, not a
-  measurement). The student scale is 0, 0.25, 0.5, 1, 1.5, 2, 3 ppb/h (the API allows up to 5).
+  measurement). The student scale is 0, 0.5, 1, 1.5, 2, 2.5, 3 ppb/h (the API allows up to 5).
 - Result (default, 2026-10-22; O3 / NO / NO2 in ppb, hourly in the table of docs/aaar/coupling.md):
   O3 30 → 24.5 by 05:00 (night; NO emissions are only 0.03-0.1 ppb/h then, so this is NO2 + O3
   → NO3 → N2O5, which builds up to 2.8 ppb because there is no uptake on particles in this
