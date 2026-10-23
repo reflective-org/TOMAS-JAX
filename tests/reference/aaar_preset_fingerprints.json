@@ -56,5 +56,25 @@
       "NIT_ugm3_end": 1.391396111354038,
       "O3_ppb_end": 83.16177397105221
     }
+  },
+  "level1_urban@1h": {
+    "sha256": "4f29c42a779be26d42817e1f866cbb1f7c97c5c0e8cb7106956c7f1f8bfcd89f",
+    "sample": {
+      "N_cm3_end": 17546.516449377996,
+      "dry_ugm3_end": 74.08577086965798,
+      "SOA_ugm3_end": 0.0,
+      "NIT_ugm3_end": 11.483294484694095,
+      "O3_ppb_end": 28.19025825561918
+    }
+  },
+  "level1_urban@24h": {
+    "sha256": "1da5b943bf91f98a30c4d3e8eee7eca4a8e6f4a31df02835bde70ff8cbc3a2a8",
+    "sample": {
+      "N_cm3_end": 6692.398542588187,
+      "dry_ugm3_end": 74.08577078485649,
+      "SOA_ugm3_end": 0.0,
+      "NIT_ugm3_end": 11.483294469640843,
+      "O3_ppb_end": 14.114608734199823
+    }
   }
 }

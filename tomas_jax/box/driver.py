@@ -464,8 +464,12 @@ def run(scenario: Scenario, progress_cb: Callable[[float], None] | None = None,
         weights = jnp.zeros(nk.size)
         if chem:
             if s.emissions_ppb_per_h:
-                y = y + emission * dt_c                     # constant sources, added up front
-                budget.emitted_cm3 += emission * dt_c
+                # sources added up front; with a diurnal profile E(t) = E_mean w(h)/mean(w),
+                # averaged over the interval
+                w_em = 1.0 if s.emission_profile is None else s.emission_profile.mean_weight(
+                    s.start_utc, t0, t0 + dt_c)
+                y = y + emission * (dt_c * w_em)
+                budget.emitted_cm3 += emission * (dt_c * w_em)
             j_now = j_at(t0 + 0.5 * dt_c)
             k = rates.k(mech.ro2(jnp.asarray(y)), jnp.asarray(j_now))
             k_het = 0.0
