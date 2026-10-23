@@ -63,6 +63,65 @@ def write_eqn(dst: Path, rate_overrides: dict[str, str], src: Path = LIMONENE_EQ
     return Path(dst)
 
 
+_SPECIES_DECL_RE = re.compile(r"^\s*([A-Za-z][A-Za-z0-9_]*)\s*=\s*[^;]*;\s*$")
+
+
+def write_merged_eqn(dst: Path, rate_overrides: dict[str, str]) -> Path:
+    """The limonene + toluene mechanism as one KPP file for PyCHAM (case T1).
+
+    Written from the two files exactly as :func:`tomas_jax.gaschem.merge.merge_mechanisms`
+    merges them in code: the limonene file's species declarations, the toluene
+    export's declarations of its 181 new species, one ``RO2`` sum (the union), the
+    limonene reactions (with ``rate_overrides`` as in :func:`write_eqn`), then the 505
+    toluene reactions the limonene file lacks, verbatim from the export with their labels
+    prefixed ``T``. The result is parsed back and checked to equal the in-code merge
+    (species order, reaction labels, reactants, products and rate expressions).
+    """
+    from tomas_jax.box.coupling import toluene_merge
+    from tomas_jax.gaschem.config import TOLUENE_EQN
+    from tomas_jax.gaschem.kpp_parser import parse_eqn
+
+    merged, report = toluene_merge()
+    lim_lines = Path(LIMONENE_EQN).read_text().splitlines()
+    tol_lines = Path(TOLUENE_EQN).read_text().splitlines()
+    i_inline = next(i for i, l in enumerate(lim_lines) if l.strip().startswith("#INLINE"))
+    i_end = next(i for i, l in enumerate(lim_lines) if l.strip().startswith("#ENDINLINE"))
+    new_species = set(report.new_species)
+    decls = [l for l in tol_lines if (m := _SPECIES_DECL_RE.match(l)) and m.group(1) in new_species]
+    if len(decls) != len(new_species):
+        raise ValueError(f"found {len(decls)} declarations for {len(new_species)} new species")
+    ro2 = ["  RO2 = " + " + ".join(f"C(ind_{s})" for s in merged.ro2[:4]) + " + &"]
+    rest = merged.ro2[4:]
+    for k in range(0, len(rest), 5):
+        chunk = " + ".join(f"C(ind_{s})" for s in rest[k:k + 5])
+        ro2.append("      " + chunk + (" + &" if k + 5 < len(rest) else ""))
+    new_labels = {lab[1:] for lab in report.new_reactions}          # strip the T prefix
+    added = []
+    for l in tol_lines:
+        m = _REACTION_RE.match(l)
+        if m and m.group("label") in new_labels:
+            added.append(l.replace(f"<{m.group('label')}>", f"<T{m.group('label')}>", 1))
+    if len(added) != len(new_labels):
+        raise ValueError(f"found {len(added)} of {len(new_labels)} added reactions in the export")
+    text = "\n".join([*lim_lines[:i_inline],
+                      "// --- species of the MCM v3.3.1 toluene subset (toluene_mcm.eqn) ---",
+                      *decls, "", "#INLINE F90_RCONST", "  USE constants_mcm", *ro2,
+                      lim_lines[i_end], *lim_lines[i_end + 1:],
+                      "// --- reactions of the MCM v3.3.1 toluene subset not in the limonene file ---",
+                      *added]) + "\n"
+    tmp = Path(dst).with_suffix(".unedited.eqn")
+    tmp.write_text(text)
+    check = parse_eqn(tmp)
+    same = (check.species == merged.species and check.ro2 == merged.ro2
+            and [(r.label, r.reactants, r.products, r.rate_expr) for r in check.reactions]
+            == [(r.label, r.reactants, r.products, r.rate_expr) for r in merged.reactions])
+    if not same:
+        raise RuntimeError(f"{tmp} does not parse back to the in-code merge")
+    out = write_eqn(dst, rate_overrides, src=tmp)
+    tmp.unlink()
+    return out
+
+
 def write_xml(dst: Path, extra: dict[str, str] = EXTRA_XML_SPECIES) -> Path:
     """PyCHAM's MCM species xml with ``extra`` {name: SMILES} appended."""
     text = PYCHAM_MCM_XML.read_text()

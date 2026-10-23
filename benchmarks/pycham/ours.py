@@ -23,7 +23,7 @@ import numpy as np
 
 from tomas_jax.box import driver as _driver
 from tomas_jax.box.coupling import bin_diameters_nm, kg_cell_to_ugm3, mass_grid
-from tomas_jax.box.driver import _chemistry, _class_map, run
+from tomas_jax.box.driver import _chemistry, _class_map, _uses_toluene, run
 from tomas_jax.box.config import AerosolStepConfig
 from tomas_jax.box.scenario import Scenario
 from tomas_jax.core.config import SRTH2O, SRTNH4, SRTNIT, SRTORG_NUC, SRTSO4, SRTSOA1
@@ -90,7 +90,7 @@ def run_ours(scenario: Scenario, timeout_s: float = OURS_TIMEOUT_S) -> dict:
                  observer=lambda t, snap: snaps.append((t, snap)))
     wall = time.perf_counter() - t_wall
 
-    parsed, rate_model, _ = _chemistry()
+    parsed, rate_model, _ = _chemistry(_uses_toluene(scenario))   # the mechanism this run used
     env = scenario.environment
     m_air = air_environment(env.temp_k, env.pres_pa, env.rh)["M"]
     boxvol = AerosolStepConfig().boxvol_cm3
@@ -101,7 +101,7 @@ def run_ours(scenario: Scenario, timeout_s: float = OURS_TIMEOUT_S) -> dict:
     xk = mass_grid(scenario.numerics.nbins)
     d_mid, d_edges = bin_diameters_nm(xk)
     dlog10 = np.log10(xk[1:] / xk[:-1]) / 3.0
-    class_map = _class_map(scenario.cstar_table)
+    class_map = _class_map(scenario.cstar_table, _uses_toluene(scenario))
     k_cls = class_map.class_cstar.size
 
     out = {

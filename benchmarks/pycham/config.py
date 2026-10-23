@@ -47,12 +47,13 @@ OURS_TIMEOUT_S = 1800.0       # one TOMAS-JAX run (enforced through driver.run(c
 COPY_TIMEOUT_S = 600.0        # cp -R of the PyCHAM checkout
 XLSX_TIMEOUT_S = 120.0        # writing J.xlsx in the PyCHAM venv
 # run_all.py: cases in order and the wall-clock limit of each step (whole process group)
-RUN_ALL_CASES = ("g2", "G3", "S1", "S2")
+RUN_ALL_CASES = ("g2", "G3", "S1", "S2", "T1")
 RUN_ALL_TIMEOUTS_S = {
     "g2": {"run": 1800.0, "analyse": 600.0},
     "G3": {"run": 5400.0, "analyse": 900.0},
     "S1": {"run": 3600.0, "analyse": 600.0},
     "S2": {"run": 5400.0, "analyse": 900.0},
+    "T1": {"run": 2400.0, "analyse": 600.0},
 }
 RESULT_SIZE_LIMIT_MB = 2.5    # per case results/ (guideline ~2 MB); run_all warns above
 
@@ -154,6 +155,25 @@ G2 = {
     "attribution_dt_s": 900.0,            # output grid of the attribution runs (file size)
     "n_pan_species": 4,                   # PAN + the most abundant other PAN-type species
     "n_particle_relevant": 6,             # top particle-phase contributors, full Level 2 run
+}
+
+# --- Case T1: gas-only, toluene + NOx + O3 in sunlight (2026-10-23) ----------------------
+T1 = {
+    "name": "T1",
+    "preset": "level1_urban",
+    "description": "Gas-phase only, Urban air gases with 5 ppb toluene, 6 h of daylight from "
+                   "10:00 EDT (TUV-x J prescribed), no emissions; the limonene + toluene "
+                   "mechanism (2640 reactions) in both models",
+    "processes": {"coagulation": False, "h2so4_condensation": False,
+                  "soa_partitioning": False, "n2o5_uptake": False, "nucleation": False},
+    "start_utc": "2026-07-01T14:00:00+00:00",       # 10:00 EDT, 1 July
+    "duration_h": 6.0,
+    "toluene_ppb": 5.0,                              # box.scenario.URBAN_TOLUENE_PPB_ON
+    "coupling_dt_s": 300.0,
+    "coupling_dt_sensitivity_s": 60.0,               # = PyCHAM update_step
+    "eqn_rate_overrides": {"34": "0.0"},
+    "key_species": ("TOLUENE", "O3", "NO", "NO2", "OH", "HO2", "NO3", "HNO3", "HCHO", "PAN",
+                    "CRESOL", "BENZAL", "GLYOX", "MGLYOX", "H2O2", "CO"),
 }
 
 # --- Case G3: gas-only, Level 3 day/night ---------------------------------------------

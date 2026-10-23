@@ -37,6 +37,7 @@ the runtimes the write-up reports.
 | G3 | gas chemistry, diurnal photolysis, NO2 held, 24 h | `level3_day_night` | chemistry only | [cases/G3](cases/G3/README.md) |
 | S1 | condensation/evaporation of one surrogate (c* = 1, 100), 12 h | `level1_volatility` | SOA partitioning only | [cases/S1](cases/S1/README.md) |
 | S2 | limonene SOA: chemistry + 245 condensable species, 6 h | `level2_limonene_soa` | chemistry, H2SO4 condensation, SOA partitioning | [cases/S2](cases/S2/README.md) |
+| T1 | toluene + NOx + O3 in sunlight, the merged limonene + toluene mechanism (2640 reactions), 6 h | `level1_urban` + 5 ppb toluene | chemistry only | [cases/T1](cases/T1/README.md) |
 
 Not tested by any case (switched off although the presets use them): coagulation (on in
 all three presets), nucleation (off in the presets as well), N2O5 uptake (Level 3,
