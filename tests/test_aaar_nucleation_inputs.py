@@ -129,8 +129,17 @@ def test_nucleation_off_passes_no_inputs():
     assert not any("H2SO4 condensation is on as well" in w for w in r.diagnostics["warnings"])
 
 
+def _urban_midday():
+    """The urban preset as it was before the full-day version (A26): 10:00-16:00 EDT,
+    O3 40, NO 5, NO2 15 ppb, constant 1 ppb/h NO. The nucleation tests below need the sun."""
+    s = load_preset("level1_urban")
+    return s.replace(start_utc="2026-07-01T14:00:00+00:00", emission_profile=None,
+                     emissions_ppb_per_h={"NO": 1.0}, numerics={"output_dt_s": 600.0},
+                     gases_ppb={**s.gases_ppb, "O3": 40.0, "NO": 5.0})
+
+
 def _urban_so2(ppb, hours):
-    s = load_preset("level1_urban").replace(processes={"nucleation": True}, duration_h=hours)
+    s = _urban_midday().replace(processes={"nucleation": True}, duration_h=hours)
     return s.replace(gases_ppb={**s.gases_ppb, "SO2": ppb})
 
 
@@ -169,8 +178,7 @@ def test_level1_urban_high_so2_forms_new_particles():
 def test_level1_urban_without_so2_has_no_h2so4():
     """Nucleation on but no SO2: the H2SO4 source is zero, so the run is the coagulation
     run at the nucleation time steps (no burst, no condensation)."""
-    s = load_preset("level1_urban").replace(processes={"nucleation": True}, duration_h=0.5,
-                                            numerics={"output_dt_s": 600.0})
+    s = _urban_midday().replace(processes={"nucleation": True}, duration_h=0.5)
     r = run(s)
     assert max(r.h2so4_cm3) == 0.0 and max(r.diagnostics["nucleation_rate_cm3_s"]) == 0.0
     assert r.totals["SO4_ugm3"][-1] == pytest.approx(r.totals["SO4_ugm3"][0], rel=1e-9)
