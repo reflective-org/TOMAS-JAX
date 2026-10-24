@@ -37,6 +37,15 @@ CLOUD_J_LOSS = 0.75
 # (2012); the MCM limonene mechanism has no autoxidation products below 2e-3 ug/m3, so the
 # ELVOC boundary (3e-4 ug/m3) would select nothing (ASSUMPTIONS A23).
 NUCLEATION_ORGANIC_LOG10_CSTAR_MAX = -0.5
+# Hourly weights of on-road traffic emissions for the diurnal emission profile (ASSUMPTIONS A26):
+# SNAP 7 (road transport) hourly factors of Denier van der Gon et al. (2011), TNO report for
+# EU FP7 MACC D_D-EMIS_1.3, Appendix 1, "Hourly variation", category 07; entry h is the hour
+# beginning at h:00 local time. They sum to 24 (mean 1); two rush-hour peaks (08:00 and 17:00)
+# and a minimum of 0.05 at 03:00.
+# https://atmosphere.copernicus.eu/sites/default/files/2019-07/MACC_TNO_del_1_3_v2.pdf
+TRAFFIC_HOURLY_WEIGHTS = (
+    0.19, 0.09, 0.06, 0.05, 0.09, 0.22, 0.86, 1.84, 1.86, 1.41, 1.24, 1.20,
+    1.32, 1.44, 1.45, 1.59, 2.03, 2.08, 1.51, 1.06, 0.74, 0.62, 0.61, 0.44)
 
 
 def _number(where: str, value, lo: float | None = None, hi: float | None = None, *,
@@ -221,6 +230,48 @@ class Losses:
 
 
 @dataclass(frozen=True)
+class EmissionProfile:
+    """Diurnal shape of ``Scenario.emissions_ppb_per_h`` (default: constant in time).
+
+    With a profile the rate of every emitted species at local hour h is
+    E(t) = E_mean w(h) / mean(w), so the 24 h mean equals the input rate E_mean whatever the
+    scale of the weights w. Local time is UTC + ``utc_offset_h`` and the weights are
+    constant within each local hour (``hourly_weights[h]`` for h:00-h+1:00). The default
+    weights are the on-road traffic profile (ASSUMPTIONS A26).
+    """
+    utc_offset_h: float = 0.0              # local time = UTC + this [h] (EDT = -4)
+    hourly_weights: tuple[float, ...] = TRAFFIC_HOURLY_WEIGHTS
+
+    def __post_init__(self):
+        _number("emission_profile.utc_offset_h", self.utc_offset_h, -12.0, 14.0)
+        w = self.hourly_weights
+        if isinstance(w, (str, bytes)) or len(w) != 24:
+            raise ValueError("emission_profile.hourly_weights must be 24 numbers (one per local hour)"
+                             f", got {w!r}")
+        for i, v in enumerate(w):
+            _number(f"emission_profile.hourly_weights[{i}]", v, 0.0)
+        if sum(float(v) for v in w) <= 0.0:
+            raise ValueError("emission_profile.hourly_weights must not all be zero")
+        object.__setattr__(self, "hourly_weights", tuple(float(v) for v in w))
+
+    def mean_weight(self, start_utc: datetime, t0_s: float, t1_s: float) -> float:
+        """Average of w(h) / mean(w) over [t0_s, t1_s] seconds after ``start_utc`` (exact for
+        the piecewise-constant hours)."""
+        w = np.asarray(self.hourly_weights)
+        w = w / w.mean()
+        t_loc0 = (start_utc.hour + start_utc.minute / 60.0 + start_utc.second / 3600.0
+                  + self.utc_offset_h) * 3600.0
+        a, b = t_loc0 + t0_s, t_loc0 + t1_s
+        total, t = 0.0, a
+        while t < b - 1e-9:
+            edge = (np.floor(t / 3600.0 + 1e-12) + 1.0) * 3600.0
+            nxt = min(edge, b)
+            total += w[int(np.floor(t / 3600.0 + 1e-12)) % 24] * (nxt - t)
+            t = nxt
+        return float(total / (b - a))
+
+
+@dataclass(frozen=True)
 class Surrogate:
     """Level 1: one condensing organic of user-chosen volatility (no chemistry)."""
     cstar_ugm3: float = 1.0                # saturation concentration at 298 K
@@ -302,7 +353,8 @@ class Scenario:
     photolysis: Photolysis = field(default_factory=Photolysis)
     gases_ppb: dict[str, float] = field(default_factory=dict)   # initial mixing ratios
     hold_constant: tuple[str, ...] = ()    # species reset to their initial value each interval
-    emissions_ppb_per_h: dict[str, float] = field(default_factory=dict)  # constant sources E
+    emissions_ppb_per_h: dict[str, float] = field(default_factory=dict)  # sources E (24 h mean)
+    emission_profile: EmissionProfile | None = None   # diurnal shape of E (None = constant)
     losses: Losses = field(default_factory=Losses)   # ventilation, surface and wall losses
     h2so4_production_cm3_s: float = 0.0    # Level 1 (no chemistry) H2SO4 source [molec/cm3/s]
     surrogate: Surrogate | None = None
@@ -341,7 +393,7 @@ class Scenario:
         _number("gamma_n2o5", self.gamma_n2o5, 0.0, 1.0)
         for name, cls in _NESTED.items():
             value = getattr(self, name)
-            if not (isinstance(value, cls) or (value is None and name == "surrogate")):
+            if not (isinstance(value, cls) or (value is None and name in _OPTIONAL_NESTED)):
                 raise ValueError(f"{name} must be a scenario.{cls.__name__} object, got {value!r} (for a dict "
                                  "of its fields use Scenario.replace or from_dict)")
 
@@ -391,7 +443,8 @@ def _build(cls, data: dict):
 
 _NESTED = {"environment": Environment, "seed": Seed, "photolysis": Photolysis,
            "surrogate": Surrogate, "processes": Processes, "nucleation": Nucleation,
-           "numerics": Numerics, "losses": Losses}
+           "numerics": Numerics, "losses": Losses, "emission_profile": EmissionProfile}
+_OPTIONAL_NESTED = ("surrogate", "emission_profile")
 # dataclass fields that hold another scenario dataclass (built from dicts by _build)
 _NESTED_FIELDS = {Scenario: _NESTED, Losses: {"outdoor_seed": Seed, "room": Room}}
 

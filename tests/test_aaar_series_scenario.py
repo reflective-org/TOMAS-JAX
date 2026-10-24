@@ -4,10 +4,13 @@ deposition with room parameters) and the seed salts. Defaults leave every existi
 preset unchanged (tests/test_aaar_presets_unchanged.py).
 """
 import dataclasses
+from datetime import datetime, timezone
 
+import numpy as np
 import pytest
 
-from tomas_jax.box.scenario import (CLOUD_J_LOSS, VENTILATION_PRESETS_PER_H, Losses, Room,
+from tomas_jax.box.scenario import (CLOUD_J_LOSS, TRAFFIC_HOURLY_WEIGHTS, VENTILATION_PRESETS_PER_H,
+                                    EmissionProfile, Losses, Room,
                                     Scenario, Seed, SeedMode, from_dict, list_presets, load_preset)
 
 
@@ -84,3 +87,54 @@ def test_from_dict_round_trip_with_losses():
 
 def test_preset_list_still_sorted():
     assert list_presets() == sorted(list_presets())
+
+
+# --- diurnal emission profile (A26) -----------------------------------------------------------
+MIDNIGHT_EDT = datetime(2026, 7, 1, 4, 0, tzinfo=timezone.utc)      # 00:00 local at UTC-4
+
+
+def test_traffic_weights_are_the_published_profile():
+    w = np.array(TRAFFIC_HOURLY_WEIGHTS)
+    assert w.size == 24 and w.sum() == pytest.approx(24.0)             # mean 1, as published
+    assert w.argmax() == 17 and w.argmin() == 3                        # evening peak, 03:00 low
+    assert w[8] > 1.8 and w[17] > 2.0 and w[:6].max() < 0.25           # two rush hours, quiet night
+
+
+def test_profile_mean_over_a_day_is_one_whatever_the_scale():
+    for scale in (1.0, 7.3):
+        p = EmissionProfile(utc_offset_h=-4.0, hourly_weights=tuple(scale * w for w in TRAFFIC_HOURLY_WEIGHTS))
+        for start in (MIDNIGHT_EDT, datetime(2026, 7, 1, 9, 17, tzinfo=timezone.utc)):
+            assert p.mean_weight(start, 0.0, 86400.0) == pytest.approx(1.0, rel=1e-12)
+            steps = [p.mean_weight(start, t, t + 300.0) for t in np.arange(0.0, 86400.0, 300.0)]
+            assert np.mean(steps) == pytest.approx(1.0, rel=1e-12)
+
+
+def test_profile_uses_local_time_and_averages_across_hour_edges():
+    p = EmissionProfile(utc_offset_h=-4.0)
+    w = np.array(TRAFFIC_HOURLY_WEIGHTS)
+    assert p.mean_weight(MIDNIGHT_EDT, 0.0, 300.0) == pytest.approx(w[0])           # 00:00 local
+    assert p.mean_weight(MIDNIGHT_EDT, 8 * 3600.0, 8 * 3600.0 + 300.0) == pytest.approx(w[8])
+    # 07:45-08:15 local: half of hour 7 and half of hour 8
+    assert p.mean_weight(MIDNIGHT_EDT, 7.75 * 3600.0, 8.25 * 3600.0) == pytest.approx(0.5 * (w[7] + w[8]))
+    # the same instant in UTC with offset 0 is hour 4 of the day
+    assert EmissionProfile().mean_weight(MIDNIGHT_EDT, 0.0, 300.0) == pytest.approx(w[4])
+    # past local midnight the profile wraps
+    assert p.mean_weight(MIDNIGHT_EDT, 24 * 3600.0, 24 * 3600.0 + 300.0) == pytest.approx(w[0])
+
+
+def test_emission_profile_scenario_field_and_checks():
+    assert Scenario().emission_profile is None
+    s = Scenario().replace(emission_profile={"utc_offset_h": -4.0})
+    assert s.emission_profile == EmissionProfile(-4.0)
+    assert s.replace(emission_profile={"utc_offset_h": -5.0}).emission_profile.hourly_weights == \
+        TRAFFIC_HOURLY_WEIGHTS
+    assert load_preset("level1_urban").emission_profile.utc_offset_h == -4.0
+    for name in list_presets():
+        if name != "level1_urban":
+            assert load_preset(name).emission_profile is None
+    _error(r"emission_profile\.utc_offset_h must be from -12 to 14", emission_profile={"utc_offset_h": -20})
+    _error(r"emission_profile\.hourly_weights must be 24 numbers", emission_profile={"hourly_weights": (1.0,) * 23})
+    _error(r"hourly_weights\[3\] must be at least 0", emission_profile={"hourly_weights": (1.0,) * 3 + (-1.0,) + (1.0,) * 20})
+    _error(r"must not all be zero", emission_profile={"hourly_weights": (0.0,) * 24})
+    with pytest.raises(ValueError, match="emission_profile must be a scenario.EmissionProfile"):
+        Scenario(emission_profile="traffic")

@@ -502,6 +502,10 @@ is assumed, why, where it is implemented and how to change it.
 
 ### A19 — Urban air preset (series)
 
+*Superseded in part by A26 (2026-10-22): the preset is now a whole day from 00:00 local time
+with O3 30, NO 0.5 ppb and a traffic-shaped NO emission of 0.5 ppb/h; what follows is the
+6 h midday version of 2026-10-19.*
+
 - 40 °N, 75 °W, 1 July 2026, 10:00–16:00 EDT (14:00–20:00 UTC), TUV-x sun; 298 K, RH 0.5.
   O3 40, NO 5, NO2 15 ppb; CO 200, CH4 1900, H2 500 ppb; SO2 0. The full limonene
   mechanism runs with no limonene, so it is the inorganic O3–NOx–HOx–CO–CH4 chemistry.
@@ -679,6 +683,69 @@ is assumed, why, where it is implemented and how to change it.
   Alternatives, if the dark start is not wanted: a 24 h spin-up before the plotted day, or
   starting from a day-two state. For Shantanu to confirm.
 
+### A26 — Level 1 Urban air as a whole day with traffic NO emissions (2026-10-22, for Shantanu to confirm)
+
+Shantanu (2026-10-21): "For level 1, can we simulate the whole day (midnight to midnight), where
+you start with an O3 of 30 ppbv. Any NO should convert to NO2 at night. Add NO emissions similar
+to traffic timing and NO2 photolysis during the day will produce O3. Keep the PBL the same
+height and see if we can reproduce the diurnal O3 cycle." Ali: titration only, and state that no
+ozone deposition is assumed. This replaces the 6 h midday Urban preset of A19 (the site, the
+particles and the processes of A19 are unchanged).
+
+- Full day: 24 h from 00:00 local time (EDT, UTC-4) at 40 °N, 75 °W on 1 July 2026,
+  `start_utc` = 2026-07-01T04:00:00+00:00 (the same start convention as Level 3, A25). Initial
+  O3 30 ppb, NO 0.5 ppb, NO2 15 ppb (as before; NO is small because O3 converts any NO to NO2
+  within a minute in the dark, k[O3] = 1.3e-2 s⁻¹), CO 200, CH4 1900, H2 500 ppb. Output every
+  30 min (the run takes about 32 s, 2729 solver steps).
+- Constant boundary layer: nothing is diluted or entrained, so NOx emitted stays in the box
+  (and no O3 is mixed down from aloft).
+- No ozone dry deposition: O3 is removed only by reaction (titration by NO, NO2 + O3 → NO3, and
+  the HOx cycle). `losses` is off. The Level text says "No ozone deposition is assumed".
+- Diurnal emission profile (new model option `Scenario.emission_profile`): the rate of each
+  emitted species at local hour h is E(h) = E_mean w(h) / mean(w), with the 24 hourly weights
+  w(h) and the offset of local time from UTC (-4 h). The mean over 24 h is then E_mean whatever
+  the scale of w (tests: the sum over a day equals 24 E_mean to 1e-9; 12.000 ppb for the
+  default). Within the coupling interval the weight is the exact average of the piecewise-constant
+  hours. Runs without the option are unchanged (fingerprints of Levels 1-3 identical).
+- The traffic weights are the SNAP 7 (road transport) hourly factors of Denier van der Gon,
+  Hendriks, Kuenen, Segers and Visschedijk (2011), "Description of current temporal emission
+  patterns and sensitivity of predicted AQ for temporal emission patterns", TNO report for
+  EU FP7 MACC D_D-EMIS_1.3, Appendix 1 "Hourly variation", category 07 (the link answers
+  HTTP 200):
+  https://atmosphere.copernicus.eu/sites/default/files/2019-07/MACC_TNO_del_1_3_v2.pdf
+  w = 0.19 0.09 0.06 0.05 0.09 0.22 0.86 1.84 1.86 1.41 1.24 1.20 1.32 1.44 1.45 1.59 2.03 2.08
+  1.51 1.06 0.74 0.62 0.61 0.44 (sum 24, mean 1). Two rush hours (07:00-09:00 at 1.84-1.86 and
+  16:00-18:00 at 2.03-2.08) and a minimum of 0.05 at 03:00 (a factor 40 below the evening peak). Assumed: the first entry
+  is the hour 00:00-01:00 local time (the report lists 24 factors without naming the clock
+  convention); the profile is for a weekday of Dutch road traffic (the TNO factors are
+  based on Dutch traffic counts 1985-1998), used for a US city on 1 July. Both for Shantanu to confirm
+  (a US-specific profile, e.g. from the FHWA Traffic Monitoring Guide, would have a later
+  evening peak).
+- Default daily-mean NO emission E_mean = 0.5 ppb/h = 12 ppb of NO per day (it was 1 ppb/h
+  constant in A19). Reasoning: A19's 1 ppb/h came from a flux of about 1e12 molec cm⁻² s⁻¹ into
+  a 1 km layer (1.5 ppb/h); with a layer that is never diluted a whole day of that would add
+  24-36 ppb of NO to the 15.5 ppb it starts with, so the default is half of it. With it NOx
+  (NO + NO2) is 15.5 ppb at the start, 17.7 ppb at 13:00 and peaks at 20.2 ppb at 20:00, and
+  the total oxidised nitrogen (NO + NO2 + HNO3 + 2 N2O5) grows from 15.5 to 27.5 ppb by midnight,
+  of the order of the 10-50 ppb NOx often quoted for polluted cities (an assumption, not a
+  measurement). The student scale is 0, 0.5, 1, 1.5, 2, 2.5, 3 ppb/h (the API allows up to 5).
+- Result (default, 2026-10-22; O3 / NO / NO2 in ppb, hourly in the table of docs/aaar/coupling.md):
+  O3 30 → 24.5 by 05:00 (night; NO emissions are only 0.03-0.1 ppb/h then, so this is NO2 + O3
+  → NO3 → N2O5, which builds up to 2.8 ppb because there is no uptake on particles in this
+  level, not NO titration), 27.3 at 06:00 as NO2 and N2O5/NO3 are photolysed, a daytime
+  maximum of 30.9 ppb at 10:00, 30.3 at 13:00, 25.9 at 18:00, and then the evening rush
+  titrates it to 14.1 ppb at midnight (NO < 0.01 ppb after 21:00, NO2 17.8). Photostationary
+  state within 5 % at every sunlit output. Honest reading: the day shows night loss, a
+  morning recovery with no rush-hour dip (sunrise photolysis outruns the titration), a
+  weak afternoon maximum and evening titration. There is no afternoon O3 build-up: Ox =
+  O3 + NO2 falls from 42.5 ppb (06:00) to 38.1 (18:00) because the NO2 + OH sink (HNO3
+  5.4 ppb) is larger than the production from CO and CH4 (OH 2.7e6 cm⁻³ at 13:00), so without
+  VOCs the sunlit chemistry does not make O3 net. A VOC that converts NO to NO2 (naphthalene,
+  the planned toggle) is what makes net O3.
+  Particles: N 20003 → 6692 cm⁻³ by coagulation only (V and dry mass constant).
+- Library (tomas-fe): the visible inputs are cloud fraction, NO emission strength and total
+  particle number; initial O3, NO and NO2 move under "Unlock all inputs".
+
 ## Questions for Shantanu
 
 1. ~~c* table for the mechanism species~~ — received 2026-10-16 and used by Levels 2
@@ -722,3 +789,9 @@ is assumed, why, where it is implemented and how to change it.
 10. Level 3 start (2026-10-20, A25): 00:00 local time with no spin-up (SOA 0.070,
    nitrate 1.39 µg/m³, almost no nitrate on the first night) — acceptable, or add a
    24 h spin-up before the plotted day?
+11. Level 1 urban day (2026-10-22, A26): the TNO road-transport hourly profile (Dutch
+   traffic; first entry = 00:00-01:00) or a US profile; a daily-mean NO emission of 0.5 ppb/h
+   with a layer that is never diluted; and the honest result that without VOCs there is no
+   afternoon O3 build-up (O3 peaks at 30.9 ppb at 10:00 and the night loss is mostly N2O5
+   formation, not NO titration). Is that the diurnal cycle you wanted for Level 1, with the
+   naphthalene toggle as the source of net O3?

@@ -27,6 +27,10 @@ CASES = (
     ("level1_volatility", 12.0, True),
     ("level2_limonene_soa", 6.0, True),
     ("level3_day_night", 24.0, True),
+    # Level 1 urban air as a whole day with traffic emissions (2026-10-22, A26); the earlier
+    # 6 h midday urban preset was not fingerprinted
+    ("level1_urban", 1.0, False),
+    ("level1_urban", 24.0, True),
 )
 
 
