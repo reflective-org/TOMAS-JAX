@@ -163,6 +163,18 @@ Multiplicative float masks (0.0/1.0) avoid JIT recompilation:
 - `enable_inorganic`: Dunne on/off
 - `fn_scale`: global nucleation rate multiplier
 
+### Fit Coefficients (`NucleationParams`)
+
+All ricco_dunne fit coefficients (Dunne p/u/v/w/a per mechanism, Riccobono
+`k_m`/`delta_h`) and the cluster properties (`r_nuc_nm`, `rho_nuc`, `org_frac`)
+are fields of the `NucleationParams` NamedTuple. It is a JAX pytree, so you can
+perturb it or take `jax.jacfwd` with respect to it. Pass it as `params=` to
+`ricco_nucleation_rate`, `dunne_nucleation_rate`, `ricco_dunne_nucleation_rate`
+and `nucleation_step`, or as `nucl_params=` to a `make_step` step function.
+`None` (the default) uses `DEFAULT_NUCLEATION_PARAMS`, which is bit-identical
+to the module constants. The zhao2024 scheme does not take `params`. See
+`docs/nucleation_sensitivity.md`.
+
 ## Files
 
 - `tomas_jax/physics/nucleation.py` — 5 functions: `ricco_nucleation_rate`, `dunne_nucleation_rate`, `ricco_dunne_nucleation_rate`, `compute_nucleation_substeps`, `nucleation_step`

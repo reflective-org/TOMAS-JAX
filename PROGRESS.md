@@ -4,6 +4,43 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-10-23 (Fri) 20:45 PDT — Nucleation coefficient sensitivity via forward-mode AD: Phase 0
+
+**Branch**: `dlm`. Goal: find which ricco_dunne fit coefficients drive uncertainty in
+stratospheric aerosol, using JAX derivatives instead of an ensemble. Plan:
+`docs/nucleation_sensitivity.md` (Phases 0–4).
+
+- `physics/nucleation.py`: new `NucleationParams` NamedTuple pytree (25 coefficients) and
+  `DEFAULT_NUCLEATION_PARAMS`. Optional `params=` on `ricco_nucleation_rate`,
+  `dunne_nucleation_rate`, `ricco_dunne_nucleation_rate` and `nucleation_step`.
+  Defaults are bit-identical (cluster mass and the 0.9/0.1 split checked by equality).
+- `physics/nucleation.py`: double-`where` guards on the NH₃ ternary branch and the ion
+  sqrt. Fixes NaN tangents at NH₃ = 0 / fion = 0, and a latent `ZeroDivisionError` when
+  every input is a plain Python float with NH₃ = 0.
+- `solvers/condensation.py`: `make_step` accepts `nucl_params`. The Zhao and
+  `_full_step_core` paths are unchanged.
+- New `sensitivities/dunne_nuc/` (`common.py`, `phase0_warmup.py`) and
+  `tests/test_nucleation_gradients.py` (10 tests).
+- Phase 0 results:
+  - All AD derivatives match the analytic forms and central FD (worst 2e-9), including
+    `jacfwd` through 1 h of SO₂ chem + nucl + coag + cond at 217 K.
+  - Reverse mode fails on the dynamic `fori_loop`, so the study is forward-mode only.
+- Findings:
+  - The Yu 2017 T-correction makes Riccobono about 3e8× larger at 217 K, so it dominates
+    whenever any organics are present.
+  - The nucleated cluster mass is 0.76× the bin-0 edge, so MNFIX keeps only 64% of
+    J·V·dt as particles (N ∝ m_nuc).
+  - Dunne 2016 has no RH dependence.
+- Tests: `tests/` gives 694 passed, 37 failed. All 37 failures are pre-existing:
+  35 from the missing optional `tuvx_photolysis` module and 2 from stale `NIT_ugm3`
+  fingerprints in `test_aaar_presets_unchanged.py`, which fail identically at HEAD.
+  `benchmarks/python/compare_nucleation.py` could not run because the Fortran CSVs in
+  `tomas_fortran/output/` are absent.
+- Next: Phase 1 (SABRE-binned dry N(Dp) operator from Lyu et al. 2026), then the
+  T × SO₂ map.
+
+---
+
 ## 2026-10-20 (Tue) — Nucleation inputs: ions, NH3, organic vapour; Level 1 H2SO4 reaches the particles
 
 **Branch**: `aaar-nucleation-inputs` (from `dev` 617b52b). Ali (2026-10-20, verbatim):

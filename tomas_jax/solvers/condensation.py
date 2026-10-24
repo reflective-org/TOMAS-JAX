@@ -86,7 +86,7 @@ _VALID_MAKE_STEP_KWARGS = {
     # nucleation (common)
     'org_conc', 'nh3_conc', 'fion', 'fn_scale',
     # nucleation (ricco_dunne)
-    'enable_organic', 'enable_inorganic',
+    'enable_organic', 'enable_inorganic', 'nucl_params',
     # nucleation (zhao2024)
     'hno3', 'ulvoc', 'dma', 'hio3', 'enable_masks',
     # coagulation
@@ -900,6 +900,7 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                     kwargs.get('enable_organic', 1.0),
                     kwargs.get('enable_inorganic', 1.0),
                     kwargs.get('fn_scale', 1.0),
+                    kwargs.get('nucl_params'),
                 )
                 N_total = jnp.sum(Nk)
                 n_nuc = compute_nucleation_substeps(
@@ -938,6 +939,7 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                             kwargs.get('enable_organic', 1.0),
                             kwargs.get('enable_inorganic', 1.0),
                             kwargs.get('fn_scale', 1.0),
+                            kwargs.get('nucl_params'),
                         )
                         Nk_s, Mk_s = mnfix_jax(Nk_s, Mk_s, xk, ICOMP_NODIAG)
                         return (Nk_s, Mk_s, Gc_s)
