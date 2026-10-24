@@ -8,6 +8,9 @@ Reads the three kinds of content an MCM KPP export contains:
   e.g. ``USE constants_mcm``, is provided by :mod:`tomas_jax.gaschem.mcm_rates`),
 * reactions ``<label> A + B = C + D : <Fortran rate expression> ;``.
 
+The KPP section markers of the MCM website export (``#INCLUDE atoms``, ``#DEFVAR``,
+``#EQUATIONS``) are skipped; the supplied limonene file has none.
+
 Stoichiometry: MCM KPP files encode a coefficient of 2 by repeating the species
 (``NO2 + NO2``); explicit numeric coefficients are also accepted (``0.5OH``).
 ``hv`` on the reactant side marks photolysis and is not a species.
@@ -28,6 +31,9 @@ _REACTION_RE = re.compile(r"^\s*<\s*([^>]+?)\s*>\s*(.*?)=(.*?):(.*);\s*$")
 _TERM_RE = re.compile(r"^([0-9]*\.?[0-9]*(?:[eE][-+]?[0-9]+)?)\s*([A-Za-z][A-Za-z0-9_]*)$")
 _ATOM_RE = re.compile(r"([0-9]*)\s*([A-Z][a-z]?)")
 _RO2_TERM_RE = re.compile(r"C\(\s*ind_([A-Za-z0-9_]+)\s*\)")
+# KPP section markers written by the MCM website export (``#INCLUDE atoms``, ``#DEFVAR``,
+# ``#EQUATIONS``); they carry no content for us.
+_SECTION_DIRECTIVES = frozenset({"#INCLUDE", "#DEFVAR", "#DEFFIX", "#EQUATIONS"})
 
 
 @dataclass(frozen=True)
@@ -101,6 +107,10 @@ def parse_eqn(path: str | Path) -> ParsedMechanism:
             continue
         if in_inline:
             inline.append(stripped)
+            continue
+        if stripped.split()[0] in _SECTION_DIRECTIVES:
+            # KPP section markers of the MCM website export (the supplied limonene file
+            # has none); the atom definitions are our own ATOMIC_WEIGHTS
             continue
         if stripped.startswith("<"):
             m = _REACTION_RE.match(stripped)

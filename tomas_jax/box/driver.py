@@ -49,10 +49,10 @@ from ..physics.heterogeneous import n2o5_uptake
 from ..physics.water_equilibrium import equilibrate_water
 from .aerosol_step import AerosolForcing, AerosolState, SOAParams, aerosol_outer_step
 from .config import AerosolStepConfig
-from .coupling import (NA_HET, N2O5_HET_LABEL, RHO_REPORT, ClassBridge, bin_diameters_nm,
-                       cm3_to_kg_cell,
-                       kg_cell_to_cm3, kg_cell_to_ugm3, mass_grid, seed_distribution,
-                       tutorial_mechanism, ugm3_to_kg_cell)
+from .coupling import (AROMATICS, NA_HET, N2O5_HET_LABEL, RHO_REPORT, ClassBridge,
+                       all_aromatic_species, aromatic_species, aromatics_used, bin_diameters_nm,
+                       cm3_to_kg_cell, kg_cell_to_cm3, kg_cell_to_ugm3, mass_grid,
+                       seed_distribution, tutorial_mechanism, ugm3_to_kg_cell)
 from .losses import gas_loss_step, lai_nazaroff_beta, particle_loss_step
 from .properties import kappa_mixture, organic_o_to_c, surface_volume_distributions
 from .result import (N_TOP_CONTRIBUTORS, REPORTED_GASES_PPB, REPORTED_J, REPORTED_RADICALS_CM3,
@@ -61,6 +61,7 @@ from .scenario import Scenario, Seed, load_preset, list_presets
 
 ACCOMMODATION_ORGANIC = 1.0     # SOA mass accommodation coefficient [-] (vbs-jax default)
 COUNTER_SPECIES = ("SA", NA_HET)   # read and reset by the driver; not user inputs
+URBAN_PRESET = "level1_urban"      # the preset with the VOC selector (warmup compiles its variants)
 
 # Time-step caps with nucleation on (ASSUMPTIONS A12/A13; docs/aaar/coupling.md, "Time
 # steps with nucleation"). Nucleation convergence study, 2026-10-16 (Levels 1-3 with
@@ -125,15 +126,28 @@ def _time_step_warning(ts: TimeSteps) -> list[str]:
             f"Output times are unchanged."]
 
 
-@functools.lru_cache(maxsize=1)
-def _chemistry():
-    parsed = tutorial_mechanism()
+@functools.lru_cache(maxsize=8)
+def _chemistry(aromatics: tuple[str, ...] = ()):
+    """Parsed mechanism, rate model and index arrays; ``aromatics`` names the MCM aromatic
+    subsets merged into the limonene mechanism (box.coupling.tutorial_mechanism)."""
+    parsed = tutorial_mechanism(aromatics)
     return parsed, RateModel(parsed, external=(N2O5_HET_LABEL,)), Mechanism.build(parsed)
 
 
-@functools.lru_cache(maxsize=4)
-def _class_map(cstar_table: str | None):
-    parsed = _chemistry()[0]
+def _aromatics(s: Scenario) -> tuple[str, ...]:
+    """The aromatic subsets ``s`` needs (a species of the subset set above zero, emitted,
+    outdoor or held); empty = the limonene mechanism alone (ASSUMPTIONS A27)."""
+    return aromatics_used(s.gases_ppb, s.emissions_ppb_per_h, s.hold_constant,
+                          s.losses.outdoor_gases_ppb)
+
+
+def _uses_toluene(s: Scenario) -> bool:
+    return "TOLUENE" in _aromatics(s)
+
+
+@functools.lru_cache(maxsize=16)
+def _class_map(cstar_table: str | None, aromatics: tuple[str, ...] = ()):
+    parsed = _chemistry(aromatics)[0]
     if cstar_table and Path(cstar_table).name != cstar_table:
         raise ValueError(f"cstar_table must be a file name in {MECHANISM_DIR.name}/: {cstar_table!r}")
     if not cstar_table:
@@ -247,7 +261,8 @@ def _loss_setup(s: Scenario, xk, boxvol, cfg, index: dict | None, bridge, k_cls:
     air = air_environment(env.temp_k, env.pres_pa, env.rh)
     y_out, y_extra = np.zeros(len(index)), np.zeros(len(index))
     for sp, ppb in loss.outdoor_gases_ppb.items():
-        y_out[index[sp]] = ppb * 1e-9 * air["M"]
+        if sp in index:                       # an aromatic species at zero may have no index
+            y_out[index[sp]] = ppb * 1e-9 * air["M"]
     y_extra[index["O3"]] = loss.o3_surface_per_h / 3600.0
     y_extra[bridge.idx] += k_w
     gc_lam[SRTSO4] = lam                  # H2SO4 vapour; the class slots follow y
@@ -338,11 +353,15 @@ def run(scenario: Scenario, progress_cb: Callable[[float], None] | None = None,
     # --- volatility classes -----------------------------------------------------------------
     chem = s.processes.chemistry
     if chem:
-        parsed, rate_model, mech = _chemistry()
-        class_map = _class_map(s.cstar_table)
+        aromatics = _aromatics(s)
+        parsed, rate_model, mech = _chemistry(aromatics)
+        class_map = _class_map(s.cstar_table, aromatics)
         cstar, dhvap, mw_cls = class_map.class_cstar, class_map.class_dhvap, class_map.class_mw
         cstar_source = class_map.source
-        warnings.extend(_cstar_fallback_warnings(class_map, s.cstar_table))
+        if s.processes.soa_partitioning or s.processes.nucleation:
+            # c* matters only where vapours condense or nucleate (with both off, as in the
+            # urban level, the toluene products' Li et al. fallback changes nothing)
+            warnings.extend(_cstar_fallback_warnings(class_map, s.cstar_table))
     elif s.surrogate is not None:
         cstar = np.array([s.surrogate.cstar_ugm3])
         dhvap = DHVAP_A_KJ - DHVAP_B_KJ * np.log10(cstar)
@@ -371,7 +390,9 @@ def run(scenario: Scenario, progress_cb: Callable[[float], None] | None = None,
         index = {sp: i for i, sp in enumerate(parsed.species)}
         named = (set(s.gases_ppb) | set(s.hold_constant) | set(s.emissions_ppb_per_h)
                  | set(s.losses.outdoor_gases_ppb))
-        unknown = sorted(named - set(index))
+        # an aromatic-subset species at zero is a valid name even when the run does not
+        # integrate that subset (then it has no index and nothing to set)
+        unknown = sorted(named - set(index) - all_aromatic_species())
         if unknown:
             raise ValueError(f"unknown mechanism species: {unknown}")
         counters = sorted(named & set(COUNTER_SPECIES))
@@ -379,10 +400,12 @@ def run(scenario: Scenario, progress_cb: Callable[[float], None] | None = None,
             raise ValueError(f"{counters} are internal counter species and cannot be set or held")
         y = np.zeros(mech.n_species)
         for sp, ppb in s.gases_ppb.items():
-            y[index[sp]] = ppb * 1e-9 * air["M"]
+            if sp in index:
+                y[index[sp]] = ppb * 1e-9 * air["M"]
         emission = np.zeros(mech.n_species)          # E [molec/cm3/s], added each interval
         for sp, rate in s.emissions_ppb_per_h.items():
-            emission[index[sp]] = rate * 1e-9 * air["M"] / 3600.0
+            if sp in index:
+                emission[index[sp]] = rate * 1e-9 * air["M"] / 3600.0
         held = np.array([index[sp] for sp in s.hold_constant], dtype=int)
         held_values = y[held].copy()
         k_th, ro2_dep, j_coef = rate_model.at_env(air)
@@ -605,8 +628,8 @@ def _assemble(s, rec, xk, boxvol, air, chem, k_cls, cstar, cstar_source, bridge,
     mk_cell = np.array(rec["mk"])
     seed_org = mk_cell[:, :, SRTORG_NUC].sum(axis=1)
     if chem and bridge is not None:
-        parsed0 = _chemistry()[0]
-        class_map0 = _class_map(s.cstar_table)
+        parsed0 = _chemistry(_aromatics(s))[0]
+        class_map0 = _class_map(s.cstar_table, _aromatics(s))
         atoms = [parsed0.atoms[name] for name in class_map0.species]
         per_kg = 1.0 / (bridge.mw * 1e-3)                                  # mol per kg
         o_per_kg = np.array([a.get("O", 0) for a in atoms]) * per_kg
@@ -630,12 +653,14 @@ def _assemble(s, rec, xk, boxvol, air, chem, k_cls, cstar, cstar_source, bridge,
                      "cstar_source": cstar_source, "warnings": warnings, **extra},
     )
     if chem:
-        parsed = _chemistry()[0]
+        parsed = _chemistry(_aromatics(s))[0]
         index = {sp: i for i, sp in enumerate(parsed.species)}
         ys = np.array(rec["y"])
-        result.gases_ppb = {g: ys[:, index[g]] / air["M"] * 1e9 for g in REPORTED_GASES_PPB}
+        # an aromatic VOC is reported only by runs that integrate its subset
+        result.gases_ppb = {g: ys[:, index[g]] / air["M"] * 1e9 for g in REPORTED_GASES_PPB
+                            if g in index}
         result.radicals_cm3 = {r: ys[:, index[r]] for r in REPORTED_RADICALS_CM3}
-        class_map = _class_map(s.cstar_table)
+        class_map = _class_map(s.cstar_table, _aromatics(s))
         for o in np.argsort(bridge.particle)[::-1][:N_TOP_CONTRIBUTORS]:
             if bridge.particle[o] <= 0:
                 break
@@ -678,10 +703,12 @@ def _loss_budget(snapshots: list[dict], s: Scenario, air, boxvol, chem: bool, k_
         "ventilated_gases_ppb": {}, "emitted_ppb": {},
     }
     if chem:
-        index = {sp: i for i, sp in enumerate(_chemistry()[0].species)}
+        index = {sp: i for i, sp in enumerate(_chemistry(_aromatics(s))[0].species)}
         vent, emitted = series("vent_gas_cm3"), series("emitted_cm3")
-        out["ventilated_gases_ppb"] = {g: vent[:, index[g]] / air["M"] * 1e9 for g in REPORTED_GASES_PPB}
-        out["emitted_ppb"] = {g: emitted[:, index[g]] / air["M"] * 1e9 for g in s.emissions_ppb_per_h}
+        out["ventilated_gases_ppb"] = {g: vent[:, index[g]] / air["M"] * 1e9 for g in REPORTED_GASES_PPB
+                                      if g in index}
+        out["emitted_ppb"] = {g: emitted[:, index[g]] / air["M"] * 1e9 if g in index
+                              else np.zeros(emitted.shape[0]) for g in s.emissions_ppb_per_h}
     return out
 
 
@@ -711,6 +738,10 @@ def warmup(nucleation: bool = True) -> None:
         if nucleation:
             variants.append(s.replace(processes={"nucleation": True},
                                       numerics={"coupling_dt_s": NUCLEATION_MAX_COUPLING_DT_S}))
+        if name == URBAN_PRESET:
+            # the VOC selector (urban level): each aromatic subset is its own mechanism and compile
+            variants.extend(v.replace(gases_ppb={**v.gases_ppb, voc: 1.0})
+                            for voc in AROMATICS for v in list(variants))
         for v in variants:
             dt = v.numerics.coupling_dt_s
             run(v.replace(duration_h=2 * dt / 3600.0, numerics={"output_dt_s": dt}))

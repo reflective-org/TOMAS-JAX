@@ -1,4 +1,5 @@
-"""Photolysis frequencies for the MCM mechanism (the 28 ``J_*`` names it uses).
+"""Photolysis frequencies for the MCM mechanism (the 28 ``J_*`` names the limonene subset
+uses, plus J_CH3CHO and J_MVK_CO of the toluene subset).
 
 Modes:
 
@@ -55,11 +56,15 @@ TUVX_DIRECT = {
     "J_NOA": "nitro_acetone+hv->Products",
     "J_IC3H7NO3": "CH3CHONO2CH3+hv->CH3CHOCH3+NO2",
     "J_NC3H7NO3": "nC3H7ONO2+hv->C3H7O+NO2",
+    # used by the toluene subset (MCM J13; TUV-x acetaldehyde with its pressure-dependent
+    # quantum yield)
+    "J_CH3CHO": "CH3CHO+hv->CH3+HCO",
 }
 # MCM channel J name -> (TUV-x total key, MCM channels the total is split over).
 TUVX_SPLIT = {
     "J_MACR_HCO": ("CH2=C(CH3)CHO+hv->Products", ("J_MACR_HCO", "J_MACR_H")),
     "J_MACR_H": ("CH2=C(CH3)CHO+hv->Products", ("J_MACR_HCO", "J_MACR_H")),
+    "J_MVK_CO": ("MVK+hv->Products", ("J_MVK_CO", "J_MVK_C2H3")),      # toluene subset
     "J_MVK_C2H3": ("MVK+hv->Products", ("J_MVK_CO", "J_MVK_C2H3")),
 }
 # No TUV-x recipe exists: MCM clear-sky parameterization at the same SZA.

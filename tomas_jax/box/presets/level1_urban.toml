@@ -4,8 +4,8 @@
 # SOA, no nucleation; ASSUMPTIONS A19, A26). Midlatitude summer: 40 N, 75 W, 1 July
 # (EDT = UTC-4). The boundary layer keeps one height: no dilution, no entrainment, and no
 # ozone dry deposition (O3 is removed only by reaction, titration by NO).
-# Try: cloud fraction; NO emission strength; initial O3, NO, NO2; temperature; the particle
-# number, mode sizes and inorganic:organic share.
+# Try: the VOC selector, benzene / toluene / m-xylene (A27); cloud fraction; NO emission strength; initial
+# O3, NO, NO2; temperature; the particle number, mode sizes and inorganic:organic share.
 name = "Level 1 - Urban air"
 level = 1
 duration_h = 24.0
@@ -20,6 +20,10 @@ NO2 = 15.0
 CO = 200.0
 CH4 = 1900.0
 H2 = 500.0
+# VOC selector (A27): the preset has no aromatic VOC, so the limonene mechanism alone is
+# integrated (bit-identical to the preset before the selector existed). The web app's choices
+# set BENZENE, TOLUENE or MXYL to scenario.URBAN_VOC_PPB_ON (5 ppb) and the run integrates that
+# MCM v3.3.1 subset merged in.
 
 # NO source: 24 h mean E [ppb/h], shaped over the day by the on-road traffic profile below.
 # 0.5 ppb/h = 12 ppb of NO per day: nothing dilutes the layer, so it is half the 1 ppb/h of

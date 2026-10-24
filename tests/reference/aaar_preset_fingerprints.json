@@ -76,5 +76,65 @@
       "NIT_ugm3_end": 11.483294469640843,
       "O3_ppb_end": 14.114608734199823
     }
+  },
+  "level1_urban+toluene@1h": {
+    "sha256": "9a460a696b669416072688898876dcc7159ff89932babb94c968df1ffb960558",
+    "sample": {
+      "N_cm3_end": 17546.516449377996,
+      "dry_ugm3_end": 74.08577086965798,
+      "SOA_ugm3_end": 0.0,
+      "NIT_ugm3_end": 11.483294484694095,
+      "O3_ppb_end": 28.19024325528105
+    }
+  },
+  "level1_urban+toluene@24h": {
+    "sha256": "9308933c5db592c8cc0760c0035c914f9f7c334952e6b7ad864c490c043761f6",
+    "sample": {
+      "N_cm3_end": 6692.398542588187,
+      "dry_ugm3_end": 74.08577078485649,
+      "SOA_ugm3_end": 0.0,
+      "NIT_ugm3_end": 11.483294469640843,
+      "O3_ppb_end": 32.7456037015927
+    }
+  },
+  "level1_urban+benzene@1h": {
+    "sha256": "e4078ff226562f0126cdc6bd698f542dfd7f417f4aab18362c383533da0662f3",
+    "sample": {
+      "N_cm3_end": 17546.516449377996,
+      "dry_ugm3_end": 74.08577086965798,
+      "SOA_ugm3_end": 0.0,
+      "NIT_ugm3_end": 11.483294484694095,
+      "O3_ppb_end": 28.190248416665163
+    }
+  },
+  "level1_urban+benzene@24h": {
+    "sha256": "79239f973610649728b4a9b8ea977f6afff75a9238d7feef2982e6e4987a6be0",
+    "sample": {
+      "N_cm3_end": 6692.398542588187,
+      "dry_ugm3_end": 74.08577078485649,
+      "SOA_ugm3_end": 0.0,
+      "NIT_ugm3_end": 11.483294469640843,
+      "O3_ppb_end": 15.702164439800972
+    }
+  },
+  "level1_urban+mxylene@1h": {
+    "sha256": "272b2b6289e7381381904803230c81a55b05214ef417ea41a2170829614c9544",
+    "sample": {
+      "N_cm3_end": 17546.516449377996,
+      "dry_ugm3_end": 74.08577086965798,
+      "SOA_ugm3_end": 0.0,
+      "NIT_ugm3_end": 11.483294484694095,
+      "O3_ppb_end": 28.188741276885153
+    }
+  },
+  "level1_urban+mxylene@24h": {
+    "sha256": "e6da9416ac7964ff68792849951e7119fde177a19e5c9ec34e92d4b9c809bebb",
+    "sample": {
+      "N_cm3_end": 6692.398542588187,
+      "dry_ugm3_end": 74.08577078485649,
+      "SOA_ugm3_end": 0.0,
+      "NIT_ugm3_end": 11.483294469640843,
+      "O3_ppb_end": 88.63050771590463
+    }
   }
 }
