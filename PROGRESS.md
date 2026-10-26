@@ -4,6 +4,29 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-10-25 (Sun) — Indoor losses resolved by particle size and by vapour species
+
+**Branch**: `feat/wall-loss-outputs` (from `dev` dd928b2). Ali (2026-10-25, verbatim): "can you show the
+size dependant particle wall losses over time, total amount of loss to the walls and each species as
+vapor loss in mass over time? Can you make a PR so it does not interfere with the the current version?"
+
+- `box/driver.py`: `_Budget` also accumulates the deposited number and dry mass per size bin and the
+  vapour wall loss per condensable species (per c* class without chemistry), from the same
+  per-interval sinks as the totals. `_loss_detail` adds to `RunResult.losses`, only when a loss is on:
+  `deposition_rate_per_h`, `deposited_dndlog10dp_cm3`, `deposited_dmdlog10dp_ugm3`,
+  `wall_vapour_by_species` (largest 15) and `wall_vapour_other_ugm3` (docs/aaar/coupling.md).
+- Nothing else changes: the run itself is untouched, and runs without losses (Urban air, Day and
+  night) have the same output as before; `tests/test_aaar_presets_unchanged.py` passes.
+- Tests (`tests/test_aaar_series_driver.py`): per-bin deposition adds up to the totals, β(D) dips
+  between 50 nm and 2 µm, the species and the rest add up to the wall loss (chemistry and the
+  surrogate), runs without losses report no resolved losses.
+- Indoor preset: 13.4 µg/m³ of vapour on the walls after 4 h (LIMAOOH 2.3, LIMCOOH 2.0, LIMALAOH
+  1.2 µg/m³ lead); 206 cm⁻³ particles (0.39 µg/m³) deposited; β from 17 h⁻¹ at 1.7 nm to 0.008 h⁻¹.
+- `code_version` changes with any model source, so the website library has to be stamped again
+  after the API is deployed (tomas-api `scripts/precompute_library.py stamp`).
+
+---
+
 ## 2026-10-23 (Fri) — Urban air: VOC selector benzene / toluene / m-xylene (MCM v3.3.1), stacked on the full-day Urban (B1)
 
 **Branch**: `urban-toluene` (from `urban-full-day`, PR #30); PR #31. Shantanu (2026-10-22, verbatim):

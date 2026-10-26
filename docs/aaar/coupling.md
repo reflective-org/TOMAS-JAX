@@ -623,6 +623,17 @@ and 1.6 h⁻¹ at 5 µm.
   indoor level, "where did the limonene go" is initial + ventilated in − ventilated out −
   remaining = reacted, and the reacted carbon is split between SOA (`totals`), vapour on
   the walls, vapour ventilated out, and SOA deposited or ventilated.
+- `losses`, resolved (2026-10-25; only in runs with a loss on, so runs without losses keep
+  the same output): `deposition_rate_per_h` β(D) per size bin [1/h];
+  `deposited_dndlog10dp_cm3` and `deposited_dmdlog10dp_ugm3` [t][bin], the cumulative
+  deposited number and dry mass per log diameter interval, so that
+  Σᵢ (dN/dlog₁₀Dp)ᵢ Δlog₁₀Dpᵢ = `deposited_N_cm3` (and the same for the dry mass);
+  `wall_vapour_by_species`, the 15 condensable species with the largest final wall loss,
+  each `{species, formula, log10_cstar, ugm3 [t]}` (cumulative), and
+  `wall_vapour_other_ugm3` [t], the rest, so that the species and the rest add up to
+  `wall_vapour_ugm3`. Without chemistry the "species" are the surrogate's c* classes
+  (`c* class 1`, ...). Each is accumulated from the same per-interval sink as the totals
+  (`box/losses.py`, the rate times the interval integral), so the sums close to rounding.
 
 Validation (`tests/test_aaar_series_driver.py`, `tests/test_aaar_series_presets.py`):
 with every other process off, particle ventilation follows the exact exponential toward
