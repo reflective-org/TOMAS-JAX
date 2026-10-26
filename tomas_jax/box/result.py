@@ -41,7 +41,10 @@ class RunResult:
     # ventilated_vapour_ugm3 (net out, condensable organic vapour), ventilated_gases_ppb
     # {species: net out}, deposited_{dry,SOA,POA,inorganic}_ugm3, deposited_N_cm3,
     # ventilated_{dry,SOA,POA,inorganic}_ugm3 (net out), ventilated_N_cm3 (net out),
-    # emitted_ppb {species}
+    # emitted_ppb {species}. Only when a loss is on (driver._loss_detail):
+    # deposition_rate_per_h [bin], deposited_dndlog10dp_cm3 and deposited_dmdlog10dp_ugm3
+    # [t][bin] (cumulative), wall_vapour_by_species [{species, formula, log10_cstar, ugm3 [t]}]
+    # (largest N_TOP_CONTRIBUTORS) and wall_vapour_other_ugm3 [t] (the rest)
     losses: dict = field(default_factory=dict)
     gases_ppb: dict[str, list[float]] = field(default_factory=dict)
     radicals_cm3: dict[str, list[float]] = field(default_factory=dict)

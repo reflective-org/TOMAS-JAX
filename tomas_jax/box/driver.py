@@ -206,8 +206,10 @@ def code_version() -> str:
 class _Budget:
     """Cumulative amounts removed by losses and added by emissions (per cell / per cm3)."""
 
-    def __init__(self, n_species: int, nbins: int):
+    def __init__(self, n_species: int, nbins: int, n_condensable: int = 0):
         self.wall_vapour_kg = 0.0            # condensable organic vapour lost to walls
+        self.wall_species_kg = np.zeros(n_condensable)  # the same per condensable species
+                                                         # (per c* class without chemistry)
         self.vent_vapour_kg = 0.0            # condensable organic vapour ventilated out, net
         self.o3_surface_cm3 = 0.0            # O3 lost to surfaces [molec/cm3]
         self.vent_gas_cm3 = np.zeros(n_species)   # per species, net out [molec/cm3]
@@ -215,6 +217,8 @@ class _Budget:
         self.dep_m = np.zeros(ICOMP)         # deposited particle mass per component [kg/cell]
         self.vent_m = np.zeros(ICOMP)        # ventilated particle mass per component, net out
         self.dep_n = 0.0                     # deposited particles [#/cell]
+        self.dep_n_bin = np.zeros(nbins)     # the same per size bin
+        self.dep_dry_bin = np.zeros(nbins)   # deposited dry particle mass per size bin [kg/cell]
         self.vent_n = 0.0                    # ventilated particles, net out [#/cell]
 
     def snapshot(self) -> dict:
@@ -443,7 +447,7 @@ def run(scenario: Scenario, progress_cb: Callable[[float], None] | None = None,
     loss_on = s.losses.any
     ls = _loss_setup(s, xk, boxvol, cfg, index if chem else None, bridge if chem else None, k_cls)
     lam_bins = np.full(nk.size, ls.lam_s)
-    budget = _Budget(mech.n_species if chem else 0, nk.size)
+    budget = _Budget(mech.n_species if chem else 0, nk.size, bridge.idx.size if chem else k_cls)
     j_factor = s.photolysis.j_factor          # cloud fraction: J = J_clear x (1 - 0.75 CF)
 
     def j_at(t_s):
@@ -514,6 +518,7 @@ def run(scenario: Scenario, progress_cb: Callable[[float], None] | None = None,
                 budget.o3_surface_cm3 += gb["sink"][i_o3]
                 sink_kg = cm3_to_kg_cell(gb["sink"][bridge.idx], bridge.mw, boxvol)
                 budget.wall_vapour_kg += float(sink_kg.sum())
+                budget.wall_species_kg += sink_kg
                 budget.vent_vapour_kg += float(cm3_to_kg_cell(
                     (gb["out"] - gb["in"])[bridge.idx], bridge.mw, boxvol).sum())
             gas_before = bridge.gas_mass(y)
@@ -540,11 +545,14 @@ def run(scenario: Scenario, progress_cb: Callable[[float], None] | None = None,
             budget.dep_m += pb["m_deposited"].sum(axis=0)
             budget.vent_m += (pb["m_out"] - pb["m_in"]).sum(axis=0)
             budget.dep_n += float(pb["n_deposited"].sum())
+            budget.dep_n_bin += pb["n_deposited"]
+            budget.dep_dry_bin += pb["m_deposited"][:, :SRTH2O].sum(axis=1)
             budget.vent_n += float((pb["n_out"] - pb["n_in"]).sum())
             gc_l, gcb = gas_loss_step(np.asarray(state.Gc), np.zeros(N_GAS_SPECIES), ls.gc_lam,
                                       ls.gc_extra, dt_c)
             if not chem:
                 budget.wall_vapour_kg += float(gcb["sink"][SRTSOA1:SRTSOA1 + k_cls].sum())
+                budget.wall_species_kg += gcb["sink"][SRTSOA1:SRTSOA1 + k_cls]
                 budget.vent_vapour_kg += float((gcb["out"] - gcb["in"])[SRTSOA1:SRTSOA1 + k_cls].sum())
             mk_l = equilibrate_water(jnp.asarray(mk_l), state.rh, state.temp, cfg.water_scheme)
             state = state._replace(Nk=jnp.asarray(nk_l), Mk=mk_l, Gc=jnp.asarray(gc_l))
@@ -573,7 +581,7 @@ def run(scenario: Scenario, progress_cb: Callable[[float], None] | None = None,
                         "or it would have pushed the top bin past the grid)")
 
     return _assemble(s, rec, xk, boxvol, air, chem, k_cls, cstar, cstar_source,
-                     bridge if chem else None, j_names, warnings,
+                     bridge if chem else None, j_names, warnings, ls.beta_s if loss_on else None,
                      {"gas_solver_steps": gas_steps, "runtime_s": time.perf_counter() - t_wall,
                       "code_version": code_version(),
                       "requested_coupling_dt_s": dt_req, "coupling_dt_s": dt_c,
@@ -605,7 +613,7 @@ def _observe(observer, t_s, state, y, j, counts, bridge) -> None:
 
 
 def _assemble(s, rec, xk, boxvol, air, chem, k_cls, cstar, cstar_source, bridge, j_names,
-              warnings, extra) -> RunResult:
+              warnings, beta_s, extra) -> RunResult:
     d_mid, d_edges = bin_diameters_nm(xk)
     dlog10 = np.log10(xk[1:] / xk[:-1]) / 3.0
     nk = np.array(rec["nk"]) / boxvol                              # [t, bin] #/cm3
@@ -652,6 +660,8 @@ def _assemble(s, rec, xk, boxvol, air, chem, k_cls, cstar, cstar_source, bridge,
         diagnostics={"cs_per_s": rec["cs"], "nucleation_rate_cm3_s": rec["jnuc"],
                      "cstar_source": cstar_source, "warnings": warnings, **extra},
     )
+    if beta_s is not None:
+        result.losses.update(_loss_detail(rec["budget"], s, beta_s, dlog10, boxvol, chem, cstar))
     if chem:
         parsed = _chemistry(_aromatics(s))[0]
         index = {sp: i for i, sp in enumerate(parsed.species)}
@@ -710,6 +720,44 @@ def _loss_budget(snapshots: list[dict], s: Scenario, air, boxvol, chem: bool, k_
         out["emitted_ppb"] = {g: emitted[:, index[g]] / air["M"] * 1e9 if g in index
                               else np.zeros(emitted.shape[0]) for g in s.emissions_ppb_per_h}
     return out
+
+
+def _loss_detail(snapshots: list[dict], s: Scenario, beta_s, dlog10, boxvol, chem: bool,
+                 cstar) -> dict:
+    """Size- and species-resolved losses, only for runs with a loss on (RunResult.losses).
+
+    Particle deposition per size bin: the rate beta(D) [1/h] and the cumulative deposited
+    dN/dlog10Dp and dry dM/dlog10Dp [t][bin]. Vapour wall loss per species: the
+    N_TOP_CONTRIBUTORS species with the largest final loss, each cumulative [t], and the
+    rest summed, so the species and the rest add up to wall_vapour_ugm3. Without chemistry
+    the "species" are the c* classes of the surrogate.
+    """
+    dep_n = np.array([snap["dep_n_bin"] for snap in snapshots]) / boxvol
+    dep_dry = kg_cell_to_ugm3(np.array([snap["dep_dry_bin"] for snap in snapshots]), boxvol)
+    wall = kg_cell_to_ugm3(np.array([snap["wall_species_kg"] for snap in snapshots]), boxvol)
+    if chem:
+        parsed = _chemistry(_aromatics(s))[0]
+        class_map = _class_map(s.cstar_table, _aromatics(s))
+        names = list(class_map.species)
+        formulas = [_formula(parsed.atoms[n]) for n in names]
+        log10_cstar = np.asarray(class_map.log10_cstar, dtype=float)
+    else:
+        log10_cstar = np.log10(np.asarray(cstar, dtype=float))
+        names = [f"c* class {i + 1}" for i in range(log10_cstar.size)]
+        formulas = [""] * log10_cstar.size
+    final = wall[-1] if wall.size else np.zeros(0)
+    top = [int(o) for o in np.argsort(final)[::-1][:N_TOP_CONTRIBUTORS] if final[o] > 0]
+    rest = np.ones(final.size, dtype=bool)
+    rest[top] = False
+    return {
+        "deposition_rate_per_h": np.asarray(beta_s) * 3600.0,
+        "deposited_dndlog10dp_cm3": dep_n / dlog10,
+        "deposited_dmdlog10dp_ugm3": dep_dry / dlog10,
+        "wall_vapour_by_species": [{"species": names[o], "formula": formulas[o],
+                                    "log10_cstar": float(log10_cstar[o]), "ugm3": wall[:, o]}
+                                   for o in top],
+        "wall_vapour_other_ugm3": wall[:, rest].sum(axis=1),
+    }
 
 
 def _formula(atoms: dict[str, int]) -> str:
