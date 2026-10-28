@@ -1,0 +1,118 @@
+# Marianna Dilution — Run Notes
+
+Concise operational notes for `run_marianna_dilution.py`. Full specification and
+rationale: **`docs/marianna_dilution.md`**.
+
+## How to run
+```bash
+# 1. Confirm ion nucleation is active (must pass before the full run)
+uv run python -m experimental_case.check_ion_nucleation
+
+# 2. Confirm the digitized initial size distribution (STP vs ambient)
+uv run python -m experimental_case.background_aerosol_distribution --redcircles
+#    -> results/redcircles_crosscheck.png
+uv run python -m experimental_case.background_aerosol_distribution --figure-style
+#    -> results/redcircles_figure_style.png  (Fig. S4 framing, STP + ambient;
+#       STP panel overlays directly on the original screenshot)
+
+# 3. Full 10-day run + plots (~25 s)
+uv run python -m experimental_case.run_marianna_dilution --scenario 1
+
+# Short test / re-plot
+uv run python -m experimental_case.run_marianna_dilution --scenario 1 --hours 12
+uv run python -m experimental_case.run_marianna_dilution --scenario 1 --plot-only
+```
+Outputs: `results/marianna/<scenario_slug>/data.npz` + figures in
+`.../figs/`: **parameters** (input table), dilution_trend, gas_timeseries,
+banana_dN/dA/dV, sizedist_dN/dA/dV (+ t=0 reference), ntotal.
+
+## Run matrix (3 baselines × 5 dilutions = 15 runs, ids B1-D1 … B3-D5)
+Built by `make_matrix(nbins)` from `BASELINES` × `DILUTIONS` in
+`run_marianna_dilution.py`. Run at **40 and 80 bins** (336 h each). B1-D2 ==
+the original scenario 1. See `docs/marianna_dilution.md` for the full baseline/
+dilution tables, the D4-vs-D2 check, and the 40-vs-80 resolution result.
+All runs use red-circles for initial+background aerosol; bg SO2=0.01 ppb, H2SO4=0.
+
+Per-run params below are **B1** (the original scenario 1); B2/B3 differ in
+T/P/SO2/OH/H2O/H2SO4/ion (see docs).
+
+## Water uptake = pure H2SO4/H2O (Tabazadeh 1997) (2026-06-17 update)
+These clean stratospheric runs use **`water_scheme='h2so4_tabazadeh'`** in
+`make_step`, i.e. the **Tabazadeh et al. (1997)** binary H2SO4/H2O equilibrium,
+NOT the default ISORROPIA ammonium-bisulfate fit (these plumes have no NH3).
+Equilibrium H2SO4 weight % is T- and RH-dependent (e.g. B1: 210 K, 1.7% RH →
+~69 wt%, wet/dry mass ratio ≈ 1.45 — vs ISORROPIA's ~1.02, which under-hydrated
+the cold acid). Implemented JIT in `physics/water_equilibrium.py`
+(`calc_equilibrium_water_h2so4`, `h2so4_weight_percent`); selected via the new
+`water_scheme` arg (default `'isorropia'` preserves prior behavior).
+
+> **2026-10 merge into dev:** the string scheme and the branch-local
+> `h2so4_weight_percent` / first `calc_equilibrium_water_h2so4` were dropped in
+> favour of dev's implementation. Select it with
+> `make_step(..., water_scheme=WATER_SCHEME_H2SO4)` (from
+> `tomas_jax.physics.water_equilibrium`); the wt% now comes from
+> `tabazadeh_h2so4_wt(temp, rh_percent)` (RH in %). Dev's version converts the
+> SO4 column to H2SO4 (x 98/96) before applying the binary-solution wet/dry
+> ratio, and organics keep the bisulfate ratio, so water differs slightly from the
+> June runs.
+
+## Plume cutoff + injected-sulfur figures (2026-06-17 update)
+- **Cutoff**: each run stops when `SO2 ≤ 1.1×background` (perturbation < 10% of
+  background ⇒ plume effectively merged in), capped at 2 weeks (336 h). The NPZ is
+  **truncated** at the cutoff (`cutoff_hours`, `cutoff_reached` saved); comparison
+  figures auto-prune any snapshot past a run's cutoff. Typical cutoffs:
+  D5 ≈ 64–66 h, D1 ≈ 114–118 h, D3 ≈ 173–179 h; **D2 & D4 hit the 2-wk cap**.
+- **D5 "Very High" = shear-driven dilution** (Med Kz=0.01 but 5 km length):
+  coefficient `5.33e-8` (reaches SO2=1.1×bg at ~5 d — faster than High Kz, as a
+  "very high" case should be). D1–D4 keep their Low/Med/High-Kz + Burst forms
+  (D1=2.811e-9, D2=8.89e-9, D3=2.811e-8).
+- **Snapshot columns**: now **12/24/48/96/168/240 h** (`SNAPSHOT_HOURS`).
+- **Injected-sulfur comparison figures** (`compare_d{N,A,V}_injPerS`): show the
+  *injected* (SO2-derived) aerosol normalized to *injected* sulfur, with the
+  entrained background excluded by **subtraction** — numerator
+  `max(total_Nk − background_Nk, 0)`, denominator `(SO2+H2SO4)_init × inert_tracer`.
+  This is what fixes the earlier artifact where high dilution looked spuriously
+  highest (it was dividing a background-floored numerator by a vanishing total-S).
+  Background mixing into the plume is negligible (validated 2.2e-3), so the
+  subtraction is exact to that level; the injected-S budget matches the analytic
+  `(SO2+H2SO4)_init × tracer` to ~3e-9. The mixed `*_perS` figures are kept too.
+
+## Chosen parameters (this run)
+| Param | Value | Notes |
+|---|---|---|
+| T, P | 210 K, 55 hPa | |
+| [H2O] | 4 ppm | applied as `rh = 0.0172` (back-solved via Buck) |
+| OH | 5×10⁵ molec/cm³ | constant |
+| Initial SO2 | 2.9×10⁹ ppt = 2900 ppm = 5.50×10¹⁵ molec/cm³ | **only 1.76 t in V0=3×10⁶ m³** ⚠ |
+| Initial H2SO4 | 1×10⁵ molec/cm³ | |
+| Ion-pair prod. | fion = 30 pairs/cm³/s | binary-ion nucleation active (ion conc 7410 cm⁻³) |
+| Initial aerosol | red-circles obs (220–230 ppbv), STP→ambient | N ≈ 3.06 /cm³ ambient (43.4 /cm³ STP) |
+| NH3, organics | 0 | binary nucleation only |
+| V(t)/V0 | t^0.8 (clamped ≥1), then 1585·exp{8.89e-9 (t−1e4)^1.5} | grows ×1.77×10⁶ over 10 d |
+| Dilution bg | aerosol = red-circles ambient; SO2 = 0.01 ppb; H2SO4 = 0 | |
+| Duration | 240 h (10 d) | |
+| dt schedule | 0.01 s (0–2 min), 0.1 s (2–20 min), 10 s (20 min–4 h), 60 s (4 h–end) | per-scenario `dt_schedule`; fine head for H₂SO₄ stiffness. Aerosol outputs converge already at dt=1 s — see `docs/marianna_dilution.md` §4. |
+
+## Result summary (240 h run)
+- Validation: inert tracer_final = 5.67×10⁻⁷ = 1/V(240h) = V0/V(t) (dilution wiring OK).
+- N_total: peaks ~4×10⁶/cm³ (d1, intense nucleation) → 2.4×10⁴/cm³ (d10).
+- SO2: 5.5×10¹⁵ → 6.9×10⁹ (dilution + oxidation); H2SO4 gas peaks ~1.4×10⁷ (d4).
+- Aerosol grows from nucleation mode (~2 nm) to a ~150–200 nm accumulation mode.
+
+## ⚠ Caveats & future-run alternatives to explore
+1. **SO2 mass**: 2.9×10⁹ ppt is used *as specified* but represents only **1.76 t**
+   SO2 in V0 = 3×10⁶ m³, **not** mass-equivalent to the previous 10 t / 4.71×10⁹ m³
+   plume. For a mass-equivalent 10 t release use **1.65×10¹⁰ ppt** (16 517 ppm =
+   3.13×10¹⁶ molec/cm³). See `docs/marianna_dilution.md` §6.
+2. **Initial H2SO4 = 0**: this run seeds 1×10⁵; a future run could start at 0 and
+   let all H2SO4 form in-situ from SO2 oxidation.
+3. **Background SO2 = 0**: this run uses 0.01 ppb; consider 0.
+4. **V(t)/V0 reading**: formula 6 read as `(t − 10⁴)` (the source `(t − t⁴)` would be
+   complex; `(t − 10⁴)` is continuous at t=10⁴ s). `V/V0` clamped ≥ 1 to remove the
+   `t → 0` singularity. Confirm this matches the intended parameterization.
+5. **Size-distribution digitization**: red-circles `_DATA3` is an eyeball digitization
+   of Fig. S4. Verify against `redcircles_crosscheck.png`; replace `_DATA3` in
+   `background_aerosol_distribution.py` if corrections are needed, then re-run.
+6. **STP vs ambient**: the figure is in cm⁻³ STP; the model uses ambient
+   (×0.0706 at 210 K/55 hPa). Both are plotted in the cross-check.
+7. Sensitivity sweeps worth exploring: ion-pair rate, OH level, background aerosol.

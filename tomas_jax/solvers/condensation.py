@@ -90,7 +90,7 @@ _VALID_MAKE_STEP_KWARGS = {
     # nucleation (zhao2024)
     'hno3', 'ulvoc', 'dma', 'hio3', 'enable_masks',
     # coagulation
-    'icomp_nodiag',
+    'icomp_nodiag', 'coag_kernel_scale',
     # dilution
     'kdil', 'Nk_bg', 'Mk_bg', 'Gc_bg',
 }
@@ -953,6 +953,7 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                     dt=dt,
                     icomp_nodiag=kwargs.get('icomp_nodiag', ICOMP_NODIAG),
                     n_substeps=n_coag_substeps,
+                    coag_kernel_scale=kwargs.get('coag_kernel_scale', 1.0),
                 )
                 if water_every_process:
                     Mk = equilibrate_water(Mk, rh, temp, water_scheme)
