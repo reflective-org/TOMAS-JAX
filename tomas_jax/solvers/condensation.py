@@ -66,7 +66,7 @@ from ..physics.so2_chemistry import (
 from ..physics.dilution import dilution_step
 from ..physics.nucleation import (
     nucleation_step, ricco_dunne_nucleation_rate, compute_nucleation_substeps,
-    zhao2024_nucleation_step, ZHAO2024_ALL_ENABLED,
+    zhao2024_nucleation_step, ZHAO2024_ALL_ENABLED, NUC_ORG_MASS_FRAC_DEFAULT,
 )
 from ..physics.condensation_sink import calc_condensation_sink
 from ..physics.ezcond import ezcond
@@ -84,7 +84,7 @@ _VALID_MAKE_STEP_KWARGS = {
     # so2_chemistry
     'oh_conc',
     # nucleation (common)
-    'org_conc', 'nh3_conc', 'fion', 'fn_scale',
+    'org_conc', 'nh3_conc', 'fion', 'fn_scale', 'nuc_org_mass_frac',
     # nucleation (ricco_dunne)
     'enable_organic', 'enable_inorganic',
     # nucleation (zhao2024)
@@ -835,6 +835,14 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
 
     For JIT stability, always pass the same set of kwargs across calls.
 
+    Step kwargs that scale physics (all may be traced scalars):
+        fn_scale: multiplier on the nucleation rate (default 1.0).
+        nuc_org_mass_frac: fraction of nucleated mass placed in SRTORGLAST
+            rather than SRTSO4 (default 0.1); only the SRTSO4 part is taken
+            from gas H2SO4.
+        coag_kernel_scale: multiplier on the whole coagulation kernel
+            (default 1.0).
+
     Example::
 
         step = make_step(['nucleation', 'coagulation', 'condensation'],
@@ -924,6 +932,8 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                             hio3=kwargs.get('hio3', 0.0),
                             enable_masks=enable_masks,
                             fn_scale=kwargs.get('fn_scale', 1.0),
+                            nuc_org_mass_frac=kwargs.get(
+                                'nuc_org_mass_frac', NUC_ORG_MASS_FRAC_DEFAULT),
                         )
                         Nk_s, Mk_s = mnfix_jax(Nk_s, Mk_s, xk, ICOMP_NODIAG)
                         return (Nk_s, Mk_s, Gc_s)
@@ -938,6 +948,8 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                             kwargs.get('enable_organic', 1.0),
                             kwargs.get('enable_inorganic', 1.0),
                             kwargs.get('fn_scale', 1.0),
+                            nuc_org_mass_frac=kwargs.get(
+                                'nuc_org_mass_frac', NUC_ORG_MASS_FRAC_DEFAULT),
                         )
                         Nk_s, Mk_s = mnfix_jax(Nk_s, Mk_s, xk, ICOMP_NODIAG)
                         return (Nk_s, Mk_s, Gc_s)

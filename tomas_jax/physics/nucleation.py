@@ -50,6 +50,12 @@ _RNUC_M = _RNUC_NM * 1e-9  # [m]
 _RHO_NUC = 1350.0        # cluster density [kg/m^3]
 _MNUC = (4.0 / 3.0) * PI * _RNUC_M**3 * _RHO_NUC  # cluster mass [kg]
 
+# Fraction of the nucleated cluster mass placed in the organic slot
+# (SRTORGLAST); the rest goes to SRTSO4. Only the SRTSO4 part is taken from
+# gas-phase H2SO4 -- the organic part is not debited from any tracked gas
+# (org_conc is a prescribed input). 0.1 is the historical TOMAS-JAX split.
+NUC_ORG_MASS_FRAC_DEFAULT = 0.1
+
 
 def ricco_nucleation_rate(temp, h2so4, org):
     """Riccobono 2014 organic nucleation + Yu 2017 T-correction.
@@ -479,6 +485,7 @@ def zhao2024_nucleation_step(
     org_conc, nh3_conc, fion,
     hno3=0.0, ulvoc=0.0, dma=0.0, hio3=0.0,
     enable_masks=ZHAO2024_ALL_ENABLED, fn_scale=1.0,
+    nuc_org_mass_frac=NUC_ORG_MASS_FRAC_DEFAULT,
 ):
     """Apply Zhao 2024 11-mechanism nucleation to aerosol state (JIT-compilable).
 
@@ -499,6 +506,8 @@ def zhao2024_nucleation_step(
             See ``zhao2024_nucleation_rate`` for units and per-mechanism use.
         enable_masks: Tuple of 11 floats (0.0/1.0) to enable/disable each mechanism
         fn_scale: Multiplicative scaling factor for total nucleation rate
+        nuc_org_mass_frac: Fraction of nucleated mass put in SRTORGLAST
+            (default 0.1); see ``nucleation_step``.
 
     Returns:
         (Nk_new, Mk_new, Gc_new)
@@ -515,8 +524,8 @@ def zhao2024_nucleation_step(
 
     # Mass added to bin 0 (same cluster properties as existing scheme)
     dM_total = fn * _MNUC * boxvol * dt
-    dM_so4 = 0.9 * dM_total
-    dM_org = 0.1 * dM_total
+    dM_so4 = (1.0 - nuc_org_mass_frac) * dM_total
+    dM_org = nuc_org_mass_frac * dM_total
 
     # Gas clamping (same logic as nucleation_step)
     gc_so4 = Gc[SRTSO4]
@@ -525,7 +534,7 @@ def zhao2024_nucleation_step(
 
     dM_so4_clamped = gc_so4 * (96.0 / 98.0)
     dN_clamped = dM_so4_clamped / _MNUC
-    dM_org_clamped = dN_clamped * 0.1 * _MNUC
+    dM_org_clamped = dN_clamped * nuc_org_mass_frac * _MNUC
 
     dN_final = jnp.where(need_clamp, dN_clamped, dN)
     dM_so4_final = jnp.where(need_clamp, dM_so4_clamped, dM_so4)
@@ -601,6 +610,7 @@ def nucleation_step(
     Nk, Mk, Gc, xk, temp, pres, boxvol, dt,
     org_conc, nh3_conc, fion,
     enable_organic=1.0, enable_inorganic=1.0, fn_scale=1.0,
+    nuc_org_mass_frac=NUC_ORG_MASS_FRAC_DEFAULT,
 ):
     """Apply nucleation to aerosol state (JIT-compilable).
 
@@ -619,6 +629,17 @@ def nucleation_step(
         enable_organic: 1.0 to enable Riccobono, 0.0 to disable
         enable_inorganic: 1.0 to enable Dunne, 0.0 to disable
         fn_scale: Multiplicative scaling factor for total nucleation rate
+        nuc_org_mass_frac: Fraction of the nucleated cluster mass placed in
+            the organic slot SRTORGLAST (default 0.1); the remaining
+            (1 - nuc_org_mass_frac) goes to SRTSO4 and is the only part
+            debited from gas H2SO4. 0.0 puts all of it in SRTSO4. May be a
+            traced JAX scalar.
+
+    Mass accounting: unclamped, Gc[SRTSO4] loses exactly the kg added to
+    Mk[0, SRTSO4] (kg-for-kg, as in the Fortran and in condensation). When gas
+    limits nucleation, all of Gc[SRTSO4] is consumed and Gc * 96/98 is added
+    as SO4 (moles of S conserved, kg not). The organic mass is not taken
+    from any tracked gas.
 
     Returns:
         (Nk_new, Mk_new, Gc_new)
@@ -645,8 +666,8 @@ def nucleation_step(
 
     # Mass added to bin 0
     dM_total = fn * _MNUC * boxvol * dt
-    dM_so4 = 0.9 * dM_total
-    dM_org = 0.1 * dM_total
+    dM_so4 = (1.0 - nuc_org_mass_frac) * dM_total
+    dM_org = nuc_org_mass_frac * dM_total
 
     # Check if gas can supply the SO4 mass
     # Fortran depletes Gc by the SO4 mass added (without 98/96 MW correction)
@@ -665,7 +686,7 @@ def nucleation_step(
     # Clamp organic mass proportionally when gas supply limits nucleation.
     # Without this, dM_org uses the full (enormous) fn while dN is clamped
     # to a tiny value, creating particles with avg mass >> bin boundary.
-    dM_org_clamped = dN_clamped * 0.1 * _MNUC
+    dM_org_clamped = dN_clamped * nuc_org_mass_frac * _MNUC
 
     # Select clamped or normal path
     dN_final = jnp.where(need_clamp, dN_clamped, dN)
