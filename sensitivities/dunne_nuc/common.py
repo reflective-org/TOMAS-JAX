@@ -12,6 +12,8 @@ from tomas_jax.core.config import (
     MW_H2SO4, MW_SO2, AVOGADRO, KB, PI,
 )
 from tomas_jax.physics import nucleation as nuc
+from tomas_jax.physics.radiative_forcing import DENSITY_H2SO4_SOLUTION
+from tomas_jax.physics.water_equilibrium import WATER_SCHEME_H2SO4
 from tomas_jax.solvers.condensation import make_step
 
 # ~20 km lower stratosphere
@@ -26,6 +28,15 @@ DENS_INIT = 1770.0   # kg/m3 (sulfate)
 BG_N = 10.0          # #/cm3
 BG_GMD = 100e-9      # m
 BG_GSD = 1.6
+
+# Low-occupancy bin density for coag kernel + condensation sink. The Fortran
+# fallbacks (1000 / 1500 kg/m3) trigger on per-cell thresholds that sparse
+# stratospheric bins in a 1e6 cm3 box fall below (see make_step).
+SPARSE_DENSITY = DENSITY_H2SO4_SOLUTION
+
+# Binary H2SO4/H2O water uptake (Tabazadeh 1997) instead of the TOMAS
+# ammonium-bisulfate default: stratospheric aerosol has no NH4.
+WATER_SCHEME = WATER_SCHEME_H2SO4
 
 
 def air_density(temp, pres):
@@ -64,7 +75,8 @@ def lognormal_state(xk, n_total=BG_N, gmd=BG_GMD, gsd=BG_GSD,
 
 def make_runner(xk, nsteps, cond=STRAT, fion=FION, oh_conc=OH_CONC,
                 boxvol=BOXVOL, dt=DT, max_nuc_substeps=20,
-                max_nucleation_frac=0.5):
+                max_nucleation_frac=0.5, sparse_density=SPARSE_DENSITY,
+                water_scheme=WATER_SCHEME):
     """Build run(params, Nk, Mk, Gc) -> (Nk, Mk, Gc, diag).
 
     One step = SO2 chemistry, then nucleation + coagulation + condensation,
@@ -73,12 +85,16 @@ def make_runner(xk, nsteps, cond=STRAT, fion=FION, oh_conc=OH_CONC,
     state, the nucleation sub-step count and whether the gas clamp fires on
     the first sub-step. Gradients are blind to both (integer/branch).
 
+    sparse_density, water_scheme: see make_step.
+
     Not JIT-wrapped: callers apply jax.jit / jax.jacfwd as needed.
     """
     chem = make_step(['so2_chemistry'], jit=False)
     rest = make_step(['nucleation', 'coagulation', 'condensation'],
                      max_nucleation_frac=max_nucleation_frac,
-                     max_nuc_substeps=max_nuc_substeps, jit=False)
+                     max_nuc_substeps=max_nuc_substeps,
+                     sparse_density=sparse_density,
+                     water_scheme=water_scheme, jit=False)
     temp, pres, rh, alpha = (cond[k] for k in ('temp', 'pres', 'rh', 'alpha'))
 
     def run(params, Nk, Mk, Gc):

@@ -37,11 +37,17 @@ def calc_wet_diameters(
     Nk: jnp.ndarray,
     Mk: jnp.ndarray,
     xk: jnp.ndarray,
+    sparse_density: Union[float, None] = None,
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Wet particle diameter and density per bin (getCondSink.f lines 89-113).
 
     For bins with Nk > NEPS_CONDSINK [#/cell]: actual wet mass per particle
     and calc_density. Otherwise: mp = 1.4*xk[k] at density 1500 kg/m3.
+
+    sparse_density: if given [kg/m3], replaces both low-occupancy defaults:
+    the 1500 kg/m3 here and calc_density's 1000 kg/m3 empty-bin value. With
+    a 1e6 cm3 box, NEPS_CONDSINK = 1e10 #/cell is 1e4 cm-3 per bin, so in
+    the stratosphere nearly every bin uses the default. None = Fortran.
 
     Returns:
         Dpk: Wet diameter [m], shape (ibins,)
@@ -52,11 +58,12 @@ def calc_wet_diameters(
     # Actual properties (for populated bins)
     Mktot = jnp.sum(Mk, axis=1)  # total wet mass per bin
     mp_actual = Mktot / jnp.maximum(Nk, 1e-30)
-    density_actual = calc_density(Mk)
+    density_actual = calc_density(
+        Mk, 1000.0 if sparse_density is None else sparse_density)
 
     # Default properties (for sparse bins)
     mp_default = 1.4 * xk[:-1]
-    density_default = 1500.0
+    density_default = 1500.0 if sparse_density is None else sparse_density
 
     mp = jnp.where(has_particles, mp_actual, mp_default)
     density = jnp.where(has_particles, density_actual, density_default)
@@ -75,7 +82,8 @@ def calc_condensation_sink(
     molecular_weight: float = MW_H2SO4,
     diffusion_volume: float = SV_H2SO4,
     alpha: float = 1.0,
-    xk: jnp.ndarray = None
+    xk: jnp.ndarray = None,
+    sparse_density: Union[float, None] = None,
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Calculate condensation sink from aerosol size distribution.
 
@@ -95,6 +103,8 @@ def calc_condensation_sink(
         diffusion_volume: Diffusion volume parameter
         alpha: Accommodation coefficient (default 1.0)
         xk: Bin boundaries [kg], shape (ibins+1,). If None, uses default 36-bin grid.
+        sparse_density: Density [kg/m3] for low-occupancy bins (see
+            calc_wet_diameters). None = Fortran defaults.
 
     Returns:
         CS: Condensation sink [s^-1]
@@ -108,7 +118,7 @@ def calc_condensation_sink(
     mfp = calc_mean_free_path(temp, pres, molecular_weight, diffusion_volume)
 
     # --- Compute Dpk following Fortran getCondSink.f lines 89-113 ---
-    Dpk, _ = calc_wet_diameters(Nk, Mk, xk)
+    Dpk, _ = calc_wet_diameters(Nk, Mk, xk, sparse_density)
 
     # Kn = 2*mfp/Dpk (getCondSink.f line 111)
     Kn = 2.0 * mfp / jnp.maximum(Dpk, 1e-30)

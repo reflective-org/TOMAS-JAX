@@ -146,6 +146,7 @@ def coag_euler_step(
     icomp_nodiag: int = ICOMP_NODIAG,
     n_substeps: int = 3,
     return_overflow: bool = False,
+    sparse_density=None,
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Fixed-step forward Euler coagulation solver (scan-fusable).
 
@@ -158,9 +159,11 @@ def coag_euler_step(
         return_overflow: If True, returns (Nk, Mk, overflow) where overflow
             is the total mass [kg/cell] that overflowed the top bin during
             this timestep, shape (icomp,).
+        sparse_density: Density [kg/m3] for low-mass bins in the kernel
+            (calc_density's empty-bin fallback). None = 1000 (Fortran).
     """
     # Pre-compute coagulation kernel (once per timestep)
-    Dpk, Dk, ck = calc_particle_properties(Nk, Mk, temp, pres)
+    Dpk, Dk, ck = calc_particle_properties(Nk, Mk, temp, pres, sparse_density)
     kij = calc_coagulation_kernel(Dpk, Dk, ck, boxvol)
 
     dt_sub = dt / n_substeps

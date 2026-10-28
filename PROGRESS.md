@@ -4,6 +4,72 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-10-27 (Tue) — SABRE dry density from CRC; H₂SO₄ water scheme for the stratospheric study
+
+- `sensitivities/dunne_nuc/sabre_bins.dry_density`:
+  - NH₄-free bins use CRC pure H₂SO₄ (1836 kg/m³ via `h2so4_solution_density(100)`)
+    instead of `calc_density`'s 1902. That value is too high for two reasons: SO₄ is
+    counted as H₂SO₄, putting dry particles at 102 wt%, and the Tang fit is +3% vs CRC
+    at 100 wt%.
+  - Bins with NH₄ use `calc_density` with protons counted, so dry is 100 wt%.
+  - New test `test_ammonium_bins_capped_at_100_wt`.
+- `sensitivities/dunne_nuc/common.make_runner`: new `water_scheme` argument, defaulting to
+  `WATER_SCHEME_H2SO4` (Tabazadeh). The bisulfate fit gave 2.4% water at 217 K / RH 2%;
+  Tabazadeh gives 68.6 wt% H₂SO₄.
+- Effect (1 ppbv SO₂, 6 h):
+  - The water scheme changes N(>3 nm) by +55/+83% (40/80 bins), N_total by −20/−18%,
+    and H₂SO₄ by −16/−15%.
+  - The density fix alone changes N(>3 nm) by +7%.
+  - The 40/80-bin gap in N(>3 nm) shrinks from 35% to 14%.
+- `phase0_warmup.py` (user edits): absolute dJ/dT, checked against J·dlnJ/dT; the plot now
+  shows −dlnJ/dT. All Phase 0 checks pass. Phase 0 and 1 reran with the new settings.
+- Known issue: the water scheme is a structural uncertainty much larger than SABRE's 8%.
+  It should be carried alongside the coefficient sensitivities in Phase 2.
+
+---
+
+## 2026-10-23 (Fri) 22:50 PDT — `sparse_density` option for stratosphere/SAI
+
+- `make_step(..., sparse_density=rho)` sets the density for low-occupancy bins in the
+  coagulation kernel (`calc_density`, whose Fortran fallback is 1000 kg/m³ below
+  1e-15 kg/cell) and in the condensation sink (`calc_wet_diameters`, whose Fortran
+  fallback is 1500 kg/m³ at ≤ 1e10 #/cell). Default `None` keeps the Fortran behaviour
+  bit-identically.
+- Threaded through `calc_density(empty_density=)`, `calc_particle_properties`,
+  `calc_wet_diameters`, `calc_condensation_sink`, `ezcond_ppm_jax`, `ezcond_tfl_jax`,
+  `coag_euler_step` and `_condensation_step_core`.
+- The sensitivity study now uses `DENSITY_H2SO4_SOLUTION` (1700 kg/m³) via
+  `common.SPARSE_DENSITY`.
+- Impact (217 K, 1 ppbv SO₂, 6 h): condensation sink −8%, N_total +2/+4%, N(>3 nm)
+  +6.6/−1.2% (40/80 bins), N(>12 nm) unchanged.
+- `tests/test_sparse_density.py` (4 tests). The condensation-sink, coagulation, PPM-JIT,
+  TFL-JIT, SABRE and gradient suites pass (67).
+
+---
+
+## 2026-10-23 (Fri) 21:30 PDT — Nucleation coefficient sensitivity: Phase 1 (SABRE-binned output)
+
+- New `sensitivities/dunne_nuc/sabre_bins.py`: differentiable rebinning of the model's dry
+  distribution onto the SABRE 2023 product (Lyu et al. 2026): 20 bins/decade from 3 nm
+  (edges assumed, since the paper lists none), the NMASS cumulative channels (3, 8, 12,
+  27, 53 nm), optional residual water, and density from per-bin composition.
+- New `phase1_sabre_check.py`: 6 h at 217 K, 1 ppbv SO₂, 40 and 80 bins. `jacfwd` of 63
+  SABRE bins + 5 NMASS channels w.r.t. 25 coefficients takes 14 s / 39 s.
+  Figure: `results/phase1/sabre_jacobian.png`.
+- `tests/test_sabre_bins.py` (7 tests).
+- Findings:
+  - About 89% of new particles stay below SABRE's 3 nm limit after 6 h.
+  - N(>3 nm) differs 35% between 40 and 80 bins: a rebinning artifact at the steep 3 nm
+    edge, since N_total differs by only 7% and MNFIX survival is identical. 80 bins is
+    the primary grid.
+  - `calc_density` falls back to 1000 kg/m³ for bins with < 1e-15 kg per grid cell. That
+    threshold depends on box volume and can affect sparse stratospheric bins in the model
+    physics. Not changed.
+- Next: Phase 2, the T × SO₂ σ-scaled map. This needs published σ for the Dunne/Riccobono
+  coefficients.
+
+---
+
 ## 2026-10-23 (Fri) 20:45 PDT — Nucleation coefficient sensitivity via forward-mode AD: Phase 0
 
 **Branch**: `dlm`. Goal: find which ricco_dunne fit coefficients drive uncertainty in

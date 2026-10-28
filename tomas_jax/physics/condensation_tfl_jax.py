@@ -254,6 +254,7 @@ def ezcond_tfl_jax(
     boxvol: jnp.ndarray,
     alpha: jnp.ndarray = jnp.array(1.0),
     icomp_nodiag: int = ICOMP_NODIAG,
+    sparse_density=None,
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Pure-JAX ezcond using TFL tmcond — JIT-compilable.
 
@@ -271,6 +272,8 @@ def ezcond_tfl_jax(
         xk: Bin boundaries [kg], shape (ibins+1,)
         temp, pres, boxvol, alpha: Environment parameters
         icomp_nodiag: Number of non-diagnostic species (static)
+        sparse_density: Low-occupancy bin density [kg/m3] for the
+            condensation sink (calc_wet_diameters). None = Fortran defaults.
 
     Returns:
         Nk_out, Mk_out
@@ -285,7 +288,7 @@ def ezcond_tfl_jax(
     # Condensation sink (needed for outer branch decision)
     CS, sinkfrac = calc_condensation_sink(
         Nk, Mk, temp, pres, boxvol,
-        alpha=alpha, xk=xk
+        alpha=alpha, xk=xk, sparse_density=sparse_density
     )
 
     # --- Dump path (CS too small): add all mass to first bin ---

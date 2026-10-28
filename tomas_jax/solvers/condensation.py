@@ -245,12 +245,15 @@ def condensation_step(
 # =========================================================================
 
 def _condensation_step_core(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
-                            ezcond_fn, water_scheme=WATER_SCHEME_BISULFATE):
+                            ezcond_fn, water_scheme=WATER_SCHEME_BISULFATE,
+                            sparse_density=None):
     """Core condensation: MNFIX -> CS -> gas depletion -> ezcond_fn -> NH3 -> water -> MNFIX.
 
     This is the single implementation that both PPM and TFL JIT paths share.
     The only difference is which ezcond function is passed in.
     water_scheme selects the water uptake (see equilibrate_water).
+    sparse_density: low-occupancy bin density for the condensation sink
+    (see calc_wet_diameters); None = Fortran defaults.
     """
     # 0. MNFIX input
     Nk, Mk = mnfix_jax(Nk, Mk, xk, ICOMP_NODIAG)
@@ -258,7 +261,7 @@ def _condensation_step_core(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
     # 1. Condensation sink
     CS, sinkfrac = calc_condensation_sink(
         Nk, Mk, temp, pres, boxvol,
-        MW_H2SO4, SV_H2SO4, alpha, xk=xk
+        MW_H2SO4, SV_H2SO4, alpha, xk=xk, sparse_density=sparse_density
     )
 
     # 2. H2SO4 condensation
@@ -279,7 +282,7 @@ def _condensation_step_core(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
     # Condense via ezcond_fn (PPM or TFL)
     Nk_cond, Mk_cond = ezcond_fn(
         Nk, Mk, mcond_so4, SRTSO4,
-        xk, temp, pres, boxvol, alpha
+        xk, temp, pres, boxvol, alpha, sparse_density=sparse_density
     )
 
     # Select: dump path vs condensation path vs no-op
@@ -798,7 +801,7 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
               n_coag_substeps=10,
               max_nucleation_frac=0.5, max_nuc_substeps=20,
               water_scheme=WATER_SCHEME_BISULFATE, water_every_process=False,
-              jit=True):
+              sparse_density=None, jit=True):
     """Build a step function from an ordered list of process names.
 
     The returned function has signature:
@@ -827,6 +830,15 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
         water_every_process: If True, re-equilibrate aerosol water after
             nucleation, coagulation and dilution as well as condensation
             (TOMAS box.f order). Default False: only condensation sets water.
+        sparse_density: Density [kg/m3] for low-occupancy bins, used in the
+            coagulation kernel and the condensation sink. None (default)
+            keeps the Fortran values: 1000 for bins with < 1e-15 kg/cell
+            (aerodens.f) and 1500 for bins with <= 1e10 #/cell
+            (getCondSink.f). Both thresholds are per grid cell, so in small
+            boxes (stratosphere, SAI plumes) real sulfate bins hit them.
+            For those cases pass a sulfate density, e.g.
+            ``radiative_forcing.DENSITY_H2SO4_SOLUTION`` (1700, ~75 wt%
+            H2SO4 at 220 K). See docs/nucleation_sensitivity.md.
         jit: If True (default), wrap the returned function in ``jax.jit``.
             Callers no longer need to wrap manually. Double-JIT is a no-op.
 
@@ -955,6 +967,7 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                     dt=dt,
                     icomp_nodiag=kwargs.get('icomp_nodiag', ICOMP_NODIAG),
                     n_substeps=n_coag_substeps,
+                    sparse_density=sparse_density,
                 )
                 if water_every_process:
                     Mk = equilibrate_water(Mk, rh, temp, water_scheme)
@@ -962,6 +975,7 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                 Nk, Mk, Gc = _condensation_step_core(
                     Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
                     ezcond_fn=ezcond_fn, water_scheme=water_scheme,
+                    sparse_density=sparse_density,
                 )
             elif process == 'dilution':
                 kdil = kwargs.get('kdil', 0.0)

@@ -34,6 +34,7 @@ def ezcond_ppm_jax(
     pres: jnp.ndarray,
     boxvol: jnp.ndarray,
     alpha: jnp.ndarray = jnp.array(1.0),
+    sparse_density=None,
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Condense a given mass using PPM advection scheme (pure JAX, JIT-compilable).
 
@@ -53,6 +54,8 @@ def ezcond_ppm_jax(
         pres: Pressure [Pa]
         boxvol: Grid cell volume [cm^3]
         alpha: Accommodation coefficient
+        sparse_density: Low-occupancy bin density [kg/m3] for the
+            condensation sink (calc_wet_diameters). None = Fortran defaults.
 
     Returns:
         Nk_out: Updated number concentration, shape (ibins,)
@@ -63,7 +66,7 @@ def ezcond_ppm_jax(
     # Condensation sink (needed for outer branch decision)
     CS, sinkfrac = calc_condensation_sink(
         Nk, Mk, temp, pres, boxvol,
-        alpha=alpha, xk=xk
+        alpha=alpha, xk=xk, sparse_density=sparse_density
     )
 
     # --- Dump path (CS too small): add all mass to first bin ---

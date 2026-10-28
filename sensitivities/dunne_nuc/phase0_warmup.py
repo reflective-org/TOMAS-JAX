@@ -55,15 +55,20 @@ def report(name, ad, ref, fd, rtol=1e-6):
 # 0a: gradients w.r.t. existing inputs
 # =========================================================================
 
-def ln_mech(idx, temp, ln_h2so4, fion=FION_REF, nh3=NH3_REF, pres=P_REF):
-    """ln of one Dunne mechanism (idx 1=Jbn, 3=Jbi).
+def mech(idx, temp, ln_h2so4, fion=FION_REF, nh3=NH3_REF, pres=P_REF):
+    """One Dunne mechanism (idx 1=Jbn, 3=Jbi) [cm^-3 s^-1].
 
     Mair is held fixed at the reference T so that d/dT isolates the rate
     constant and ion-recombination temperature dependence.
     """
     out = nuc.dunne_nucleation_rate(
         temp, fion, jnp.exp(ln_h2so4), nh3, mair(T_REF, pres))
-    return jnp.log(out[idx])
+    return out[idx]
+
+
+def ln_mech(idx, temp, ln_h2so4, fion=FION_REF, nh3=NH3_REF, pres=P_REF):
+    """ln of one Dunne mechanism (idx 1=Jbn, 3=Jbi)."""
+    return jnp.log(mech(idx, temp, ln_h2so4, fion, nh3, pres))
 
 
 def analytic_dlnJbn_dT(temp):
@@ -84,6 +89,7 @@ def analytic_dlnJbi_dT(temp, fion=FION_REF, pres=P_REF):
 
 def part_0a():
     print("=" * 100)
+    print( f"AD=automatic differentiation (jax.grad), ref=analytical derivative, FD=central finite differences")
     print(f"0a: d lnJ / d(T, ln H2SO4) at T={T_REF} K, H2SO4={H2SO4_REF:.0e}, "
           f"fion={FION_REF}, NH3={NH3_REF}")
     print("=" * 100)
@@ -113,12 +119,28 @@ def part_0a():
         np.max(np.abs(np.array(dT_bi) - analytic_dlnJbi_dT(np.array(temps)))
                / np.abs(analytic_dlnJbi_dT(np.array(temps)))),
     )
-    print(f"  vmap over 190-240 K: max rel err vs analytic = {max_err:.1e}")
+    print(f"  vmap (auto vectorization) over 190-240 K: max rel err vs analytic = {max_err:.1e}")
     ok &= max_err < 1e-6
 
+    # Absolute sensitivity dJ/dT [cm^-3 s^-1 K^-1], differentiating J itself.
+    # Check against the chain rule dJ/dT = J * dlnJ/dT.
+    J_bn = jax.vmap(lambda T: mech(1, T, L0))(temps)
+    J_bi = jax.vmap(lambda T: mech(3, T, L0))(temps)
+    dJdT_bn = jax.vmap(jax.grad(lambda T: mech(1, T, L0)))(temps)
+    dJdT_bi = jax.vmap(jax.grad(lambda T: mech(3, T, L0)))(temps)
+    chain_err = max(
+        np.max(np.abs(np.array(dJdT_bn - J_bn * dT_bn) / np.array(dJdT_bn))),
+        np.max(np.abs(np.array(dJdT_bi - J_bi * dT_bi) / np.array(dJdT_bi))),
+    )
+    print(f"  dJ/dT vs J * dlnJ/dT over 190-240 K: max rel err = {chain_err:.1e}")
+    ok &= chain_err < 1e-10
+
     os.makedirs(OUTDIR, exist_ok=True)
-    np.savez(os.path.join(OUTDIR, 'part0a_dlnJ_dT.npz'),
-             temps=np.array(temps), dT_bn=np.array(dT_bn), dT_bi=np.array(dT_bi))
+    npz_out = os.path.join(OUTDIR, 'part0a_dlnJ_dT.npz')
+    np.savez(npz_out,
+             temps=np.array(temps), dT_bn=np.array(dT_bn), dT_bi=np.array(dT_bi),
+             dJdT_bn=np.array(dJdT_bn), dJdT_bi=np.array(dJdT_bi))
+    print(f"  wrote {npz_out}")
     plot_0a()
 
     if not ok:
@@ -137,12 +159,12 @@ def plot_0a():
     d = np.load(fname)
 
     fig, ax = plt.subplots(figsize=(6, 4))
-    # Plot as factor change per 10 K cooling: exp(-10 * dlnJ/dT)
-    ax.semilogy(d['temps'], np.exp(-10.0 * d['dT_bn']), label='binary neutral (Jbn)')
-    ax.semilogy(d['temps'], np.exp(-10.0 * d['dT_bi']), label='binary ion (Jbi)')
+    # dlnJ/dT < 0 (colder -> faster); plot its magnitude. Independent of H2SO4.
+    ax.plot(d['temps'], -d['dT_bn'], label='binary neutral (Jbn)')
+    ax.plot(d['temps'], -d['dT_bi'], label='binary ion (Jbi)')
     ax.set_xlabel('Temperature [K]')
-    ax.set_ylabel('J(T-10 K) / J(T)  (local, from d lnJ/dT)')
-    ax.set_title(f'Dunne 2016 T-sensitivity, H$_2$SO$_4$={H2SO4_REF:.0e} cm$^{{-3}}$')
+    ax.set_ylabel(r'$-\mathrm{d}\ln J/\mathrm{d}T$  [K$^{-1}$]')
+    ax.set_title('Dunne 2016 relative T-sensitivity')
     ax.grid(True, which='both', alpha=0.3)
     ax.legend()
     fig.tight_layout()
