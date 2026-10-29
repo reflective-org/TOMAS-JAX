@@ -97,7 +97,8 @@ The outer step is split into n = ceil(dt_outer/micro_dt) equal micro-steps
    floor-aware gate and the per-particle scaling prevent both.
 2. **Nucleation → coagulation → H₂SO₄ condensation**:
    `solvers.condensation.make_step` with the enabled subset, `jit=False`,
-   PPM-JIT condensation and `cfg.water_scheme`/`cfg.water_every_process`.
+   PPM-JIT condensation and `cfg.water_scheme`/`cfg.water_every_process`/
+   `cfg.molar_so4_transfer`.
    H₂SO₄ condensation also does NH₃ equilibrium (`Gc[SRTNH4]`).
 3. **SOA partitioning**: `soa_partition_step` ([soa_partitioning.md](soa_partitioning.md)),
    followed by the PPM remap of the particles whose SOA changed.
@@ -128,6 +129,7 @@ of this step; the driver owns them.
 | `alpha_h2so4` | 1.0 | H₂SO₄ accommodation |
 | `water_scheme` | bisulfate | `equilibrate_water` scheme |
 | `water_every_process` | False | `make_step` option |
+| `molar_so4_transfer` | False | `make_step` option: conserve moles of S at gas->particle sulfate transfers (Mk SO4 = MW 96, Gc H2SO4 = MW 98); False is the kg-for-kg Fortran convention |
 | `soa_n_substeps` | 10 | vbs-jax sub-step budget (raise if `soa_time_integrated` is False) |
 | `growth_bin_transfer` | `'ppm'` | how SOA growth/evaporation and nitrate move particles between bins: `'ppm'` (PPM remap) or `'mnfix'` (the previous MNFIX split, kept for comparison). Any other value raises `ValueError` |
 

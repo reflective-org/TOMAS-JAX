@@ -28,6 +28,7 @@ class AerosolStepConfig:
     alpha_h2so4: float = 1.0           # [-] H2SO4 mass accommodation
     water_scheme: float = WATER_SCHEME_BISULFATE   # see equilibrate_water
     water_every_process: bool = False  # make_step option (TOMAS box.f order)
+    molar_so4_transfer: bool = False   # make_step option (S moles, 96/98)
     soa_n_substeps: int = SOA_N_SUBSTEPS  # vbs-jax adaptive sub-step budget
     # How SOA growth/evaporation and N2O5-uptake nitrate (mass added to or
     # removed from bins in place) move particles between the fixed bins:

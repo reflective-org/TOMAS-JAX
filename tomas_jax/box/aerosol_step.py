@@ -152,7 +152,8 @@ def _aerosol_outer_step(state, forcing, soa_params, dt_outer, *,
         [_MAKE_STEP_PROCESS[p] for p in AEROSOL_PROCESSES[:3]
          if p in processes],
         water_scheme=cfg.water_scheme,
-        water_every_process=cfg.water_every_process, jit=False)
+        water_every_process=cfg.water_every_process,
+        molar_so4_transfer=cfg.molar_so4_transfer, jit=False)
 
     xk, temp, pres, rh, boxvol = (
         state.xk, state.temp, state.pres, state.rh, state.boxvol)

@@ -13,7 +13,7 @@ import jax.numpy as jnp
 
 from ..core.config import (
     SRTSO4, SRTORGLAST, ICOMP,
-    AVOGADRO, PI,
+    AVOGADRO, PI, MW_H2SO4, MW_SO4,
 )
 
 # =========================================================================
@@ -55,6 +55,85 @@ _MNUC = (4.0 / 3.0) * PI * _RNUC_M**3 * _RHO_NUC  # cluster mass [kg]
 # gas-phase H2SO4 -- the organic part is not debited from any tracked gas
 # (org_conc is a prescribed input). 0.1 is the historical TOMAS-JAX split.
 NUC_ORG_MASS_FRAC_DEFAULT = 0.1
+
+
+def _apply_nucleation(Nk, Mk, Gc, fn, boxvol, dt, nuc_org_mass_frac,
+                      molar_so4_transfer=False):
+    """Add nucleated clusters (rate ``fn`` [cm^-3 s^-1]) to bin 0 and debit gas H2SO4.
+
+    Shared by ``nucleation_step`` and ``zhao2024_nucleation_step``.
+
+    ``molar_so4_transfer`` (Python bool, static) picks the sulfur bookkeeping:
+
+    False (default, Fortran nucleation_driver.f): unclamped, the gas loses
+        exactly the kg added to Mk[0, SRTSO4] (kg-for-kg). Gas-limited
+        (clamped): all of Gc[SRTSO4] is consumed, Gc * 96/98 is added as SO4,
+        dN = that / _MNUC and the organic part is dN * f * _MNUC (so the
+        cluster mass there is (1 + f) * _MNUC, not _MNUC).
+    True (mass-consistent convention: Mk[:, SRTSO4] holds SO4, MW 96; gas
+        Gc[SRTSO4] holds H2SO4, MW 98; moles of S conserved): the particle
+        gain is the same dM_so4 = (1 - f) * fn * _MNUC * boxvol * dt and dN
+        is unchanged, but the gas loses dM_so4 * 98/96. Gas-limited: all of
+        Gc[SRTSO4] is consumed, Gc * 96/98 is added as SO4 and dN, organic
+        mass follow the unclamped cluster composition, i.e.
+        dN = Gc * 96/98 / ((1 - f) * _MNUC), dM_org = dN * f * _MNUC.
+    """
+    # Number of new particles
+    dN = fn * boxvol * dt
+
+    # Mass added to bin 0
+    dM_total = fn * _MNUC * boxvol * dt
+    dM_so4 = (1.0 - nuc_org_mass_frac) * dM_total
+    dM_org = nuc_org_mass_frac * dM_total
+
+    gc_so4 = Gc[SRTSO4]
+
+    if molar_so4_transfer:
+        # gas H2SO4 debited for dM_so4 of particle SO4 (moles of S conserved)
+        gas_depleted = dM_so4 * (MW_H2SO4 / MW_SO4)
+        need_clamp = gas_depleted > gc_so4
+
+        # Gas-limited: consume all gas; clusters keep their composition
+        dM_so4_clamped = gc_so4 * (MW_SO4 / MW_H2SO4)
+        so4_per_cluster = (1.0 - nuc_org_mass_frac) * _MNUC
+        has_so4 = so4_per_cluster > 0.0
+        dN_clamped = jnp.where(
+            has_so4,
+            dM_so4_clamped / jnp.where(has_so4, so4_per_cluster, 1.0), 0.0)
+        dM_org_clamped = dN_clamped * nuc_org_mass_frac * _MNUC
+    else:
+        # Check if gas can supply the SO4 mass
+        # Fortran depletes Gc by the SO4 mass added (without 98/96 MW correction)
+        # Gas depletion = SO4 mass added to bin (Fortran: Gcf = Gci - (Mkf-mold))
+        gas_depleted = dM_so4
+
+        # Clamp: if we'd deplete more gas than available
+        need_clamp = gas_depleted > gc_so4
+
+        # Clamped values (Fortran: use all available gas, convert H2SO4→SO4)
+        dM_so4_clamped = gc_so4 * (96.0 / 98.0)
+        dN_clamped = dM_so4_clamped / _MNUC
+
+        # Clamp organic mass proportionally when gas supply limits nucleation.
+        # Without this, dM_org uses the full (enormous) fn while dN is clamped
+        # to a tiny value, creating particles with avg mass >> bin boundary.
+        dM_org_clamped = dN_clamped * nuc_org_mass_frac * _MNUC
+
+    # Select clamped or normal path
+    dN_final = jnp.where(need_clamp, dN_clamped, dN)
+    dM_so4_final = jnp.where(need_clamp, dM_so4_clamped, dM_so4)
+    dM_org_final = jnp.where(need_clamp, dM_org_clamped, dM_org)
+    gas_depleted_final = jnp.where(need_clamp, gc_so4, gas_depleted)
+
+    # Only modify if fn > 0
+    has_nuc = fn > 0.0
+
+    Nk_new = Nk.at[0].add(jnp.where(has_nuc, dN_final, 0.0))
+    Mk_new = Mk.at[0, SRTSO4].add(jnp.where(has_nuc, dM_so4_final, 0.0))
+    Mk_new = Mk_new.at[0, SRTORGLAST].add(jnp.where(has_nuc, dM_org_final, 0.0))
+    Gc_new = Gc.at[SRTSO4].add(-jnp.where(has_nuc, gas_depleted_final, 0.0))
+
+    return Nk_new, Mk_new, Gc_new
 
 
 def ricco_nucleation_rate(temp, h2so4, org):
@@ -486,6 +565,7 @@ def zhao2024_nucleation_step(
     hno3=0.0, ulvoc=0.0, dma=0.0, hio3=0.0,
     enable_masks=ZHAO2024_ALL_ENABLED, fn_scale=1.0,
     nuc_org_mass_frac=NUC_ORG_MASS_FRAC_DEFAULT,
+    molar_so4_transfer=False,
 ):
     """Apply Zhao 2024 11-mechanism nucleation to aerosol state (JIT-compilable).
 
@@ -508,6 +588,8 @@ def zhao2024_nucleation_step(
         fn_scale: Multiplicative scaling factor for total nucleation rate
         nuc_org_mass_frac: Fraction of nucleated mass put in SRTORGLAST
             (default 0.1); see ``nucleation_step``.
+        molar_so4_transfer: Python bool (static). Sulfur bookkeeping; see
+            ``nucleation_step``.
 
     Returns:
         (Nk_new, Mk_new, Gc_new)
@@ -519,37 +601,8 @@ def zhao2024_nucleation_step(
         enable_masks=enable_masks, fn_scale=fn_scale,
     )
 
-    # Number of new particles
-    dN = fn * boxvol * dt
-
-    # Mass added to bin 0 (same cluster properties as existing scheme)
-    dM_total = fn * _MNUC * boxvol * dt
-    dM_so4 = (1.0 - nuc_org_mass_frac) * dM_total
-    dM_org = nuc_org_mass_frac * dM_total
-
-    # Gas clamping (same logic as nucleation_step)
-    gc_so4 = Gc[SRTSO4]
-    gas_depleted = dM_so4
-    need_clamp = gas_depleted > gc_so4
-
-    dM_so4_clamped = gc_so4 * (96.0 / 98.0)
-    dN_clamped = dM_so4_clamped / _MNUC
-    dM_org_clamped = dN_clamped * nuc_org_mass_frac * _MNUC
-
-    dN_final = jnp.where(need_clamp, dN_clamped, dN)
-    dM_so4_final = jnp.where(need_clamp, dM_so4_clamped, dM_so4)
-    dM_org_final = jnp.where(need_clamp, dM_org_clamped, dM_org)
-    gas_depleted_final = jnp.where(need_clamp, gc_so4, gas_depleted)
-
-    # Only modify if fn > 0
-    has_nuc = fn > 0.0
-
-    Nk_new = Nk.at[0].add(jnp.where(has_nuc, dN_final, 0.0))
-    Mk_new = Mk.at[0, SRTSO4].add(jnp.where(has_nuc, dM_so4_final, 0.0))
-    Mk_new = Mk_new.at[0, SRTORGLAST].add(jnp.where(has_nuc, dM_org_final, 0.0))
-    Gc_new = Gc.at[SRTSO4].add(-jnp.where(has_nuc, gas_depleted_final, 0.0))
-
-    return Nk_new, Mk_new, Gc_new
+    return _apply_nucleation(Nk, Mk, Gc, fn, boxvol, dt, nuc_org_mass_frac,
+                             molar_so4_transfer)
 
 
 def ricco_dunne_nucleation_rate(
@@ -611,6 +664,7 @@ def nucleation_step(
     org_conc, nh3_conc, fion,
     enable_organic=1.0, enable_inorganic=1.0, fn_scale=1.0,
     nuc_org_mass_frac=NUC_ORG_MASS_FRAC_DEFAULT,
+    molar_so4_transfer=False,
 ):
     """Apply nucleation to aerosol state (JIT-compilable).
 
@@ -634,12 +688,21 @@ def nucleation_step(
             (1 - nuc_org_mass_frac) goes to SRTSO4 and is the only part
             debited from gas H2SO4. 0.0 puts all of it in SRTSO4. May be a
             traced JAX scalar.
+        molar_so4_transfer: Python bool (static), default False.
 
-    Mass accounting: unclamped, Gc[SRTSO4] loses exactly the kg added to
-    Mk[0, SRTSO4] (kg-for-kg, as in the Fortran and in condensation). When gas
-    limits nucleation, all of Gc[SRTSO4] is consumed and Gc * 96/98 is added
-    as SO4 (moles of S conserved, kg not). The organic mass is not taken
-    from any tracked gas.
+    Mass accounting, molar_so4_transfer=False (default): unclamped,
+    Gc[SRTSO4] loses exactly the kg added to Mk[0, SRTSO4] (kg-for-kg, as in
+    the Fortran and in condensation). When gas limits nucleation, all of
+    Gc[SRTSO4] is consumed and Gc * 96/98 is added as SO4 (moles of S
+    conserved, kg not).
+
+    molar_so4_transfer=True (mass-consistent: Mk[:, SRTSO4] is SO4 mass,
+    Gc[SRTSO4] is H2SO4 mass): the particle gain and dN are as above, the
+    gas debit is the SO4 gain * 98/96, so moles of S are conserved on both
+    paths; the clamped dN keeps the cluster composition (see
+    ``_apply_nucleation``).
+
+    The organic mass is not taken from any tracked gas.
 
     Returns:
         (Nk_new, Mk_new, Gc_new)
@@ -661,45 +724,5 @@ def nucleation_step(
     # Total rate with enable masks and scaling
     fn = (fn_org * enable_organic + fn_inorg * enable_inorganic) * fn_scale
 
-    # Number of new particles
-    dN = fn * boxvol * dt
-
-    # Mass added to bin 0
-    dM_total = fn * _MNUC * boxvol * dt
-    dM_so4 = (1.0 - nuc_org_mass_frac) * dM_total
-    dM_org = nuc_org_mass_frac * dM_total
-
-    # Check if gas can supply the SO4 mass
-    # Fortran depletes Gc by the SO4 mass added (without 98/96 MW correction)
-    gc_so4 = Gc[SRTSO4]
-
-    # Gas depletion = SO4 mass added to bin (Fortran: Gcf = Gci - (Mkf-mold))
-    gas_depleted = dM_so4
-
-    # Clamp: if we'd deplete more gas than available
-    need_clamp = gas_depleted > gc_so4
-
-    # Clamped values (Fortran: use all available gas, convert H2SO4→SO4)
-    dM_so4_clamped = gc_so4 * (96.0 / 98.0)
-    dN_clamped = dM_so4_clamped / _MNUC
-
-    # Clamp organic mass proportionally when gas supply limits nucleation.
-    # Without this, dM_org uses the full (enormous) fn while dN is clamped
-    # to a tiny value, creating particles with avg mass >> bin boundary.
-    dM_org_clamped = dN_clamped * nuc_org_mass_frac * _MNUC
-
-    # Select clamped or normal path
-    dN_final = jnp.where(need_clamp, dN_clamped, dN)
-    dM_so4_final = jnp.where(need_clamp, dM_so4_clamped, dM_so4)
-    dM_org_final = jnp.where(need_clamp, dM_org_clamped, dM_org)
-    gas_depleted_final = jnp.where(need_clamp, gc_so4, gas_depleted)
-
-    # Only modify if fn > 0
-    has_nuc = fn > 0.0
-
-    Nk_new = Nk.at[0].add(jnp.where(has_nuc, dN_final, 0.0))
-    Mk_new = Mk.at[0, SRTSO4].add(jnp.where(has_nuc, dM_so4_final, 0.0))
-    Mk_new = Mk_new.at[0, SRTORGLAST].add(jnp.where(has_nuc, dM_org_final, 0.0))
-    Gc_new = Gc.at[SRTSO4].add(-jnp.where(has_nuc, gas_depleted_final, 0.0))
-
-    return Nk_new, Mk_new, Gc_new
+    return _apply_nucleation(Nk, Mk, Gc, fn, boxvol, dt, nuc_org_mass_frac,
+                             molar_so4_transfer)
