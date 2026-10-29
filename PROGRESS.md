@@ -4,6 +4,47 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-10-29 (Thu) — SAI coupling knobs: `nuc_org_mass_frac`, `molar_so4_transfer`; Marianna dilution merged
+
+**Branch**: `feat/dev-sai-coupling` (from `dev` dd928b2). Prepares dev to be the TOMAS of the
+SAI coupled plume model (`coupled/tomas_bridge.py` in the plume-model repo: stratospheric,
+H2SO4-only, multi-week). The PI decided that in the coupled runs particle-phase sulfate is SO4
+with moles of S conserved.
+
+- Merge of `feat/marianna-dilution` (01fb6b8): the Marianna SAI dilution study in
+  `experimental_case/` and `docs/marianna_dilution.md`, plus `coag_kernel_scale` (39535ea;
+  `make_step` step kwarg → `coag_euler_step`, multiplies the whole kernel, may be traced). The
+  branch's duplicate Tabazadeh scheme, its string `water_scheme` and its `water_fn` hook are
+  dropped for dev's numeric `WATER_SCHEME_*` and `equilibrate_water` (same wt% to 1.2e-15 on a
+  190–255 K × 0.5–90 % RH grid); `run_marianna_dilution.py` uses `WATER_SCHEME_H2SO4`.
+- `nuc_org_mass_frac` (d760c19): the organic share of the nucleated cluster mass, hard-coded 0.1
+  before; `NUC_ORG_MASS_FRAC_DEFAULT` = 0.1. `nucleation_step`, `zhao2024_nucleation_step` and
+  the `make_step` step kwargs take it (traced, works under `jit`/`vmap`); only the (1 − f) SO4
+  part is taken from gas H2SO4. The coupled model uses 0.0. `_full_step_core`,
+  `condensation_step_with_nucleation_jax` and the scans keep 0.1.
+- `molar_so4_transfer` (2234464): static bool, default False (kg-for-kg, Fortran parity). True
+  conserves moles of S at every gas→particle sulfate transfer (`Mk[:, SRTSO4]` is SO4, MW 96;
+  `Gc[SRTSO4]` is H2SO4, MW 98): nucleation keeps the particle gain and dN and debits the gas
+  dM_SO4 × 98/96 (gas-limited clamp: all Gc consumed, Gc × 96/98 added, dN from the cluster SO4
+  mass (1 − f) × _MNUC); condensation, the numpy reference paths and the tiny-sink dump add the
+  condensed mass × 96/98 for the same gas debit. Accepted by `make_step`, both nucleation steps,
+  `condensation_step`, every step/scan function in `solvers/condensation.py` (static argname)
+  and `AerosolStepConfig.molar_so4_transfer`. The two nucleation steps now share
+  `_apply_nucleation`.
+- Defaults are bit-identical to dev: 113 arrays across `make_step`, the nucleation steps,
+  `condensation_step`, the scans and `coag_euler_step`, and 234 arrays of 3-step `make_step` runs
+  at 40 and 80 bins (one-off scripts on `git archive` copies of dd928b2 and 9c45acf).
+- Tests: `tests/test_molar_so4_transfer.py` (88: S moles to 1e-12 on the 80-bin grid, False does
+  not conserve them, False == omitted bitwise, 14 step/scan entry points incl.
+  `condensation_step_tfl_jit`) and `tests/test_sai_coupling_knobs.py` (20).
+- Docs: CLAUDE.md (nucleation and `molar_so4_transfer` bullets), `docs/aaar/aerosol_step.md`,
+  `MARIANNA_DILUTION_NOTES.md` and `docs/marianna_dilution.md` updated to the merged API.
+- Open (pre-existing on dev, not changed here): TFL condensation gains +13–17 % S per step at 80
+  bins once nucleated particles are present (PPM conserves to 1e-10); coagulation loses ~3e-10 S
+  per 600 s step after a 210 K burst. Questions for review: make `molar_so4_transfer` the
+  default; the default clamp-path cluster mass ((1 + f) × _MNUC); thread both knobs into
+  `_full_step_core` and the scans.
+
 ## 2026-10-23 (Fri) — Urban air: VOC selector benzene / toluene / m-xylene (MCM v3.3.1), stacked on the full-day Urban (B1)
 
 **Branch**: `urban-toluene` (from `urban-full-day`, PR #30); PR #31. Shantanu (2026-10-22, verbatim):
