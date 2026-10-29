@@ -4,6 +4,46 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-10-27 (Tue) 21:00 PDT — Phase 2 T × SO₂ map; Dunne Table S2 form; adaptive coagulation option
+
+- `nucleation.py`:
+  - `dunne_form` ('double_exp' default, i.e. Table S1; or 'single_exp', i.e. Table S2,
+    `ln k = u − v·T/1000`).
+  - `DUNNE_TABLE_S2_PARAMS`.
+  - `make_step(dunne_form=...)`.
+  - Default is bit-identical.
+  - 4 tests in `TestDunneTableS2`.
+- `sensitivities/dunne_nuc/run_map.py` (Phase 2):
+  - Grid: 6 T (190–240 K) × 8 SO₂ (10 pptv–100 ppmv), 24 h, 40 and 80 bins.
+  - Outputs: `jacfwd` of hourly SABRE dN/dlogDp and NMASS channels with respect to
+    `NucleationParams`, plus a Table S2 forward run.
+  - Sensitivities are projected on the published uncertainty directions: J ×2.5 and the
+    H₂SO₄ calibration factor.
+  - Flags: `--smoke`, `--plot-only`, `--grids`, `--oh`, `--coag-solver`.
+- SO₂ capped at 100 ppmv: at 1000/3000 ppmv and 190 K, the fixed 10-sub-step Euler
+  coagulation goes NaN in step 0 (~3e9 cm⁻³ of 1.7 nm clusters).
+- `make_step(coag_solver='euler_adaptive', coag_max_substeps=10000)`:
+  - Fortran multicoag `euler_step`, with an adaptive sub-step and the kernel recomputed
+    every sub-step.
+  - `sparse_density` is threaded into `euler_step`.
+  - The default `'euler_fixed'` is unchanged.
+  - `tests/test_coag_adaptive.py` (5 tests).
+- Adaptive vs fixed, 24 h, 40 bins:
+  - Agree within 3% up to 1 ppmv.
+  - At 100 ppmv, the fixed solver gives N(>3 nm) 1.5–2× too high.
+  - Adaptive is stable at 1000/3000 ppmv, but slow (30 min forward-only at 3000 ppmv).
+  - 40-bin Phase 2 rerun with `--coag-solver euler_adaptive` (`results/phase2_adaptive`,
+    about 12 h; the 80-bin rerun was stopped unfinished).
+  - Sensitivities agree with the fixed-solver map to within 0.09 in δ ln N.
+  - Baseline N(>3 nm) at 100 ppmv is 0.49–0.66× the fixed-solver value.
+- Known issues:
+  - Constant OH is unphysical above ~1 ppmv SO₂, because the model has no OH titration.
+  - Gradients don't see the adaptive sub-step count.
+- Next: compare the fixed and adaptive maps; Phase 3 (background and SAI plume with
+  dilution); Phase 4.
+
+---
+
 ## 2026-10-27 (Tue) — SABRE dry density from CRC; H₂SO₄ water scheme for the stratospheric study
 
 - `sensitivities/dunne_nuc/sabre_bins.dry_density`:

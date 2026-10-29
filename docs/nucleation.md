@@ -175,6 +175,30 @@ and `nucleation_step`, or as `nucl_params=` to a `make_step` step function.
 to the module constants. The zhao2024 scheme does not take `params`. See
 `docs/nucleation_sensitivity.md`.
 
+### Dunne Temperature Form (`dunne_form`)
+
+Dunne et al. (2016) published two fits to the same CLOUD data:
+- **`'double_exp'`** (default; SM Table S1, R² 0.90):
+  `ln k = u − exp(v·(T/1000 − w))`.
+- **`'single_exp'`** (SM Table S2, R² 0.83): `ln k = u − v·T/1000`. Dunne uses
+  this cross-check fit as the measure of uncertainty in the temperature
+  dependence, especially ion-induced nucleation at low T. Pair it with
+  `DUNNE_TABLE_S2_PARAMS`.
+
+`dunne_form` is a static argument of `dunne_nucleation_rate`,
+`ricco_dunne_nucleation_rate` and `nucleation_step`, and a `make_step` factory
+argument:
+
+```python
+from tomas_jax.physics.nucleation import DUNNE_TABLE_S2_PARAMS
+step = make_step(['nucleation', 'coagulation', 'condensation'], dunne_form='single_exp')
+Nk, Mk, Gc = step(..., fion=10.0, nucl_params=DUNNE_TABLE_S2_PARAMS)
+```
+
+The two forms agree within about a factor of 2 for binary neutral and ion
+nucleation at 208–223 K. Below the lowest CLOUD temperature (208 K) they
+diverge: at 190 K the Table S2 binary-ion rate is 47–200× the baseline.
+
 ## Files
 
 - `tomas_jax/physics/nucleation.py` — 5 functions: `ricco_nucleation_rate`, `dunne_nucleation_rate`, `ricco_dunne_nucleation_rate`, `compute_nucleation_substeps`, `nucleation_step`

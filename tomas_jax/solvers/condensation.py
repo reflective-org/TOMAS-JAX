@@ -66,7 +66,7 @@ from ..physics.so2_chemistry import (
 from ..physics.dilution import dilution_step
 from ..physics.nucleation import (
     nucleation_step, ricco_dunne_nucleation_rate, compute_nucleation_substeps,
-    zhao2024_nucleation_step, ZHAO2024_ALL_ENABLED,
+    zhao2024_nucleation_step, ZHAO2024_ALL_ENABLED, DUNNE_FORMS,
 )
 from ..physics.condensation_sink import calc_condensation_sink
 from ..physics.ezcond import ezcond
@@ -78,6 +78,7 @@ from ..physics.water_equilibrium import (
 )
 from ..core.mnfix_jax import mnfix_jax
 from ..solvers.diffrax import coag_euler_step
+from ..solvers.euler import euler_step
 
 # Valid kwargs for make_step() step function — used for typo detection
 _VALID_MAKE_STEP_KWARGS = {
@@ -798,10 +799,12 @@ def run_full_scan(
 # =========================================================================
 
 def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
+              dunne_form='double_exp',
               n_coag_substeps=10,
               max_nucleation_frac=0.5, max_nuc_substeps=20,
               water_scheme=WATER_SCHEME_BISULFATE, water_every_process=False,
-              sparse_density=None, jit=True):
+              sparse_density=None, coag_solver='euler_fixed',
+              coag_max_substeps=10000, jit=True):
     """Build a step function from an ordered list of process names.
 
     The returned function has signature:
@@ -821,7 +824,24 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
         nucl_scheme: 'ricco_dunne' (Riccobono 2014 + Dunne 2016) or
             'zhao2024' (11-mechanism Zhao et al. 2024). For zhao2024,
             pass extra kwargs: hno3, ulvoc, dma, hio3, enable_masks.
+        dunne_form: ricco_dunne only. 'double_exp' (Dunne Table S1,
+            default) or 'single_exp' (Table S2 cross-check fit; pass
+            nucl_params=DUNNE_TABLE_S2_PARAMS with it). Also used for the
+            sub-step rate estimate.
         n_coag_substeps: Number of forward-Euler substeps for coagulation
+            (coag_solver='euler_fixed' only)
+        coag_solver: 'euler_fixed' (default, coag_euler_step: n_coag_substeps
+            equal sub-steps, kernel frozen over the step) or 'euler_adaptive'
+            (solvers/euler.euler_step, Fortran multicoag.f: sub-step
+            dt <= min(0.25 N/|dN/dt|, 10 M/|dM/dt|), kernel recomputed every
+            sub-step, MNFIX after each). The fixed scheme goes unstable when
+            K*N*dt/n_coag_substeps >~ 1 (e.g. ~3e9 cm-3 of 2 nm particles at
+            dt = 60 s); the adaptive one stays stable but its cost scales
+            with the number of sub-steps. Adaptive is a while_loop: forward-
+            mode differentiable only, and gradients do not see its sub-step
+            count.
+        coag_max_substeps: Sub-step cap for 'euler_adaptive'. Hitting it
+            truncates the coagulation step silently.
         max_nucleation_frac: Max dN/N_total per nucleation substep (0.5 = 50%)
         max_nuc_substeps: Hard cap on nucleation substeps
         water_scheme: Aerosol water uptake, WATER_SCHEME_BISULFATE (default,
@@ -882,11 +902,17 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
             UserWarning, stacklevel=2,
         )
 
+    if coag_solver not in ('euler_fixed', 'euler_adaptive'):
+        raise ValueError(f"Unknown coag_solver '{coag_solver}'. "
+                         f"Valid: ['euler_fixed', 'euler_adaptive']")
+
     valid_schemes = {'ricco_dunne', 'zhao2024'}
     if nucl_scheme not in valid_schemes:
         raise ValueError(f"Unknown nucl_scheme '{nucl_scheme}'. Valid: {sorted(valid_schemes)}")
 
     use_zhao = nucl_scheme == 'zhao2024'
+    if dunne_form not in DUNNE_FORMS:
+        raise ValueError(f"Unknown dunne_form '{dunne_form}'. Valid: {DUNNE_FORMS}")
 
     def step_fn(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt, **kwargs):
         unknown = set(kwargs) - _VALID_MAKE_STEP_KWARGS
@@ -913,6 +939,7 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                     kwargs.get('enable_inorganic', 1.0),
                     kwargs.get('fn_scale', 1.0),
                     kwargs.get('nucl_params'),
+                    dunne_form,
                 )
                 N_total = jnp.sum(Nk)
                 n_nuc = compute_nucleation_substeps(
@@ -952,6 +979,7 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                             kwargs.get('enable_inorganic', 1.0),
                             kwargs.get('fn_scale', 1.0),
                             kwargs.get('nucl_params'),
+                            dunne_form,
                         )
                         Nk_s, Mk_s = mnfix_jax(Nk_s, Mk_s, xk, ICOMP_NODIAG)
                         return (Nk_s, Mk_s, Gc_s)
@@ -962,13 +990,22 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                     Mk = equilibrate_water(Mk, rh, temp, water_scheme)
 
             elif process == 'coagulation':
-                Nk, Mk = coag_euler_step(
-                    Nk, Mk, xk, temp, pres, boxvol,
-                    dt=dt,
-                    icomp_nodiag=kwargs.get('icomp_nodiag', ICOMP_NODIAG),
-                    n_substeps=n_coag_substeps,
-                    sparse_density=sparse_density,
-                )
+                if coag_solver == 'euler_adaptive':
+                    Nk, Mk = euler_step(
+                        Nk, Mk, xk, temp, pres, boxvol, dt,
+                        icomp_nodiag=kwargs.get('icomp_nodiag', ICOMP_NODIAG),
+                        recompute_kernel=True,
+                        max_substeps=coag_max_substeps,
+                        sparse_density=sparse_density,
+                    )
+                else:
+                    Nk, Mk = coag_euler_step(
+                        Nk, Mk, xk, temp, pres, boxvol,
+                        dt=dt,
+                        icomp_nodiag=kwargs.get('icomp_nodiag', ICOMP_NODIAG),
+                        n_substeps=n_coag_substeps,
+                        sparse_density=sparse_density,
+                    )
                 if water_every_process:
                     Mk = equilibrate_water(Mk, rh, temp, water_scheme)
             elif process == 'condensation':

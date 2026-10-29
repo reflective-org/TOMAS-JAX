@@ -10,7 +10,7 @@ Work plan, by phase:
 |---|---|---|
 | 0 | Warm-up: rate-level and 1 h full-model gradients, checked against analytic forms and finite differences | **done** |
 | 1 | SABRE-binned dry N(Dp) output operator (Lyu et al. 2026) | **done** |
-| 2 | σ-scaled sensitivity map over T × SO₂ (10 pptv to 3000 ppmv), chemistry on, 40 and 80 bins | planned |
+| 2 | Sensitivity map over T × SO₂ (10 pptv to 100 ppmv) along published uncertainty directions + Table S2, chemistry on, 40 and 80 bins | running |
 | 3 | Background and SAI-plume scenarios (48 h), with FD checks | planned |
 | 4 | Linearization check with a small ensemble | planned |
 
@@ -272,3 +272,144 @@ Updated Phase 1 values with the H₂SO₄ scheme and 1836 kg/m³:
 - N(>3 nm) is 2.72e4 (40 bins) and 2.37e4 (80 bins). The 40/80-bin gap shrinks
   from 35% to 14%.
 - Phase 0c N_total is 271.3 cm⁻³; the elasticities are unchanged to 3 digits.
+
+## Published uncertainty information (for Phase 2)
+
+Sources are in `references/sabre/`: Dunne et al. 2016 main text and SM (Sects. 8
+and 19, Tables S1, S2 and S7); Riccobono et al. 2014 main text and SM.
+
+**Dunne 2016 gives no per-coefficient σ or covariance.** Table S1 lists best-fit
+values only. The 20 coefficients were fitted jointly by Levenberg–Marquardt to
+maximise R² (0.90), so they are strongly correlated. Uncertainty is described
+instead by:
+
+| Source (SM Sect. 19) | Size | Maps onto `NucleationParams` as |
+|---|---|---|
+| Measured J at 1.7 nm (counter calibration, 3.2 → 1.7 nm extrapolation) | factor 2.5 | Δu = ln 2.5 = 0.92 for each mechanism (∂lnJ/∂u = 1) |
+| [H₂SO₄] calibration, inorganic runs | +50% / −33% | Δu ≈ p·ln 1.5 if systematic (1.6 for binary neutral) |
+| Extra [H₂SO₄] uncertainty at low T (clustering) | ×2 at 208 K, ×1.5 at 223 K | as above, temperature-dependent |
+| Temperature functional form | Table S2: alternative single-exponential fit `ln k = u − v·T/1000` (R² 0.83) | **Structural**: different functional form, not a derivative. Dunne flags it as the measure of "uncertainty in the ion-induced contribution at low temperatures". |
+| Binary neutral constrained to 0 (refit, R² 0.88) | coefficients not published | Structural: J_bn off, other mechanisms refitted (refit not available) |
+| NH₃ range refits | coefficients not published | Not relevant at NH₃ = 0 |
+
+**Measured domain vs the stratosphere:**
+- **Temperature:** 208, 223, 248, 278 and 292 K. Stratospheric 190–208 K is an
+  extrapolation.
+- **RH:** mostly 38%. At 208–223 K, RH from 20 to 100% changed J by up to ×5
+  (typically 50–100%). The parameterization has no RH term, and stratospheric
+  RH (≈1–10%) is below the measured range. This is structural and not
+  differentiable.
+
+**Riccobono 2014.** k_m = 3.27e-21 cm⁶ s⁻¹, measured at 278 K / 38% RH only.
+- [H₂SO₄] (CIMS) carries +100% / −50%. J ∝ [H₂SO₄]², so k_m carries up to ×4.
+- [BioOxOrg] depends on the assumed wall-loss rate, which could make it ×5–10
+  higher, giving k_m ×1/5 to 1/10.
+- J₁.₇ has ±30% systematic and +50% / −33% from the 2 → 1.7 nm correction.
+- ΔH (the Yu 2017 temperature correction) is not in these references.
+- With org_conc = 0 in the stratosphere, none of this enters.
+
+## Phase 2 method (2026-10-27)
+
+`python -m sensitivities.dunne_nuc.run_map` (`--smoke` for a 2-minute check,
+`--plot-only` to replot, `--coag-solver euler_adaptive` to write
+`results/phase2_adaptive` instead of `results/phase2`):
+- **Grid:** T ∈ {190, 200, 208, 217, 223, 240} K × SO₂ ∈ {0.01 … 1e5} ppbv
+  (8 decades, 10 pptv to 100 ppmv), on 40 and 80 bins.
+- **Why the grid stops at 100 ppmv:** the first full run reached 1000 and
+  3000 ppmv and produced NaN.
+  - With constant OH = 1e6, one 60 s step oxidises about 1e11 H₂SO₄ cm⁻³.
+    Gas-limited nucleation turns it into about 3.3e9 cm⁻³ particles in bin 0.
+    The coagulation timescale at that number is under 1 s, but the fixed
+    10-sub-step forward-Euler coagulation (`coag_euler_step`) steps 6 s at a
+    time, so it overshoots and goes non-finite.
+  - On that state, 100 fixed sub-steps stay finite (N = 1.9e7 cm⁻³). The
+    adaptive Fortran-faithful `solvers/euler.euler_step` (multicoag.f
+    time-step limits, kernel recomputed) also stays finite, but gives
+    N = 3.2e7 cm⁻³ with 1078 sub-steps.
+  - Constant OH at ppmv SO₂ is unphysical: SO₂ would use up the OH. These
+    levels were therefore dropped from the map and left to Phase 3, which
+    adds OH titration and dilution.
+  - `make_step` has no stable coagulation option for N ≳ 1e8 cm⁻³ at
+    dt = 60 s. Plume runs will need the adaptive solver, more sub-steps, or a
+    smaller dt.
+- **Run:** 24 h at 55 hPa with constant OH (`--oh`, default 1e6), fion = 10,
+  NH₃ = org = 0, and 10 cm⁻³ background aerosol (100 nm, GSD 1.6).
+- **Per hour:**
+  - SABRE dry dN/dlogDp and the NMASS channels.
+  - `jax.jacfwd` of both with respect to all 25 coefficients (raw Jacobian saved).
+  - A Table S2 (`single_exp`) forward run.
+  - Diagnostics: H₂SO₄, J, J_bn, J_bi, sub-step and clamp fractions.
+- **Uncertainty directions** (`run_map.directions`), from published values
+  rather than per-coefficient σ:
+  - `J_bn ×2.5`, `J_bi ×2.5`, `J_all ×2.5`: Δu = ln 2.5 on the mechanism(s).
+  - `H2SO4 cal`: Δu_x = p_x · ln f(T) for all mechanisms, with f = 1.5 at
+    ≥ 223 K, 2 at ≤ 208 K, log-linear between.
+  - The response is linear: δ ln Y = (∂Y/∂θ · Δθ) / Y. Phase 4 checks how far
+    that holds. Table S2 is a forward run: ln(Y_S2 / Y).
+- **Output:** `results/phase2/map_{40,80}bin_T*.npz` and figures
+  `map_*bin_baseline.png` and `map_*bin_sensitivity.png`. The figures mark
+  cells where |change| > SABRE's 8%. A dashed line marks the 208 K lower limit
+  of the CLOUD data.
+- **Caveats:**
+  - Constant OH ignores OH titration by SO₂, which matters at ppmv SO₂.
+  - No dilution; the plume scenario with dilution is Phase 3.
+  - Above about 100 ppbv, nucleation hits the 20-sub-step cap, so the
+    sub-step count, which gradients cannot see, shapes the response there.
+
+## Adaptive coagulation option (`make_step(coag_solver='euler_adaptive')`, 2026-10-27)
+
+`coag_solver='euler_adaptive'` routes coagulation to `solvers/euler.euler_step`,
+the Fortran multicoag.f port: sub-step dt ≤ min(0.25 N/|dN/dt|, 10 M/|dM/dt|),
+kernel recomputed every sub-step, MNFIX after each, capped at
+`coag_max_substeps` (default 10,000; hitting the cap truncates silently).
+- The default `'euler_fixed'` is unchanged.
+- `sparse_density` is threaded through.
+- The adaptive solver is a `while_loop`, so it is forward-mode differentiable
+  only. Its sub-step count is invisible to gradients.
+- Tests: `tests/test_coag_adaptive.py`.
+  - The default equals `'euler_fixed'` exactly.
+  - It is stable on the 3.3e9 cm⁻³ crash state, where the fixed solver gives NaN.
+  - Mass is conserved to 1e-6.
+  - At moderate N it matches a 200-sub-step fixed run to 2%.
+  - `jacfwd` through nucleation plus adaptive coagulation matches FD.
+
+24 h stratospheric runs, 40 bins, SO₂ chemistry + nucleation + coagulation +
+condensation (N in cm⁻³, fixed / adaptive):
+
+| T [K] | SO₂ | N(>3 nm) | N(>12 nm) | N(>53 nm) | wall time [s] |
+|---|---|---|---|---|---|
+| 217 | 1 ppbv | 2.211e4 / 2.209e4 | 1.402e3 / 1.402e3 | 9.36 / 9.36 | 2.4 / 1.2 |
+| 217 | 1 ppmv | 2.05e5 / 2.12e5 (+3%) | 8.68e3 / 8.83e3 | 6.44e3 / 6.40e3 | 2.4 / 1.5 |
+| 217 | 100 ppmv | **7.47e5 / 3.67e5 (−51%)** | 7.33e3 / 7.21e3 | 7.33e3 / 7.21e3 | 4.4 / 8.2 |
+| 190 | 100 ppmv | **3.53e5 / 2.33e5 (−34%)** | 9.56e3 / 8.78e3 (−8%) | 9.56e3 / 8.78e3 | 4.3 / 10 |
+| 190 | 1000 ppmv | NaN / 1.57e4 | NaN / 1.29e4 | NaN / 1.29e4 | — / 50 |
+| 190 | 3000 ppmv | NaN / 1.80e4 | NaN / 1.64e4 | NaN / 1.64e4 | — / 1824 |
+
+- **Up to 1 ppmv** the two solvers agree within 3%. The adaptive one is faster
+  there, because a few sub-steps suffice.
+- **At 100 ppmv,** which is in the Phase 2 grid, the 10-sub-step fixed solver
+  is stable but inaccurate. N(>3 nm) is 1.5–2× too high, and N(>12 nm) is off
+  by up to 8%. The top-SO₂ column of the Phase 2 map, run with `euler_fixed`,
+  therefore carries this solver error.
+- **At 1000–3000 ppmv** only the adaptive solver works.
+  - Each 60 s step needs 120–1200 sub-steps, and the count grows over time
+    (3000 ppmv: 200 → 280 within 10 steps). The 10,000 cap was not reached in
+    the first 2 h; later hours were not checked.
+  - The 3000 ppmv cell takes 30 min forward-only on 40 bins. A Jacobian
+    (25 tangents) or 80 bins would take hours per cell.
+  - These levels still assume constant OH, which is unphysical at ppmv SO₂
+    (see the Phase 2 caveats).
+- **Rerun (40 bins only):** the 40-bin map was rerun with
+  `--coag-solver euler_adaptive` into `results/phase2_adaptive`. The
+  fixed-solver map in `results/phase2` is kept. The 80-bin rerun was stopped
+  unfinished. The 40-bin rerun took about 12 h of wall time, against 30 min for
+  the fixed-solver 40-bin map, because each vmapped batch steps at the pace of
+  the 100 ppmv cell.
+  - Up to 10 ppmv, N(>3 nm) and N(>12 nm) after 24 h agree within 7%.
+  - At 100 ppmv, adaptive/fixed N(>3 nm) is 0.49–0.66 across 190–240 K, so the
+    fixed solver overestimates it 1.5–2×. N(>12 nm) agrees within 8%.
+  - The sensitivities (δ ln N along the published directions) are unchanged
+    to within 0.09 everywhere. At 100 ppmv both solvers give 0, because every
+    step is gas-clamped.
+  - The fixed-solver sensitivity maps therefore stand. Only the 100 ppmv
+    baseline N(>3 nm) needs the adaptive value.

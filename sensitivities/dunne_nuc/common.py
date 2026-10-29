@@ -76,7 +76,8 @@ def lognormal_state(xk, n_total=BG_N, gmd=BG_GMD, gsd=BG_GSD,
 def make_runner(xk, nsteps, cond=STRAT, fion=FION, oh_conc=OH_CONC,
                 boxvol=BOXVOL, dt=DT, max_nuc_substeps=20,
                 max_nucleation_frac=0.5, sparse_density=SPARSE_DENSITY,
-                water_scheme=WATER_SCHEME):
+                water_scheme=WATER_SCHEME, dunne_form='double_exp',
+                coag_solver='euler_fixed'):
     """Build run(params, Nk, Mk, Gc) -> (Nk, Mk, Gc, diag).
 
     One step = SO2 chemistry, then nucleation + coagulation + condensation,
@@ -85,7 +86,8 @@ def make_runner(xk, nsteps, cond=STRAT, fion=FION, oh_conc=OH_CONC,
     state, the nucleation sub-step count and whether the gas clamp fires on
     the first sub-step. Gradients are blind to both (integer/branch).
 
-    sparse_density, water_scheme: see make_step.
+    sparse_density, water_scheme, dunne_form, coag_solver: see make_step.
+    diag also carries the binary neutral and binary ion rates (J_bn, J_bi).
 
     Not JIT-wrapped: callers apply jax.jit / jax.jacfwd as needed.
     """
@@ -94,7 +96,8 @@ def make_runner(xk, nsteps, cond=STRAT, fion=FION, oh_conc=OH_CONC,
                      max_nucleation_frac=max_nucleation_frac,
                      max_nuc_substeps=max_nuc_substeps,
                      sparse_density=sparse_density,
-                     water_scheme=water_scheme, jit=False)
+                     water_scheme=water_scheme, dunne_form=dunne_form,
+                     coag_solver=coag_solver, jit=False)
     temp, pres, rh, alpha = (cond[k] for k in ('temp', 'pres', 'rh', 'alpha'))
 
     def run(params, Nk, Mk, Gc):
@@ -105,7 +108,12 @@ def make_runner(xk, nsteps, cond=STRAT, fion=FION, oh_conc=OH_CONC,
             Nk, Mk, Gc = chem(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha,
                               dt, oh_conc=oh_conc)
             fn = nuc.ricco_dunne_nucleation_rate(
-                Gc, temp, pres, boxvol, 0.0, 0.0, fion, params=params)
+                Gc, temp, pres, boxvol, 0.0, 0.0, fion, params=params,
+                dunne_form=dunne_form)
+            h2so4_pre = Gc[SRTSO4] / boxvol * 1000.0 / MW_H2SO4 * AVOGADRO
+            mair = 2.69e19 * 273.15 / temp * pres / 101325.0
+            _, J_bn, _, J_bi, _ = nuc.dunne_nucleation_rate(
+                temp, fion, h2so4_pre, 0.0, mair, params, dunne_form)
             n_sub = nuc.compute_nucleation_substeps(
                 fn, boxvol, dt, jnp.sum(Nk),
                 max_nucleation_frac, max_nuc_substeps)
@@ -115,8 +123,8 @@ def make_runner(xk, nsteps, cond=STRAT, fion=FION, oh_conc=OH_CONC,
             Nk, Mk, Gc = rest(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha,
                               dt, **kw)
             h2so4 = Gc[SRTSO4] / boxvol * 1000.0 / MW_H2SO4 * AVOGADRO
-            diag = dict(J=fn, n_sub=n_sub, clamp=clamp, h2so4=h2so4,
-                        N_total=jnp.sum(Nk) / boxvol)
+            diag = dict(J=fn, J_bn=J_bn, J_bi=J_bi, n_sub=n_sub, clamp=clamp,
+                        h2so4=h2so4, N_total=jnp.sum(Nk) / boxvol)
             return (Nk, Mk, Gc), diag
 
         (Nk, Mk, Gc), diag = jax.lax.scan(body, (Nk, Mk, Gc), None,

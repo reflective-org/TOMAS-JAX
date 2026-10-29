@@ -77,6 +77,33 @@ class NucleationParams(NamedTuple):
 
 DEFAULT_NUCLEATION_PARAMS = NucleationParams()
 
+# Dunne 2016 rate-constant temperature forms (static choice):
+#   'double_exp' (Table S1, baseline): ln k = u - exp(v * (T/1000 - w))
+#   'single_exp' (Table S2, cross-check fit, R^2 0.83): ln k = u - v * T/1000
+# Dunne SM Sect. 19 treats the difference between the two as the measure of
+# uncertainty in the temperature dependence, especially for ion-induced
+# nucleation at low temperature.
+DUNNE_FORMS = ('double_exp', 'single_exp')
+
+# Dunne et al. (2016) SM Table S2. Riccobono and cluster fields keep their
+# defaults; w_* are unused by the single-exponential form.
+DUNNE_TABLE_S2_PARAMS = NucleationParams(
+    p_bn=3.62, u_bn=46.3, v_bn=245.0, w_bn=0.0,
+    p_tn=2.82, u_tn=41.2, v_tn=252.0, w_tn=0.0,
+    p_an=6.76, a_n=1.3e-4,
+    p_bi=2.73, u_bi=24.1, v_bi=166.0, w_bi=0.0,
+    p_ti=2.86, u_ti=18.3, v_ti=208.0, w_ti=0.0,
+    p_ai=5.0, a_i=5.0e-7,
+)
+
+
+def _dunne_lnk(u, v, w, t1000, dunne_form):
+    if dunne_form == 'double_exp':
+        return u - jnp.exp(v * (t1000 - w))
+    if dunne_form == 'single_exp':
+        return u - v * t1000
+    raise ValueError(f"Unknown dunne_form '{dunne_form}'. Valid: {DUNNE_FORMS}")
+
 
 def _cluster_mass(params):
     """Nucleated cluster mass [kg] (equals _MNUC at default params)."""
@@ -102,7 +129,8 @@ def ricco_nucleation_rate(temp, h2so4, org, params=None):
     return fn
 
 
-def dunne_nucleation_rate(temp, fion, h2so4, nh3, Mair, params=None):
+def dunne_nucleation_rate(temp, fion, h2so4, nh3, Mair, params=None,
+                          dunne_form='double_exp'):
     """Dunne 2016 inorganic nucleation (4 mechanisms).
 
     Args:
@@ -112,6 +140,8 @@ def dunne_nucleation_rate(temp, fion, h2so4, nh3, Mair, params=None):
         nh3: Gas-phase NH3 [molec/cm3] (scalar)
         Mair: Air number density [molec/cm3] (scalar)
         params: NucleationParams (None = defaults)
+        dunne_form: 'double_exp' (Table S1, default) or 'single_exp'
+            (Table S2; pair with DUNNE_TABLE_S2_PARAMS). Static.
 
     Returns:
         (fn_total, Jbn, Jtn, Jbi, Jti) all [cm^-3 s^-1]
@@ -132,10 +162,10 @@ def dunne_nucleation_rate(temp, fion, h2so4, nh3, Mair, params=None):
 
     # Rate constants (complex T-dependence)
     t1000 = temp / 1000.0
-    kbn = jnp.exp(p.u_bn - jnp.exp(p.v_bn * (t1000 - p.w_bn)))
-    ktn = jnp.exp(p.u_tn - jnp.exp(p.v_tn * (t1000 - p.w_tn)))
-    kbi = jnp.exp(p.u_bi - jnp.exp(p.v_bi * (t1000 - p.w_bi)))
-    kti = jnp.exp(p.u_ti - jnp.exp(p.v_ti * (t1000 - p.w_ti)))
+    kbn = jnp.exp(_dunne_lnk(p.u_bn, p.v_bn, p.w_bn, t1000, dunne_form))
+    ktn = jnp.exp(_dunne_lnk(p.u_tn, p.v_tn, p.w_tn, t1000, dunne_form))
+    kbi = jnp.exp(_dunne_lnk(p.u_bi, p.v_bi, p.w_bi, t1000, dunne_form))
+    kti = jnp.exp(_dunne_lnk(p.u_ti, p.v_ti, p.w_ti, t1000, dunne_form))
 
     # Ternary f-values (with nh3 threshold). nh3_safe keeps the untaken
     # branch finite at nh3 = 0 (avoids 1/0 and NaN tangents).
@@ -590,19 +620,19 @@ def ricco_dunne_nucleation_rate(
                               Gc, temp, pres, boxvol,
                               org_conc, nh3_conc, fion,
                               enable_organic=1.0, enable_inorganic=1.0, fn_scale=1.0,
-                              params=None):
+                              params=None, dunne_form='double_exp'):
     """Riccobono 2014 + Dunne 2016 total nucleation rate [cm^-3 s^-1].
 
     Pure rate calculation, no state mutation. Used by adaptive sub-stepping
     and by the API diagnostic snapshots. ``params``: NucleationParams
-    (None = defaults).
+    (None = defaults); ``dunne_form``: see dunne_nucleation_rate.
     """
     h2so4 = Gc[SRTSO4] / boxvol * 1000.0 / 98.0 * AVOGADRO
     Mair = 2.69e19 * 273.15 / temp * pres / 101325.0
 
     fn_org = ricco_nucleation_rate(temp, h2so4, org_conc, params)
     fn_inorg, _, _, _, _ = dunne_nucleation_rate(
-        temp, fion, h2so4, nh3_conc, Mair, params)
+        temp, fion, h2so4, nh3_conc, Mair, params, dunne_form)
 
     return (fn_org * enable_organic + fn_inorg * enable_inorganic) * fn_scale
 
@@ -647,6 +677,7 @@ def nucleation_step(
     Nk, Mk, Gc, xk, temp, pres, boxvol, dt,
     org_conc, nh3_conc, fion,
     enable_organic=1.0, enable_inorganic=1.0, fn_scale=1.0, params=None,
+    dunne_form='double_exp',
 ):
     """Apply nucleation to aerosol state (JIT-compilable).
 
@@ -666,6 +697,7 @@ def nucleation_step(
         enable_inorganic: 1.0 to enable Dunne, 0.0 to disable
         fn_scale: Multiplicative scaling factor for total nucleation rate
         params: NucleationParams (None = defaults)
+        dunne_form: Dunne temperature form, see dunne_nucleation_rate (static)
 
     Returns:
         (Nk_new, Mk_new, Gc_new)
@@ -685,7 +717,7 @@ def nucleation_step(
 
     # Inorganic nucleation (Dunne 2016)
     fn_inorg, _, _, _, _ = dunne_nucleation_rate(
-        temp, fion, h2so4, nh3_conc, Mair, p
+        temp, fion, h2so4, nh3_conc, Mair, p, dunne_form
     )
 
     # Total rate with enable masks and scaling

@@ -90,6 +90,7 @@ def euler_step(
     recompute_kernel: bool = False,
     max_substeps: int = 10000,
     return_info: bool = False,
+    sparse_density=None,
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Forward Euler integration of coagulation over timestep dt.
 
@@ -115,6 +116,8 @@ def euler_step(
         max_substeps: Maximum number of sub-steps
         return_info: If True, returns (Nk, Mk, n_substeps_used) so callers
             can detect when max_substeps was hit (integration truncated).
+        sparse_density: Density [kg/m3] for low-mass bins in the kernel
+            (see calc_particle_properties). None = 1000 (Fortran).
 
     Returns:
         Nk_final: Updated number concentration
@@ -125,7 +128,7 @@ def euler_step(
     mnfix_fn = mnfix_fortran if use_fortran_mnfix else mnfix_jax
 
     # Initial kernel computation
-    Dpk, Dk, ck = calc_particle_properties(Nk, Mk, temp, pres)
+    Dpk, Dk, ck = calc_particle_properties(Nk, Mk, temp, pres, sparse_density)
     kij = calc_coagulation_kernel(Dpk, Dk, ck, boxvol)
 
     # State for while_loop: (Nk, Mk, kij, time_elapsed, substep_count)
@@ -138,7 +141,8 @@ def euler_step(
 
         # Optionally recompute kernel (FORTRAN recomputes each sub-step)
         def recompute():
-            Dpk_new, Dk_new, ck_new = calc_particle_properties(Nk_s, Mk_s, temp, pres)
+            Dpk_new, Dk_new, ck_new = calc_particle_properties(
+                Nk_s, Mk_s, temp, pres, sparse_density)
             return calc_coagulation_kernel(Dpk_new, Dk_new, ck_new, boxvol)
 
         kij_use = jax.lax.cond(

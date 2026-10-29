@@ -146,3 +146,45 @@ class TestMakeStepGradients:
             warnings.simplefilter('error', UserWarning)
             step(Nk, Mk, _gc(), xk, T_STRAT, P_STRAT, BOXVOL, 0.02, 1.0, 60.0,
                  fion=10.0, nucl_params=NucleationParams())
+
+
+class TestDunneTableS2:
+    """Dunne 2016 Table S2 single-exponential cross-check fit."""
+
+    def test_single_exp_rate_constant(self):
+        from tomas_jax.physics.nucleation import DUNNE_TABLE_S2_PARAMS as S2
+        h2so4, t = 5e6, T_STRAT / 1000.0
+        _, Jbn, _, Jbi, _ = dunne_nucleation_rate(
+            T_STRAT, 10.0, h2so4, 0.0, MAIR, S2, dunne_form='single_exp')
+        cna = h2so4 * 1e-6
+        np.testing.assert_allclose(float(Jbn),
+                                   np.exp(S2.u_bn - S2.v_bn * t) * cna**S2.p_bn,
+                                   rtol=1e-12)
+        assert float(Jbi) > 0.0
+
+    def test_same_order_as_baseline_at_cloud_temperatures(self):
+        """Both fits describe the same CLOUD data (208-298 K): binary
+        neutral rates agree within 2 orders of magnitude there."""
+        from tomas_jax.physics.nucleation import DUNNE_TABLE_S2_PARAMS as S2
+        for T in (208.0, 223.0, 248.0):
+            Mair = 2.69e19 * 273.15 / T * P_STRAT / 101325.0
+            base = dunne_nucleation_rate(T, 10.0, 1e7, 0.0, Mair)[1]
+            alt = dunne_nucleation_rate(T, 10.0, 1e7, 0.0, Mair, S2,
+                                        dunne_form='single_exp')[1]
+            assert abs(np.log10(float(alt) / float(base))) < 2.0
+
+    def test_make_step_rejects_unknown_form(self):
+        with pytest.raises(ValueError, match='dunne_form'):
+            make_step(['nucleation'], dunne_form='triple_exp')
+
+    def test_make_step_single_exp_runs_and_differs(self, xk):
+        from tomas_jax.physics.nucleation import DUNNE_TABLE_S2_PARAMS as S2
+        Nk = jnp.ones(NBINS) * 1e4
+        Mk = jnp.zeros((NBINS, ICOMP)).at[:, SRTSO4].set(
+            Nk * jnp.sqrt(xk[:-1] * xk[1:]))
+        args = (Nk, Mk, _gc(1e7), xk, T_STRAT, P_STRAT, BOXVOL, 0.02, 1.0, 60.0)
+        base = make_step(['nucleation'])(*args, fion=10.0)
+        alt = make_step(['nucleation'], dunne_form='single_exp')(
+            *args, fion=10.0, nucl_params=S2)
+        assert np.all(np.isfinite(np.array(alt[0])))
+        assert float(alt[0][0]) != float(base[0][0])
