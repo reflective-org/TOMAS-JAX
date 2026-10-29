@@ -36,25 +36,37 @@ All runs use red-circles for initial+background aerosol; bg SO2=0.01 ppb, H2SO4=
 Per-run params below are **B1** (the original scenario 1); B2/B3 differ in
 T/P/SO2/OH/H2O/H2SO4/ion (see docs).
 
-## Water uptake = pure H2SO4/H2O (Tabazadeh 1997) (2026-06-17 update)
-These clean stratospheric runs use **`water_scheme='h2so4_tabazadeh'`** in
-`make_step`, i.e. the **Tabazadeh et al. (1997)** binary H2SO4/H2O equilibrium,
-NOT the default ISORROPIA ammonium-bisulfate fit (these plumes have no NH3).
+## Water uptake = pure H2SO4/H2O (Tabazadeh 1997) (2026-06-17; API as merged into dev 2026-10)
+These clean stratospheric runs use **`water_scheme=WATER_SCHEME_H2SO4`** in
+`make_step` (numeric selector from `tomas_jax.physics.water_equilibrium`:
+`WATER_SCHEME_BISULFATE` = 0.0, the default, or `WATER_SCHEME_H2SO4` = 1.0), i.e.
+the **Tabazadeh et al. (1997)** binary H2SO4/H2O equilibrium, NOT the default
+TOMAS ammonium-bisulfate (ISORROPIA) fit (these plumes have no NH3).
 Equilibrium H2SO4 weight % is T- and RH-dependent (e.g. B1: 210 K, 1.7% RH →
-~69 wt%, wet/dry mass ratio ≈ 1.45 — vs ISORROPIA's ~1.02, which under-hydrated
-the cold acid). Implemented JIT in `physics/water_equilibrium.py`
-(`calc_equilibrium_water_h2so4`, `h2so4_weight_percent`); selected via the new
-`water_scheme` arg (default `'isorropia'` preserves prior behavior).
+~69 wt%, wet/dry mass ratio ≈ 1.45 — vs the bisulfate fit's ~1.02, which
+under-hydrated the cold acid). Implemented JIT in `physics/water_equilibrium.py`:
+`tabazadeh_h2so4_wt(temp, rh_percent)` (RH in %) and
+`calc_equilibrium_water_h2so4`, dispatched by `equilibrate_water`. The SO4 column
+is converted to H2SO4 (x 98/96) before the binary-solution wet/dry ratio is
+applied, and organics keep the bisulfate ratio. `water_every_process` (default
+False) is also available; these runs leave it off.
 
-> **2026-10 merge into dev:** the string scheme and the branch-local
-> `h2so4_weight_percent` / first `calc_equilibrium_water_h2so4` were dropped in
-> favour of dev's implementation. Select it with
-> `make_step(..., water_scheme=WATER_SCHEME_H2SO4)` (from
-> `tomas_jax.physics.water_equilibrium`); the wt% now comes from
-> `tabazadeh_h2so4_wt(temp, rh_percent)` (RH in %). Dev's version converts the
-> SO4 column to H2SO4 (x 98/96) before applying the binary-solution wet/dry
-> ratio, and organics keep the bisulfate ratio, so water differs slightly from the
-> June runs.
+> **2026-10 merge into dev:** the June 2026 runs used this branch's own copy of
+> the scheme, selected with a string (`water_scheme='h2so4_tabazadeh'`, default
+> `'isorropia'`), with `h2so4_weight_percent(temp, rh_frac)` and a `water_fn`
+> hook. These were dropped in favour of dev's implementation above (same wt% to
+> 1.2e-15). Because dev applies the ratio on an H2SO4 basis (+2.08% water on the
+> SO4 part) and gives organics the bisulfate ratio, water differs slightly from
+> the June runs; the matrix has not been re-run since the merge.
+
+## Coagulation kernel scale (`coag_kernel_scale`)
+`make_step` accepts a `coag_kernel_scale` step kwarg (default 1.0, may be a
+traced scalar) and forwards it to `coag_euler_step`
+(`tomas_jax/solvers/diffrax.py`), which multiplies the whole coagulation kernel:
+`kij = calc_coagulation_kernel(...) * coag_kernel_scale`. 1.0 is bit-identical to
+omitting it. It is meant for kernel-sensitivity sweeps (the SAI coupled model);
+the Marianna matrix runs use the default. Only `make_step` and `coag_euler_step`
+take it; `_full_step_core`, `_combined_step_core` and the fused scans do not.
 
 ## Plume cutoff + injected-sulfur figures (2026-06-17 update)
 - **Cutoff**: each run stops when `SO2 ≤ 1.1×background` (perturbation < 10% of

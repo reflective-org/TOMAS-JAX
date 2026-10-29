@@ -1,6 +1,9 @@
 # Marianna SAI Dilution Case — Plan & Specification
 
-> Status: **in development** on branch `feat/marianna-dilution` (based on `dev`).
+> Status: developed on branch `feat/marianna-dilution`; **merged into `dev`**
+> (2026-10, `feat/dev-sai-coupling`). Water uptake now uses dev's numeric
+> `WATER_SCHEME_H2SO4` selector (see `experimental_case/MARIANNA_DILUTION_NOTES.md`);
+> the matrix has not been re-run since the merge.
 > This document is the canonical record of the simulation plan, the chosen
 > parameters, the unit conversions, and the caveats / future-run alternatives.
 
