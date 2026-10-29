@@ -42,7 +42,7 @@ from tomas_jax.physics.nucleation import (
 from tomas_jax.solvers.condensation import (
     make_step, condensation_step, condensation_step_jax,
     condensation_step_tfl_jax, condensation_step_jit,
-    combined_step_ppm_jax, combined_step_tfl_jax,
+    condensation_step_tfl_jit, combined_step_ppm_jax, combined_step_tfl_jax,
     condensation_step_with_nucleation_jit, full_step_jax,
     run_condensation_scan, run_condensation_scan_tfl,
     run_combined_scan_ppm, run_combined_scan_tfl,
@@ -387,6 +387,7 @@ _ENTRY_POINTS = {
     'condensation_step_jax': _single(condensation_step_jax),
     'condensation_step_tfl_jax': _single(condensation_step_tfl_jax),
     'condensation_step_jit': _single(condensation_step_jit),
+    'condensation_step_tfl_jit': _single(condensation_step_tfl_jit),
     'combined_step_ppm_jax': _single(combined_step_ppm_jax),
     'combined_step_tfl_jax': _single(combined_step_tfl_jax),
     'condensation_step_with_nucleation_jit': _single(
@@ -431,6 +432,8 @@ def _call_omitted(name, Nk, Mk, Gc):
         'condensation_step_jax': lambda: condensation_step_jax(Nk, Mk, Gc, *_ENV),
         'condensation_step_tfl_jax': lambda: condensation_step_tfl_jax(Nk, Mk, Gc, *_ENV),
         'condensation_step_jit': lambda: condensation_step_jit(Nk, Mk, Gc, *_ENV),
+        'condensation_step_tfl_jit': lambda: condensation_step_tfl_jit(
+            Nk, Mk, Gc, *_ENV),
         'combined_step_ppm_jax': lambda: combined_step_ppm_jax(Nk, Mk, Gc, *_ENV),
         'combined_step_tfl_jax': lambda: combined_step_tfl_jax(Nk, Mk, Gc, *_ENV),
         'condensation_step_with_nucleation_jit': lambda: (
