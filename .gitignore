@@ -46,3 +46,6 @@ tomas_fortran/output/
 
 # Reference papers and code (local only, not for GitHub)
 references/
+
+# Sensitivity study outputs (NPZ, figures, logs; regenerate with the scripts)
+sensitivities/*/results/
