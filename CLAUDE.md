@@ -126,7 +126,8 @@ sensitivities/dunne_nuc/
   phase0_warmup.py            — Phase 0: grad/jacfwd checks vs analytic + FD (rate level, then 1 h full model)
   sabre_bins.py               — SABRE (Lyu et al. 2026) dry dN/dlogDp rebinning + NMASS cumulative channels (differentiable)
   phase1_sabre_check.py       — Phase 1: SABRE-binned output and its coefficient Jacobian, 40/80 bins
-  run_map.py                  — Phase 2: T × SO2 map, hourly SABRE Jacobian, published-uncertainty directions, Dunne Table S2 run
+  run_map.py                  — Phase 2: T × SO2 map, hourly SABRE Jacobian, published-uncertainty directions, Dunne Table S2 run;
+                                --resolved-dt: dt per SO2 (60 s clamps the gas at ≥1 ppmv and zeroes the sensitivity)
   results/                    — Outputs (NPZ, figures)
 
 tomas_fortran/

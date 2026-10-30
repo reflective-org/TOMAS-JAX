@@ -413,3 +413,71 @@ condensation (N in cm⁻³, fixed / adaptive):
     step is gas-clamped.
   - The fixed-solver sensitivity maps therefore stand. Only the 100 ppmv
     baseline N(>3 nm) needs the adaptive value.
+
+## Time-step convergence at high SO₂ (2026-10-29)
+
+The cells where nucleation is sub-stepped or clamped are **not converged in
+dt at 60 s**. The test ran 217 K for 2 h on 40 bins with the fixed solver.
+`ln N` is the response along the H₂SO₄ calibration direction, from `jax.jvp`.
+The script was a scratch test and is not in the repository.
+
+| SO₂ | dt [s] | N(>3 nm) | N(>12 nm) | δln N>3 | δln N>12 | clamp |
+|---|---|---|---|---|---|---|
+| 1 ppmv | 60 / 10 / 2 / 0.5 | 8.4e5 / 4.9e5 / 4.6e5 / 4.6e5 | 1.7e5 / 1.6e5 / 1.6e5 / 1.6e5 | 0.53 / 0.41 / 0.40 / 0.40 | 0.05 / 0.03 / 0.02 / 0.02 | 0 |
+| 10 ppmv | 60 / 10 / 2 / 0.5 | 2.5e6 / 1.9e6 / 1.1e6 / 1.0e6 | 2.0e5 / 1.7e5 / 1.5e5 / 1.4e5 | **0** / 0.53 / 0.53 / 0.53 | **0** / 0.21 / 0.13 / 0.12 | 1 → 0 |
+| 100 ppmv | 60 / 10 / 2 / 0.5 | 5.6e6 / 6.0e6 / 4.9e6 / 3.0e6 | 2.4e5 / 2.2e5 / 1.8e5 / 1.3e5 | **0** / 0 / 0.47 / 0.52 | **0** / 0 / 0.38 / 0.29 | 1 → 0 |
+
+- **Why it fails at 60 s.** With constant OH, one 60 s step produces more H₂SO₄
+  than nucleation can use within the step. Operator splitting lets nucleation
+  take all of it before condensation runs, so the gas clamp fires.
+  - Under the clamp, nucleated mass and number equal the available gas
+    whatever J is. The coefficient sensitivity is therefore exactly zero.
+  - That zero is an artefact of the splitting. When the step is resolved,
+    H₂SO₄ is shared between new particles and condensation in a way that
+    depends on J, and δ ln N(>3 nm) ≈ 0.5.
+  - The baseline N is also too high: 1.8× at 1 ppmv and 2.4× at 10 ppmv.
+- **Consequence for the Phase 2 map** (dt = 60 s):
+  - At ≥ 1 ppmv, the baseline N(>3 nm) is biased high.
+  - Where the regime panel shows clamping, the near-zero sensitivities are
+    wrong, not physical. This holds for ≥ 10 ppmv at all T, and for ≥ 1 ppmv
+    at ≤ 208 K.
+  - At 0.1 ppmv and below (no clamp), dt = 60 s is adequate for N(>12 nm),
+    but this was only checked at 1 ppmv.
+  - The adaptive-vs-fixed coagulation comparison at 100 ppmv also used
+    dt = 60 s, so it mixes the two errors.
+- **Convergence by SO₂ level:**
+  - dt ≈ 2 s converges the 1 and 10 ppmv cells.
+  - 100 ppmv still moves between 1 and 0.5 s.
+- **Resolved-dt map (`run_map --resolved-dt`, results in `results/phase2_dt`).**
+  - **Time step by SO₂ level (`run_map.dt_for`):**
+    - ≤ 10 ppbv: 60 s.
+    - 100 ppbv: 10 s. At 60 s it was 11% off in N(>3 nm) at 190 K.
+    - 1–10 ppmv: 2 s.
+    - 100 ppmv: 0.5 s. Moving to 0.25 s changes N(>3 nm) by −8% and
+      N(>12 nm) by −5%; the sensitivity goes from 0.52 to 0.54.
+  - **Batching:** SO₂ levels that share a dt run as one vmapped batch, so a
+    cheap level never waits on an expensive one.
+  - **Jacobian:** taken only along the 4 `directions(T)`. It is a `jacfwd`
+    with respect to α in θ = θ₀ + α·D, which needs 4 tangents instead of 25.
+    It is stored as `jac_dir_*` with `dir_names` and `directions`. At 1 ppbv
+    it matches the full Jacobian projected onto the same directions to
+    4e-11.
+  - **Results (40 bins, 2026-10-29).** The run took 4.4 h, about 44 min per
+    temperature; 31 min of that is the 100 ppmv level at 0.5 s. The log is
+    `results/phase2_dt/run.log`.
+    - **≤ 10 ppbv:** identical to the 60 s map.
+    - **100 ppbv (10 s):** N(>3 nm) is 0.74–0.95× the 60 s value, and the
+      sensitivities change by ≤ 0.05.
+    - **≥ 1 ppmv:**
+      - The 60 s map was badly wrong. N(>3 nm) is 0.01–0.8× the 60 s value,
+        and down to 2–7% of it at 10–100 ppmv and 223–240 K.
+      - The sensitivities that were 0 are now large: δ ln N(>3 nm) along
+        the H₂SO₄ calibration direction is 1.0–1.6 at 208–223 K and
+        10–100 ppmv, the largest values on the map.
+      - J_bn dominates below 223 K.
+      - N(>12 nm) responds only at 0.1–1 ppmv (δ ≤ 0.3). N(>53 nm) does not
+        respond anywhere.
+    - **Table S2 fit** at ≥ 1 ppmv and 208–240 K gives N(>3 nm) e⁻¹
+      (about 0.4×) of the default.
+    - **Still unresolved: 190 K, 100 ppmv.** The gas clamp fires on 50% of
+      steps at 0.5 s. That cell needs dt < 0.5 s; treat it as unreliable.

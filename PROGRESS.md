@@ -4,6 +4,35 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-10-29 (Thu) 21:30 PDT — Phase 2: time step resolved at high SO₂
+
+- **Problem.** dt = 60 s is not converged at ≥ 1 ppmv SO₂.
+  - Each step makes more H₂SO₄ than nucleation can use. Operator splitting lets
+    nucleation clamp the gas, so the coefficient sensitivity is exactly 0.
+  - Baseline N(>3 nm) is too high: ×1.8 at 1 ppmv and ×2.4 at 10 ppmv at
+    217 K over 2 h.
+  - Converged dt: 2 s for 1–10 ppmv, 0.5 s for 100 ppmv (8% residual).
+- **`run_map.py --resolved-dt`:**
+  - `dt_for(SO2)` sets 60 / 10 / 2 / 0.5 s.
+  - Levels are grouped by dt, one vmapped program per group.
+  - Jacobian only along the 4 published directions, stored as `jac_dir_*`. At
+    1 ppbv it matches the full Jacobian projected onto the same directions to
+    4e-11.
+  - `build_sim(dt=...)`; `delta_ln` reads either Jacobian layout.
+- **40-bin map:** `results/phase2_dt` (4.4 h).
+  - ≥ 1 ppmv: N(>3 nm) is down to 2–7% of the 60 s value at warm T.
+  - The H₂SO₄ calibration direction gives δ ln N(>3 nm) of 1.0–1.6 at
+    10–100 ppmv and 208–223 K, where the 60 s map had 0.
+  - The 190 K / 100 ppmv cell is still clamped on 50% of steps.
+- **Superseded:** the 60 s map is wrong at ≥ 1 ppmv. This also covers the
+  2026-10-27 adaptive-vs-fixed coagulation comparison at 100 ppmv.
+- **Next:**
+  - 80-bin resolved-dt map (about 3–4× the cost).
+  - A smaller dt for 190 K / 100 ppmv.
+  - Phase 3.
+
+---
+
 ## 2026-10-27 (Tue) 21:00 PDT — Phase 2 T × SO₂ map; Dunne Table S2 form; adaptive coagulation option
 
 - `nucleation.py`:

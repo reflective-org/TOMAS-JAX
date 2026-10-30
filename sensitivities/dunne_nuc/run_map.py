@@ -11,7 +11,7 @@ background stratospheric aerosol. It records, hourly:
 
 Dunne 2016 publishes no per-coefficient sigma (see
 docs/nucleation_sensitivity.md), so the Jacobian is contracted with the
-uncertainty directions it does publish (DIRECTIONS below). These are linear
+uncertainty directions it does publish (`directions()` below). These are linear
 estimates; Phase 4 checks linearity.
 
 Usage::
@@ -19,6 +19,8 @@ Usage::
     python -m sensitivities.dunne_nuc.run_map              # full run + plots
     python -m sensitivities.dunne_nuc.run_map --plot-only
     python -m sensitivities.dunne_nuc.run_map --smoke      # 40 bins, 2 T x 3 SO2 x 2 h
+    python -m sensitivities.dunne_nuc.run_map --resolved-dt --grids 40
+        # dt per SO2 level (dt_for), Jacobian along directions() only
 """
 import os
 import time
@@ -30,7 +32,7 @@ import jax.numpy as jnp
 
 from tomas_jax.core.config import make_grid, make_grid_80bin, XK0
 from tomas_jax.physics import nucleation as nuc
-from .common import (STRAT, BOXVOL, OH_CONC, lognormal_state, make_runner,
+from .common import (STRAT, BOXVOL, OH_CONC, DT, lognormal_state, make_runner,
                      ppbv_to_molec)
 from .sabre_bins import (NMASS_CUTOFFS_M, SABRE_NUMBER_REL_ERR,
                          rebin_to_sabre, nmass_cumulative)
@@ -81,19 +83,47 @@ def directions(temp, params=nuc.DEFAULT_NUCLEATION_PARAMS):
     }
 
 
+def dt_for(so2_ppbv):
+    """Time step [s] that resolves H2SO4 at this SO2 level.
+
+    From the 2026-10-29 convergence test (docs/nucleation_sensitivity.md):
+    at dt = 60 s, >= 1 ppmv SO2 makes more H2SO4 per step than nucleation
+    uses, the gas clamp fires and the coefficient sensitivity drops to 0.
+    The 100 ppmv level keeps an ~8% residual in N at 0.5 s (vs 0.25 s).
+    """
+    if so2_ppbv <= 10.0:
+        return 60.0
+    if so2_ppbv <= 100.0:
+        return 10.0
+    if so2_ppbv <= 1e4:
+        return 2.0
+    return 0.5
+
+
 def npz_path(outdir, nbins, temp):
     return os.path.join(outdir, f'map_{nbins}bin_T{temp:.0f}.npz')
 
 
 def build_sim(xk, temp, hours, dunne_form='double_exp', oh_conc=OH_CONC,
-              coag_solver='euler_fixed'):
+              coag_solver='euler_fixed', dt=DT):
+    """sim(params, Nk0, Mk0, Gc0) -> (hourly outputs, hourly diagnostics).
+
+    params enters only through nucleation, so sim is a function of the fit
+    coefficients that jax.jacfwd can differentiate.
+    """
     cond = dict(STRAT, temp=temp)
-    run_hour = make_runner(xk, nsteps=60, cond=cond, oh_conc=oh_conc,
+    # One hour = 3600/dt steps (SO2 chem -> nucl -> coag -> cond), as a scan.
+    run_hour = make_runner(xk, nsteps=round(3600.0 / dt), dt=dt, cond=cond,
+                           oh_conc=oh_conc,
                            dunne_form=dunne_form, coag_solver=coag_solver)
 
     def sim(params, Nk0, Mk0, Gc0):
+        # Outer scan over hours: carry the aerosol and gas state forward and
+        # emit the SABRE-comparable outputs once per hour. Only `y` is
+        # differentiated; `aux` holds regime diagnostics (no tangents needed).
         def hour(carry, _):
             Nk, Mk, Gc, d = run_hour(params, *carry)
+            # Model bins -> SABRE dry dN/dlogDp (20/decade) and NMASS N(>Dp)
             y = dict(dndlog=rebin_to_sabre(Nk, Mk, xk, BOXVOL),
                      nmass=nmass_cumulative(Nk, Mk, xk, BOXVOL))
             aux = dict(N_total=jnp.sum(Nk) / BOXVOL,
@@ -102,6 +132,8 @@ def build_sim(xk, temp, hours, dunne_form='double_exp', oh_conc=OH_CONC,
                        J_mean=jnp.mean(d['J']),
                        J_bn_mean=jnp.mean(d['J_bn']),
                        J_bi_mean=jnp.mean(d['J_bi']),
+                       # Where these are non-zero the gradient is blind to the
+                       # sub-step count / gas clamp (piecewise, not smooth)
                        frac_sub=jnp.mean(d['n_sub'] > 1),
                        max_sub=jnp.max(d['n_sub']),
                        frac_clamp=jnp.mean(d['clamp']))
@@ -114,50 +146,103 @@ def build_sim(xk, temp, hours, dunne_form='double_exp', oh_conc=OH_CONC,
 
 
 def run_cell_set(nbins, temp, so2_ppbv, hours, outdir, oh_conc,
-                 coag_solver='euler_fixed'):
-    """All SO2 levels at one (grid, T): vmapped over SO2."""
+                 coag_solver='euler_fixed', resolved_dt=False):
+    """All SO2 levels at one (grid, T), vmapped over SO2.
+
+    resolved_dt=False: dt = 60 s everywhere, full Jacobian (25 fields).
+    resolved_dt=True: dt = dt_for(SO2), SO2 levels grouped by dt, and the
+    Jacobian only along directions(temp) (4 tangents instead of 25).
+    """
+    # Initial state: same background aerosol for every cell; only the SO2 in
+    # the gas array differs, so Gc0 is the one batched input (nso2, ngas).
     xk = GRIDS[nbins]()
     so2 = np.array([ppbv_to_molec(c, temp, STRAT['pres']) for c in so2_ppbv])
     states = [lognormal_state(xk, so2=c) for c in so2]
     Nk0, Mk0 = states[0][0], states[0][1]
     Gc0 = jnp.stack([s[2] for s in states])
 
+    # Coefficients as float64 JAX arrays so jacfwd treats every field as an
+    # input (Python floats would be closed over as constants).
     P = jax.tree.map(jnp.float64, nuc.DEFAULT_NUCLEATION_PARAMS)
     S2 = jax.tree.map(jnp.float64, nuc.DUNNE_TABLE_S2_PARAMS)
-    sim = build_sim(xk, temp, hours, oh_conc=oh_conc, coag_solver=coag_solver)
-    sim_s2 = build_sim(xk, temp, hours, dunne_form='single_exp', oh_conc=oh_conc,
-                       coag_solver=coag_solver)
+    dirs = directions(temp)
+    D = jnp.array(np.stack(list(dirs.values())))     # (ndir, nfields)
 
-    def with_jac(gc):
-        def f(p):
-            ys, aux = sim(p, Nk0, Mk0, gc)
-            return ys, (ys, aux)
-        return jax.jacfwd(f, has_aux=True)(P)
+    dts = np.array([dt_for(c) if resolved_dt else DT for c in so2_ppbv])
+    parts, timing = [], []
+    # One compiled program per dt group: batched while_loops run until the
+    # slowest member finishes, so mixing dt (or SO2 regimes) in one vmap
+    # would make every level pay for the most expensive one.
+    for dt in sorted(set(dts.tolist()), reverse=True):
+        idx = np.where(dts == dt)[0]
+        sim = build_sim(xk, temp, hours, oh_conc=oh_conc,
+                        coag_solver=coag_solver, dt=dt)
+        sim_s2 = build_sim(xk, temp, hours, dunne_form='single_exp',
+                           oh_conc=oh_conc, coag_solver=coag_solver, dt=dt)
 
-    t0 = time.time()
-    jac, (ys, aux) = jax.block_until_ready(jax.jit(jax.vmap(with_jac))(Gc0))
-    t_jac = time.time() - t0
-    t0 = time.time()
-    ys_s2, aux_s2 = jax.block_until_ready(
-        jax.jit(jax.vmap(lambda gc: sim_s2(S2, Nk0, Mk0, gc)))(Gc0))
-    t_s2 = time.time() - t0
+        # Forward-mode Jacobian. has_aux returns the primal outputs and
+        # diagnostics from the same pass, so no separate baseline run is
+        # needed. Reverse mode is impossible here (traced loop trip counts in
+        # nucleation and coagulation sub-stepping).
+        if resolved_dt:
+            # theta = P + alpha @ D: d/d alpha_i is the derivative along
+            # direction i, one tangent per direction.
+            def with_jac(gc):
+                def f(alpha):
+                    shift = alpha @ D
+                    p = nuc.NucleationParams(*(getattr(P, n) + shift[k]
+                                               for k, n in enumerate(FIELDS)))
+                    ys, aux = sim(p, Nk0, Mk0, gc)
+                    return ys, (ys, aux)
+                return jax.jacfwd(f, has_aux=True)(jnp.zeros(D.shape[0]))
+        else:
+            def with_jac(gc):
+                def f(p):
+                    ys, aux = sim(p, Nk0, Mk0, gc)
+                    return ys, (ys, aux)
+                return jax.jacfwd(f, has_aux=True)(P)
 
-    # jac[key] is a NucleationParams of arrays (nso2, hours, nout); stack
-    # the fields last -> (nso2, hours, nout, nfields)
-    jac_d = {k: np.stack([np.array(getattr(jac[k], f)) for f in FIELDS], axis=-1)
-             for k in ('dndlog', 'nmass')}
-    out = dict(
-        nbins=nbins, temp=temp, hours=hours, so2_ppbv=np.array(so2_ppbv),
-        oh_conc=oh_conc, coag_solver=coag_solver, fields=np.array(FIELDS),
-        dndlog=np.array(ys['dndlog']), nmass=np.array(ys['nmass']),
-        jac_dndlog=jac_d['dndlog'], jac_nmass=jac_d['nmass'],
-        dndlog_s2=np.array(ys_s2['dndlog']), nmass_s2=np.array(ys_s2['nmass']),
-        **{f'aux_{k}': np.array(v) for k, v in aux.items()},
-        **{f'aux_s2_{k}': np.array(v) for k, v in aux_s2.items()},
-    )
+        t0 = time.time()
+        jac, (ys, aux) = jax.block_until_ready(
+            jax.jit(jax.vmap(with_jac))(Gc0[idx]))
+        t_jac = time.time() - t0
+        # Structural alternative: Dunne Table S2 single-exponential fit,
+        # forward run only (a different functional form, not a perturbation).
+        t0 = time.time()
+        ys_s2, aux_s2 = jax.block_until_ready(
+            jax.jit(jax.vmap(lambda gc: sim_s2(S2, Nk0, Mk0, gc)))(Gc0[idx]))
+        t_s2 = time.time() - t0
+        timing.append(f"dt={dt:g}s x{len(idx)}: {t_jac:.0f}+{t_s2:.0f} s")
 
+        if resolved_dt:
+            # jac[key]: (n, hours, nout, ndir) already
+            jac_d = {k: np.array(jac[k]) for k in ('dndlog', 'nmass')}
+        else:
+            # jac[key] is a NucleationParams of arrays (n, hours, nout); stack
+            # the fields last -> (n, hours, nout, nfields)
+            jac_d = {k: np.stack([np.array(getattr(jac[k], f)) for f in FIELDS],
+                                 axis=-1) for k in ('dndlog', 'nmass')}
+        parts.append((idx, dict(
+            dndlog=np.array(ys['dndlog']), nmass=np.array(ys['nmass']),
+            dndlog_s2=np.array(ys_s2['dndlog']), nmass_s2=np.array(ys_s2['nmass']),
+            **{f'jac{"_dir" if resolved_dt else ""}_{k}': v
+               for k, v in jac_d.items()},
+            **{f'aux_{k}': np.array(v) for k, v in aux.items()},
+            **{f'aux_s2_{k}': np.array(v) for k, v in aux_s2.items()})))
+
+    # Reassemble the dt groups in the original SO2 order
+    order = np.argsort(np.concatenate([idx for idx, _ in parts]))
+    out = {k: np.concatenate([d[k] for _, d in parts])[order]
+           for k in parts[0][1]}
+    out.update(nbins=nbins, temp=temp, hours=hours,
+               so2_ppbv=np.array(so2_ppbv), dt_s=dts, oh_conc=oh_conc,
+               coag_solver=coag_solver, fields=np.array(FIELDS),
+               dir_names=np.array(list(dirs)), directions=np.array(D))
+
+    # Fail loudly on any non-finite output or tangent, naming the SO2 cells.
     bad = [k for k, v in out.items()
            if isinstance(v, np.ndarray) and v.dtype.kind == 'f'
+           and v.ndim > 0 and v.shape[0] == len(so2_ppbv)
            and not np.all(np.isfinite(v))]
     if bad:
         cells = sorted({float(so2_ppbv[i]) for k in bad
@@ -168,11 +253,10 @@ def run_cell_set(nbins, temp, so2_ppbv, hours, outdir, oh_conc,
 
     os.makedirs(outdir, exist_ok=True)
     np.savez(npz_path(outdir, nbins, temp), **out)
-    print(f"  {nbins}-bin T={temp:5.1f} K: jacfwd {t_jac:6.1f} s, Table S2 "
-          f"{t_s2:5.1f} s; N(>3nm, end) = "
+    print(f"  {nbins}-bin T={temp:5.1f} K: {'; '.join(timing)}; N(>3nm, end) = "
           + ', '.join(f'{v:.2e}' for v in out['nmass'][:, -1, 0])
           + f"; max sub-steps {int(out['aux_max_sub'].max())}, "
-          f"clamp {100 * out['aux_frac_clamp'].mean():.1f}% of steps")
+          f"clamp {100 * out['aux_frac_clamp'].mean():.1f}% of steps", flush=True)
 
 
 # =========================================================================
@@ -189,10 +273,15 @@ def load(outdir, nbins, temps):
     return data
 
 
-def delta_ln(d, key, direction, floor):
-    """Linear d ln(Y) along a direction; NaN where Y < floor."""
+def delta_ln(d, key, name, temp, floor):
+    """Linear d ln(Y) along directions(temp)[name]; NaN where Y < floor."""
+    # (J @ dtheta) / Y: the first-order change in ln Y when the coefficients
+    # move by dtheta. Masked below `floor` where ln Y is meaningless.
     y = d[key]
-    dy = d[f'jac_{key}'] @ direction
+    if f'jac_dir_{key}' in d:      # --resolved-dt: Jacobian per direction
+        dy = d[f'jac_dir_{key}'][..., list(d['dir_names']).index(name)]
+    else:
+        dy = d[f'jac_{key}'] @ directions(temp)[name]
     return np.where(y > floor, dy / np.where(y > 0, y, 1.0), np.nan)
 
 
@@ -251,6 +340,9 @@ def plot(outdir, nbins, temps):
     print(f"  wrote {out}")
 
     # --- Fig B: sensitivity along published directions + Table S2 --------
+    # Rows: uncertainty directions (linear, from the Jacobian) plus the Table S2
+    # forward run (exact ln ratio). Columns: NMASS N(>3, >12, >53 nm) at the
+    # final hour. Dots mark changes SABRE's 8% number uncertainty could detect.
     rows = list(directions(temps[0]).keys()) + ['Table S2 fit']
     chans = [0, 2, 4]
     fig, axes = plt.subplots(len(rows), len(chans), figsize=(11, 2.3 * len(rows)))
@@ -263,7 +355,7 @@ def plot(outdir, nbins, temps):
                              np.log(np.maximum(y2, 1e-300) / np.maximum(y, 1e-300)),
                              np.nan)
             else:
-                v = delta_ln(d, 'nmass', directions(T)[name], 1e-3)[:, -1]
+                v = delta_ln(d, 'nmass', name, T, 1e-3)[:, -1]
             z[:, i, :] = v[:, chans].T
         for c, ch in enumerate(chans):
             ax = axes[r, c]
@@ -298,6 +390,9 @@ def main():
     parser.add_argument('--coag-solver', default='euler_fixed',
                         choices=['euler_fixed', 'euler_adaptive'],
                         help='euler_adaptive writes to results/phase2_adaptive')
+    parser.add_argument('--resolved-dt', action='store_true',
+                        help='dt per SO2 level (dt_for) and Jacobian along the '
+                             'published directions only; writes results/phase2_dt')
     args = parser.parse_args()
 
     if args.smoke:
@@ -306,6 +401,8 @@ def main():
     else:
         grids, temps, so2, hours = args.grids, TEMPS, SO2_PPBV, HOURS
         outdir = os.path.join(RESULTS, 'phase2')
+    if args.resolved_dt:
+        outdir += '_dt'
     if args.coag_solver != 'euler_fixed':
         outdir += '_adaptive'
 
@@ -313,7 +410,7 @@ def main():
         for nbins in grids:
             for T in temps:
                 run_cell_set(nbins, T, so2, hours, outdir, args.oh,
-                             args.coag_solver)
+                             args.coag_solver, args.resolved_dt)
     for nbins in grids:
         plot(outdir, nbins, temps)
 
