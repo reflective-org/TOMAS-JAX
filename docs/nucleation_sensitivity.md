@@ -481,3 +481,7 @@ The script was a scratch test and is not in the repository.
       (about 0.4×) of the default.
     - **Still unresolved: 190 K, 100 ppmv.** The gas clamp fires on 50% of
       steps at 0.5 s. That cell needs dt < 0.5 s; treat it as unreliable.
+- **Possible replacement for `dt_for`:** an adaptive inner step for
+  chemistry → nucleation → condensation, keyed to the H₂SO₄ lifetime, or the
+  pseudo-steady-state H₂SO₄ method. The design and validation plan are in
+  `docs/future_features.md` §7. This is not implemented.

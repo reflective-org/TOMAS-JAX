@@ -104,6 +104,61 @@ This document tracks features that are not currently needed but would unlock sig
 
 **Effort:** ~3-5 days. Main challenge: maintaining scan-fused XLA compilation with variable step counts. May require the same `scan` + masking pattern as feature #1.
 
+### Evidence from the nucleation sensitivity study (2026-10-29)
+
+The 60 s step fails at high H₂SO₄ production
+(`docs/nucleation_sensitivity.md`, "Time-step convergence at high SO₂"):
+- **Mechanism.** Chemistry adds a whole step's H₂SO₄ at once, and nucleation
+  then runs on that pulse before condensation does. Above about 1 ppmv SO₂
+  (stratosphere, OH = 1e6), the nucleation gas clamp fires.
+  - All the gas becomes new particles, whatever J is.
+  - Condensation gets nothing.
+  - Coefficient sensitivities are exactly zero.
+  - N(>3 nm) is up to ×50 too high: at 223–240 K and 10–100 ppmv, the
+    converged run gives 2–7% of the 60 s value.
+- **Nucleation sub-stepping does not help.** `max_nuc_substeps` limits the
+  number of particles created per sub-step, not the gas available per step,
+  and condensation still runs only after nucleation.
+- **Current workaround.** `run_map.dt_for` is a hand-tuned shorter dt per SO₂
+  level: 10 / 2 / 0.5 s.
+  - It is derived from one 217 K test.
+  - It already fails at 190 K / 100 ppmv, where the clamp fires on 50% of
+    steps at 0.5 s.
+  - It is expensive: the 0.5 s level is about 70% of the 40-bin run time,
+    because coagulation is repeated every short step.
+
+### Proposed design: adaptive inner loop for the gas-competing processes
+
+- **Loop structure.**
+  - Keep the outer `dt` (60 s).
+  - Sub-step only SO₂ chemistry → nucleation → condensation in an inner
+    `while_loop`.
+  - Coagulation, which is slow, stays on the outer step. It can still use
+    `coag_solver='euler_adaptive'` if N is high.
+- **Inner-step criterion** (pick one; compare both):
+  - a fraction of the H₂SO₄ lifetime, dt_sub ≤ f · [H₂SO₄] / (P + (CS + k_nuc)[H₂SO₄])
+    with f ≈ 0.1;
+  - or halving until the gas clamp does not fire and Δ[H₂SO₄] per sub-step
+    is < ~10%.
+- **API.** An opt-in `make_step(..., gas_substep='adaptive')`, with a cap on
+  inner sub-steps. The default must stay bit-identical (Fortran parity).
+- **Differentiation.**
+  - Forward-mode only, as already required by the traced nucleation loop and
+    adaptive coagulation.
+  - Gradients are blind to the sub-step choice. That is small if the choice
+    is converged.
+  - Under `vmap` the slowest batch member sets the pace.
+- **Validation.** Reproduce the converged runs in `results/phase2_dt`:
+  - 217 K over 2 h at dt = 2 s and 0.5 s;
+  - 190 K / 100 ppmv at ≤ 0.25 s.
+  - If it matches, it replaces `dt_for` and makes the 80-bin map affordable.
+- **Alternative: pseudo-steady-state H₂SO₄.**
+  - This is the usual TOMAS approach, Pierce & Adams (2009, Aerosol Sci.
+    Technol.). It is cited from memory and should be checked against the paper.
+  - It is not in this repository.
+  - It allows long steps without sub-stepping, so it is cheaper, but it is a
+    new scheme to validate against the same converged runs.
+
 ---
 
 ## 8. Explicit ELVOC/HOM Gas-Phase Species
@@ -218,7 +273,7 @@ The Zhao 2024 11-mechanism NPF scheme (mechanisms 6–7) uses pure-biogenic nucl
 | High value | #2 GPU acceleration | Multiplier for everything else |
 | High value | #4 Multi-species condensation | Scientific impact; needed for realistic SOA |
 | Medium | #6 Emissions & deposition | Required for full atmospheric simulations |
-| Medium | #7 Adaptive timestepping | Accuracy/efficiency improvement |
+| High for strat/SAI | #7 Adaptive timestepping | 60 s fails at ≥ 1 ppmv SO₂ (gas clamp); current fix is a hand-tuned dt per SO₂ level |
 | Exploratory | #5 Learned surrogate | Research project; depends on #1 and #3 |
 | When ready | #9 Project wiki | Collects docs, validation and assumptions; publish only after review |
 | To scope | #10 Additional species | Nitrate, sea salt, dust, BC; depends on #6 |
