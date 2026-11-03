@@ -26,6 +26,18 @@ Scan-fused time loops (single XLA program, zero Python dispatch):
     run_nucleation_condensation_scan  | —         | both | Yes
     run_full_scan                     | Euler(10) | TFL  | Yes
 
+Sulfur bookkeeping (``molar_so4_transfer``, static Python bool, default
+False): Mk[:, SRTSO4] holds SO4 mass (MW 96) and Gc[SRTSO4] holds H2SO4 mass
+(MW 98). False keeps the Fortran-parity kg-for-kg gas->particle transfer
+(bit-identical to before the option existed). True conserves moles of S at
+every gas->particle sulfate transfer: nucleation (``nucleation_step`` /
+``zhao2024_nucleation_step``, incl. the gas-limited clamp) debits the gas
+dM_SO4 * 98/96, and condensation (incl. the tiny-sink dump to bin 0) adds
+the condensed H2SO4 mass * 96/98 to the particles. The ezcond kernels
+(PPM/TFL, numpy and JAX) take the particle-phase mass to add; the
+conversion is done by their callers here. Every step/scan function below
+and ``make_step`` take it.
+
 Composable process API:
 
     step_fn = make_step(['nucleation', 'coagulation', 'condensation'],
@@ -57,7 +69,7 @@ from functools import partial
 
 from ..core.config import (
     SRTSO4, SRTSO2, SRTNH4, SRTH2O, ICOMP_NODIAG,
-    MW_H2SO4, SV_H2SO4, CS_EPS,
+    MW_H2SO4, MW_SO4, SV_H2SO4, CS_EPS,
 )
 from ..physics.so2_chemistry import (
     so2_oxidation_step, calc_k1_so2_oh,
@@ -66,7 +78,7 @@ from ..physics.so2_chemistry import (
 from ..physics.dilution import dilution_step
 from ..physics.nucleation import (
     nucleation_step, ricco_dunne_nucleation_rate, compute_nucleation_substeps,
-    zhao2024_nucleation_step, ZHAO2024_ALL_ENABLED,
+    zhao2024_nucleation_step, ZHAO2024_ALL_ENABLED, NUC_ORG_MASS_FRAC_DEFAULT,
 )
 from ..physics.condensation_sink import calc_condensation_sink
 from ..physics.ezcond import ezcond
@@ -84,13 +96,13 @@ _VALID_MAKE_STEP_KWARGS = {
     # so2_chemistry
     'oh_conc',
     # nucleation (common)
-    'org_conc', 'nh3_conc', 'fion', 'fn_scale',
+    'org_conc', 'nh3_conc', 'fion', 'fn_scale', 'nuc_org_mass_frac',
     # nucleation (ricco_dunne)
     'enable_organic', 'enable_inorganic',
     # nucleation (zhao2024)
     'hno3', 'ulvoc', 'dma', 'hio3', 'enable_masks',
     # coagulation
-    'icomp_nodiag',
+    'icomp_nodiag', 'coag_kernel_scale',
     # dilution
     'kdil', 'Nk_bg', 'Mk_bg', 'Gc_bg',
 }
@@ -120,7 +132,8 @@ def condensation_step(
     rh: float,
     alpha: float,
     dt: float,
-    method: str = 'ppm_jit'
+    method: str = 'ppm_jit',
+    molar_so4_transfer: bool = False,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Execute one condensation operator-split step.
 
@@ -142,6 +155,9 @@ def condensation_step(
         alpha: Accommodation coefficient
         dt: Timestep [s]
         method: Condensation method - 'ppm_jit' (default), 'tfl', 'ppm', or 'tfl_jit'
+        molar_so4_transfer: Python bool. False (default): condensed H2SO4
+            is added to Mk[:, SRTSO4] kg-for-kg. True: it is added as SO4
+            (x 96/98), conserving moles of S. See the module docstring.
 
     Returns:
         Nk_new: Updated number concentration
@@ -154,7 +170,8 @@ def condensation_step(
             Nk, Mk, Gc, xk,
             jnp.asarray(temp), jnp.asarray(pres),
             jnp.asarray(boxvol), jnp.asarray(rh),
-            jnp.asarray(alpha), jnp.asarray(dt)
+            jnp.asarray(alpha), jnp.asarray(dt),
+            molar_so4_transfer=molar_so4_transfer,
         )
 
     if method == 'tfl_jit':
@@ -162,7 +179,8 @@ def condensation_step(
             Nk, Mk, Gc, xk,
             jnp.asarray(temp), jnp.asarray(pres),
             jnp.asarray(boxvol), jnp.asarray(rh),
-            jnp.asarray(alpha), jnp.asarray(dt)
+            jnp.asarray(alpha), jnp.asarray(dt),
+            molar_so4_transfer=molar_so4_transfer,
         )
 
     # Legacy numpy paths — not JIT-compilable, not GPU-compatible
@@ -195,22 +213,28 @@ def condensation_step(
         # Deplete gas phase
         Gc_np[SRTSO4] -= mcond_so4
 
+        # Particle-phase mass (SO4 if molar_so4_transfer, else kg-for-kg)
+        mpart_so4 = (mcond_so4 * (MW_SO4 / MW_H2SO4) if molar_so4_transfer
+                     else mcond_so4)
+
         # Condense onto particles
         if method == 'ppm':
             from ..physics.ezcond_ppm import ezcond_ppm
             Nk_np, Mk_np = ezcond_ppm(
-                Nk_np, Mk_np, mcond_so4, SRTSO4,
+                Nk_np, Mk_np, mpart_so4, SRTSO4,
                 xk_np, temp, pres, boxvol, alpha
             )
         else:
             Nk_np, Mk_np = ezcond(
-                Nk_np, Mk_np, mcond_so4, SRTSO4,
+                Nk_np, Mk_np, mpart_so4, SRTSO4,
                 xk_np, temp, pres, boxvol, alpha
             )
     elif Gc_np[SRTSO4] > 0.0:
         # CS too small — dump all gas into first bin
-        Mk_np[0, SRTSO4] += Gc_np[SRTSO4]
-        Nk_np[0] += Gc_np[SRTSO4] / np.sqrt(xk_np[0] * xk_np[1])
+        dump_so4 = (Gc_np[SRTSO4] * (MW_SO4 / MW_H2SO4) if molar_so4_transfer
+                    else Gc_np[SRTSO4])
+        Mk_np[0, SRTSO4] += dump_so4
+        Nk_np[0] += dump_so4 / np.sqrt(xk_np[0] * xk_np[1])
         Gc_np[SRTSO4] = 0.0
 
     # =========================================================
@@ -245,12 +269,20 @@ def condensation_step(
 # =========================================================================
 
 def _condensation_step_core(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
-                            ezcond_fn, water_scheme=WATER_SCHEME_BISULFATE):
+                            ezcond_fn, water_scheme=WATER_SCHEME_BISULFATE,
+                            molar_so4_transfer=False):
     """Core condensation: MNFIX -> CS -> gas depletion -> ezcond_fn -> NH3 -> water -> MNFIX.
 
     This is the single implementation that both PPM and TFL JIT paths share.
     The only difference is which ezcond function is passed in.
     water_scheme selects the water uptake (see equilibrate_water).
+
+    molar_so4_transfer (static Python bool): False (default) adds the
+    condensed H2SO4 mass to Mk[:, SRTSO4] kg-for-kg (Fortran parity). True
+    adds it * 96/98 (as SO4), on both the ezcond path and the tiny-sink dump
+    to bin 0; the gas debit is the same either way, so moles of S are
+    conserved. In the dump path the added number is the added particle mass
+    over the bin-0 geometric-mean mass in both modes.
     """
     # 0. MNFIX input
     Nk, Mk = mnfix_jax(Nk, Mk, xk, ICOMP_NODIAG)
@@ -268,17 +300,25 @@ def _condensation_step_core(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
 
     Gc_new = Gc.at[SRTSO4].add(-mcond_so4)
 
+    # Particle-phase mass gained per kg of gas lost
+    if molar_so4_transfer:
+        mpart_so4 = mcond_so4 * (MW_SO4 / MW_H2SO4)
+        dump_so4 = gc_so4 * (MW_SO4 / MW_H2SO4)
+    else:
+        mpart_so4 = mcond_so4
+        dump_so4 = gc_so4
+
     # Dump path (CS too small but gas available)
-    dump_N = gc_so4 / jnp.sqrt(xk[0] * xk[1])
+    dump_N = dump_so4 / jnp.sqrt(xk[0] * xk[1])
     Nk_dump = Nk.at[0].add(dump_N)
-    Mk_dump = Mk.at[0, SRTSO4].add(gc_so4)
+    Mk_dump = Mk.at[0, SRTSO4].add(dump_so4)
     Gc_dump = Gc.at[SRTSO4].set(0.0)
 
     should_dump = (CS <= CS_EPS) & (gc_so4 > 0.0)
 
     # Condense via ezcond_fn (PPM or TFL)
     Nk_cond, Mk_cond = ezcond_fn(
-        Nk, Mk, mcond_so4, SRTSO4,
+        Nk, Mk, mpart_so4, SRTSO4,
         xk, temp, pres, boxvol, alpha
     )
 
@@ -318,15 +358,21 @@ def condensation_step_jax(
     alpha: jnp.ndarray,
     dt: jnp.ndarray,
     water_scheme=WATER_SCHEME_BISULFATE,
+    molar_so4_transfer=False,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    """Pure-JAX condensation step using PPM — fully JIT-compilable."""
+    """Pure-JAX condensation step using PPM — fully JIT-compilable.
+
+    molar_so4_transfer: static Python bool (see _condensation_step_core).
+    """
     return _condensation_step_core(
         Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
         ezcond_fn=ezcond_ppm_jax, water_scheme=water_scheme,
+        molar_so4_transfer=molar_so4_transfer,
     )
 
 
-condensation_step_jit = jax.jit(condensation_step_jax)
+condensation_step_jit = jax.jit(
+    condensation_step_jax, static_argnames=('molar_so4_transfer',))
 
 
 def condensation_step_tfl_jax(
@@ -341,15 +387,21 @@ def condensation_step_tfl_jax(
     alpha: jnp.ndarray,
     dt: jnp.ndarray,
     water_scheme=WATER_SCHEME_BISULFATE,
+    molar_so4_transfer=False,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    """Pure-JAX condensation step using TFL — Fortran-matching, JIT-compilable."""
+    """Pure-JAX condensation step using TFL — Fortran-matching, JIT-compilable.
+
+    molar_so4_transfer: static Python bool (see _condensation_step_core).
+    """
     return _condensation_step_core(
         Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
         ezcond_fn=ezcond_tfl_jax, water_scheme=water_scheme,
+        molar_so4_transfer=molar_so4_transfer,
     )
 
 
-condensation_step_tfl_jit = jax.jit(condensation_step_tfl_jax)
+condensation_step_tfl_jit = jax.jit(
+    condensation_step_tfl_jax, static_argnames=('molar_so4_transfer',))
 
 
 # =========================================================================
@@ -359,11 +411,13 @@ condensation_step_tfl_jit = jax.jit(condensation_step_tfl_jax)
 def _combined_step_core(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
                         ezcond_fn, icomp_nodiag=ICOMP_NODIAG, n_coag_substeps=3,
                         water_scheme=WATER_SCHEME_BISULFATE,
-                        water_every_process=False):
+                        water_every_process=False,
+                        molar_so4_transfer=False):
     """Coagulation + condensation in one step, parameterized by ezcond_fn.
 
     water_every_process re-equilibrates aerosol water after coagulation too
     (TOMAS box.f order); by default water is only set by condensation.
+    molar_so4_transfer: see _condensation_step_core.
     """
     # 1. Coagulation (forward Euler + MNFIX)
     Nk, Mk = coag_euler_step(
@@ -378,6 +432,7 @@ def _combined_step_core(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
     return _condensation_step_core(
         Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
         ezcond_fn=ezcond_fn, water_scheme=water_scheme,
+        molar_so4_transfer=molar_so4_transfer,
     )
 
 
@@ -387,7 +442,8 @@ def _full_step_core(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
                     icomp_nodiag=ICOMP_NODIAG, n_coag_substeps=10,
                     max_nucleation_frac=0.5, max_nuc_substeps=20,
                     water_scheme=WATER_SCHEME_BISULFATE,
-                    water_every_process=False):
+                    water_every_process=False,
+                    molar_so4_transfer=False):
     """Nucleation + coagulation + condensation in one step.
 
     Nucleation uses adaptive sub-stepping: when dN would exceed
@@ -395,7 +451,9 @@ def _full_step_core(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
     (up to max_nuc_substeps) with MNFIX between substeps.
 
     water_every_process re-equilibrates aerosol water after nucleation and
-    after coagulation too (TOMAS box.f order).
+    after coagulation too (TOMAS box.f order). molar_so4_transfer (static
+    bool) conserves moles of S in nucleation and condensation (see
+    nucleation_step and _condensation_step_core).
     """
     # 1. Adaptive nucleation sub-stepping
     fn = ricco_dunne_nucleation_rate(
@@ -416,6 +474,7 @@ def _full_step_core(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
             Nk_s, Mk_s, Gc_s, xk, temp, pres, boxvol, dt_nuc,
             org_conc, nh3_conc, fion,
             enable_organic, enable_inorganic, fn_scale,
+            molar_so4_transfer=molar_so4_transfer,
         )
         Nk_s, Mk_s = mnfix_jax(Nk_s, Mk_s, xk, icomp_nodiag)
         return (Nk_s, Mk_s, Gc_s)
@@ -437,6 +496,7 @@ def _full_step_core(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
     return _condensation_step_core(
         Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
         ezcond_fn=ezcond_fn, water_scheme=water_scheme,
+        molar_so4_transfer=molar_so4_transfer,
     )
 
 
@@ -448,6 +508,7 @@ def combined_step_ppm_jax(
     Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
     icomp_nodiag=ICOMP_NODIAG, n_coag_substeps=3,
     water_scheme=WATER_SCHEME_BISULFATE, water_every_process=False,
+    molar_so4_transfer=False,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Combined coagulation + PPM condensation step (JIT-compilable)."""
     return _combined_step_core(
@@ -455,6 +516,7 @@ def combined_step_ppm_jax(
         ezcond_fn=ezcond_ppm_jax,
         icomp_nodiag=icomp_nodiag, n_coag_substeps=n_coag_substeps,
         water_scheme=water_scheme, water_every_process=water_every_process,
+        molar_so4_transfer=molar_so4_transfer,
     )
 
 
@@ -462,6 +524,7 @@ def combined_step_tfl_jax(
     Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
     icomp_nodiag=ICOMP_NODIAG, n_coag_substeps=3,
     water_scheme=WATER_SCHEME_BISULFATE, water_every_process=False,
+    molar_so4_transfer=False,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Combined coagulation + TFL condensation step (JIT-compilable)."""
     return _combined_step_core(
@@ -469,6 +532,7 @@ def combined_step_tfl_jax(
         ezcond_fn=ezcond_tfl_jax,
         icomp_nodiag=icomp_nodiag, n_coag_substeps=n_coag_substeps,
         water_scheme=water_scheme, water_every_process=water_every_process,
+        molar_so4_transfer=molar_so4_transfer,
     )
 
 
@@ -479,6 +543,7 @@ def condensation_step_with_nucleation_jax(
     use_tfl=1.0,
     max_nucleation_frac=0.5, max_nuc_substeps=20,
     water_scheme=WATER_SCHEME_BISULFATE, water_every_process=False,
+    molar_so4_transfer=False,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Nucleation then condensation in one JIT-compilable step.
 
@@ -488,6 +553,8 @@ def condensation_step_with_nucleation_jax(
         max_nuc_substeps: Hard cap on nucleation substeps
         water_scheme: Water uptake scheme (see equilibrate_water)
         water_every_process: Also re-equilibrate water after nucleation
+        molar_so4_transfer: Static bool; conserve moles of S in nucleation
+            and condensation (see the module docstring)
     """
     # Python-level dispatch — no double compute
     ezcond_fn = ezcond_tfl_jax if float(use_tfl) > 0.5 else ezcond_ppm_jax
@@ -511,6 +578,7 @@ def condensation_step_with_nucleation_jax(
             Nk_s, Mk_s, Gc_s, xk, temp, pres, boxvol, dt_nuc,
             org_conc, nh3_conc, fion,
             enable_organic, enable_inorganic, fn_scale,
+            molar_so4_transfer=molar_so4_transfer,
         )
         Nk_s, Mk_s = mnfix_jax(Nk_s, Mk_s, xk, ICOMP_NODIAG)
         return (Nk_s, Mk_s, Gc_s)
@@ -523,6 +591,7 @@ def condensation_step_with_nucleation_jax(
     return _condensation_step_core(
         Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
         ezcond_fn=ezcond_fn, water_scheme=water_scheme,
+        molar_so4_transfer=molar_so4_transfer,
     )
 
 
@@ -530,7 +599,8 @@ condensation_step_with_nucleation_jit = jax.jit(
     condensation_step_with_nucleation_jax,
     static_argnums=(16,),  # use_tfl must be static for Python-level dispatch
     # max_nucleation_frac (17) and max_nuc_substeps (18) are captured as tracers
-    static_argnames=('use_tfl', 'water_scheme', 'water_every_process'),
+    static_argnames=('use_tfl', 'water_scheme', 'water_every_process',
+                     'molar_so4_transfer'),
 )
 
 
@@ -541,6 +611,7 @@ def full_step_jax(
     use_tfl=1.0, icomp_nodiag=ICOMP_NODIAG,
     max_nucleation_frac=0.5, max_nuc_substeps=20,
     water_scheme=WATER_SCHEME_BISULFATE, water_every_process=False,
+    molar_so4_transfer=False,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Full step: nucleation + coagulation + condensation (JIT-compilable).
 
@@ -557,6 +628,7 @@ def full_step_jax(
         max_nucleation_frac=max_nucleation_frac,
         max_nuc_substeps=max_nuc_substeps,
         water_scheme=water_scheme, water_every_process=water_every_process,
+        molar_so4_transfer=molar_so4_transfer,
     )
 
 
@@ -608,12 +680,14 @@ def _run_scan(Nk, Mk, Gc, step_fn, nsteps, dt, prod_rate, diag_mode='rich',
 # Layer 3 wrappers: backward-compatible scan-fused loops
 # =========================================================================
 
-@partial(jax.jit, static_argnums=(10,), static_argnames=('nsteps', 'water_scheme'))
+@partial(jax.jit, static_argnums=(10,), static_argnames=('nsteps', 'water_scheme',
+                          'molar_so4_transfer'))
 def run_condensation_scan(
     Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
     nsteps: int,
     prod_rate,
     water_scheme=WATER_SCHEME_BISULFATE,
+    molar_so4_transfer=False,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Run nsteps PPM condensation steps fused into a single XLA program.
 
@@ -625,6 +699,7 @@ def run_condensation_scan(
         return _condensation_step_core(
             Nk_c, Mk_c, Gc_c, xk, temp, pres, boxvol, rh, alpha, dt,
             ezcond_fn=ezcond_ppm_jax, water_scheme=water_scheme,
+            molar_so4_transfer=molar_so4_transfer,
         )
     (Nk_f, Mk_f, Gc_f), history = _run_scan(
         Nk, Mk, Gc, step_fn, nsteps, dt, prod_rate, 'rich'
@@ -632,12 +707,14 @@ def run_condensation_scan(
     return Nk_f, Mk_f, Gc_f, history
 
 
-@partial(jax.jit, static_argnums=(10,), static_argnames=('nsteps', 'water_scheme'))
+@partial(jax.jit, static_argnums=(10,), static_argnames=('nsteps', 'water_scheme',
+                          'molar_so4_transfer'))
 def run_condensation_scan_tfl(
     Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
     nsteps: int,
     prod_rate,
     water_scheme=WATER_SCHEME_BISULFATE,
+    molar_so4_transfer=False,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Run nsteps TFL condensation steps fused into a single XLA program.
 
@@ -649,6 +726,7 @@ def run_condensation_scan_tfl(
         return _condensation_step_core(
             Nk_c, Mk_c, Gc_c, xk, temp, pres, boxvol, rh, alpha, dt,
             ezcond_fn=ezcond_tfl_jax, water_scheme=water_scheme,
+            molar_so4_transfer=molar_so4_transfer,
         )
     (Nk_f, Mk_f, Gc_f), history = _run_scan(
         Nk, Mk, Gc, step_fn, nsteps, dt, prod_rate, 'rich'
@@ -657,13 +735,15 @@ def run_condensation_scan_tfl(
 
 
 @partial(jax.jit, static_argnums=(10,),
-         static_argnames=('nsteps', 'water_scheme', 'water_every_process'))
+         static_argnames=('nsteps', 'water_scheme', 'water_every_process',
+                          'molar_so4_transfer'))
 def run_combined_scan_ppm(
     Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
     nsteps: int,
     prod_rate,
     water_scheme=WATER_SCHEME_BISULFATE,
     water_every_process=False,
+    molar_so4_transfer=False,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Scan-fused Euler coagulation + PPM condensation loop."""
     def step_fn(Nk_c, Mk_c, Gc_c):
@@ -671,6 +751,7 @@ def run_combined_scan_ppm(
             Nk_c, Mk_c, Gc_c, xk, temp, pres, boxvol, rh, alpha, dt,
             ezcond_fn=ezcond_ppm_jax,
             water_scheme=water_scheme, water_every_process=water_every_process,
+            molar_so4_transfer=molar_so4_transfer,
         )
     (Nk_f, Mk_f, Gc_f), history = _run_scan(
         Nk, Mk, Gc, step_fn, nsteps, dt, prod_rate, 'light'
@@ -679,13 +760,15 @@ def run_combined_scan_ppm(
 
 
 @partial(jax.jit, static_argnums=(10,),
-         static_argnames=('nsteps', 'water_scheme', 'water_every_process'))
+         static_argnames=('nsteps', 'water_scheme', 'water_every_process',
+                          'molar_so4_transfer'))
 def run_combined_scan_tfl(
     Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
     nsteps: int,
     prod_rate,
     water_scheme=WATER_SCHEME_BISULFATE,
     water_every_process=False,
+    molar_so4_transfer=False,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Scan-fused Euler coagulation + TFL condensation loop."""
     def step_fn(Nk_c, Mk_c, Gc_c):
@@ -693,6 +776,7 @@ def run_combined_scan_tfl(
             Nk_c, Mk_c, Gc_c, xk, temp, pres, boxvol, rh, alpha, dt,
             ezcond_fn=ezcond_tfl_jax,
             water_scheme=water_scheme, water_every_process=water_every_process,
+            molar_so4_transfer=molar_so4_transfer,
         )
     (Nk_f, Mk_f, Gc_f), history = _run_scan(
         Nk, Mk, Gc, step_fn, nsteps, dt, prod_rate, 'light'
@@ -701,7 +785,8 @@ def run_combined_scan_tfl(
 
 
 @partial(jax.jit, static_argnums=(10, 18),
-         static_argnames=('nsteps', 'use_tfl', 'water_scheme', 'water_every_process'))
+         static_argnames=('nsteps', 'use_tfl', 'water_scheme',
+                          'water_every_process', 'molar_so4_transfer'))
 def run_nucleation_condensation_scan(
     Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
     nsteps: int,
@@ -712,6 +797,7 @@ def run_nucleation_condensation_scan(
     max_nucleation_frac=0.5, max_nuc_substeps=20,
     water_scheme=WATER_SCHEME_BISULFATE,
     water_every_process=False,
+    molar_so4_transfer=False,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Scan-fused nucleation + condensation loop with adaptive sub-stepping."""
     ezcond_fn = ezcond_tfl_jax if float(use_tfl) > 0.5 else ezcond_ppm_jax
@@ -736,6 +822,7 @@ def run_nucleation_condensation_scan(
                 Nk_s, Mk_s, Gc_s, xk, temp, pres, boxvol, dt_nuc,
                 org_conc, nh3_conc, fion,
                 enable_organic, enable_inorganic, fn_scale,
+                molar_so4_transfer=molar_so4_transfer,
             )
             Nk_s, Mk_s = mnfix_jax(Nk_s, Mk_s, xk, ICOMP_NODIAG)
             return (Nk_s, Mk_s, Gc_s)
@@ -748,6 +835,7 @@ def run_nucleation_condensation_scan(
         return _condensation_step_core(
             Nk_c, Mk_c, Gc_c, xk, temp, pres, boxvol, rh, alpha, dt,
             ezcond_fn=ezcond_fn, water_scheme=water_scheme,
+            molar_so4_transfer=molar_so4_transfer,
         )
 
     (Nk_f, Mk_f, Gc_f), history = _run_scan(
@@ -757,7 +845,8 @@ def run_nucleation_condensation_scan(
 
 
 @partial(jax.jit, static_argnums=(10, 18),
-         static_argnames=('nsteps', 'use_tfl', 'water_scheme', 'water_every_process'))
+         static_argnames=('nsteps', 'use_tfl', 'water_scheme',
+                          'water_every_process', 'molar_so4_transfer'))
 def run_full_scan(
     Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
     nsteps: int,
@@ -768,6 +857,7 @@ def run_full_scan(
     max_nucleation_frac=0.5, max_nuc_substeps=20,
     water_scheme=WATER_SCHEME_BISULFATE,
     water_every_process=False,
+    molar_so4_transfer=False,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Scan-fused nucleation + coagulation + condensation loop with adaptive sub-stepping."""
     ezcond_fn = ezcond_tfl_jax if float(use_tfl) > 0.5 else ezcond_ppm_jax
@@ -782,6 +872,7 @@ def run_full_scan(
             max_nucleation_frac=max_nucleation_frac,
             max_nuc_substeps=max_nuc_substeps,
             water_scheme=water_scheme, water_every_process=water_every_process,
+            molar_so4_transfer=molar_so4_transfer,
         )
 
     (Nk_f, Mk_f, Gc_f), history = _run_scan(
@@ -798,7 +889,7 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
               n_coag_substeps=10,
               max_nucleation_frac=0.5, max_nuc_substeps=20,
               water_scheme=WATER_SCHEME_BISULFATE, water_every_process=False,
-              jit=True):
+              molar_so4_transfer=False, jit=True):
     """Build a step function from an ordered list of process names.
 
     The returned function has signature:
@@ -827,6 +918,15 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
         water_every_process: If True, re-equilibrate aerosol water after
             nucleation, coagulation and dilution as well as condensation
             (TOMAS box.f order). Default False: only condensation sets water.
+        molar_so4_transfer: Sulfur bookkeeping at every gas->particle
+            sulfate transfer (nucleation, incl. the gas-limited clamp, and
+            condensation, incl. the tiny-sink dump). Mk[:, SRTSO4] is SO4
+            (MW 96), Gc[SRTSO4] is H2SO4 (MW 98). False (default): kg-for-kg
+            as in the Fortran, bit-identical to before the option existed.
+            True: moles of S are conserved -- nucleation debits the gas
+            dM_SO4 * 98/96 for the same particle gain and dN; condensation
+            adds the condensed gas mass * 96/98 to the particles for the
+            same gas debit.
         jit: If True (default), wrap the returned function in ``jax.jit``.
             Callers no longer need to wrap manually. Double-JIT is a no-op.
 
@@ -834,6 +934,14 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
         A callable step function (JIT-compiled by default).
 
     For JIT stability, always pass the same set of kwargs across calls.
+
+    Step kwargs that scale physics (all may be traced scalars):
+        fn_scale: multiplier on the nucleation rate (default 1.0).
+        nuc_org_mass_frac: fraction of nucleated mass placed in SRTORGLAST
+            rather than SRTSO4 (default 0.1); only the SRTSO4 part is taken
+            from gas H2SO4.
+        coag_kernel_scale: multiplier on the whole coagulation kernel
+            (default 1.0).
 
     Example::
 
@@ -924,6 +1032,9 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                             hio3=kwargs.get('hio3', 0.0),
                             enable_masks=enable_masks,
                             fn_scale=kwargs.get('fn_scale', 1.0),
+                            nuc_org_mass_frac=kwargs.get(
+                                'nuc_org_mass_frac', NUC_ORG_MASS_FRAC_DEFAULT),
+                            molar_so4_transfer=molar_so4_transfer,
                         )
                         Nk_s, Mk_s = mnfix_jax(Nk_s, Mk_s, xk, ICOMP_NODIAG)
                         return (Nk_s, Mk_s, Gc_s)
@@ -938,6 +1049,9 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                             kwargs.get('enable_organic', 1.0),
                             kwargs.get('enable_inorganic', 1.0),
                             kwargs.get('fn_scale', 1.0),
+                            nuc_org_mass_frac=kwargs.get(
+                                'nuc_org_mass_frac', NUC_ORG_MASS_FRAC_DEFAULT),
+                            molar_so4_transfer=molar_so4_transfer,
                         )
                         Nk_s, Mk_s = mnfix_jax(Nk_s, Mk_s, xk, ICOMP_NODIAG)
                         return (Nk_s, Mk_s, Gc_s)
@@ -953,6 +1067,7 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                     dt=dt,
                     icomp_nodiag=kwargs.get('icomp_nodiag', ICOMP_NODIAG),
                     n_substeps=n_coag_substeps,
+                    coag_kernel_scale=kwargs.get('coag_kernel_scale', 1.0),
                 )
                 if water_every_process:
                     Mk = equilibrate_water(Mk, rh, temp, water_scheme)
@@ -960,6 +1075,7 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                 Nk, Mk, Gc = _condensation_step_core(
                     Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
                     ezcond_fn=ezcond_fn, water_scheme=water_scheme,
+                    molar_so4_transfer=molar_so4_transfer,
                 )
             elif process == 'dilution':
                 kdil = kwargs.get('kdil', 0.0)

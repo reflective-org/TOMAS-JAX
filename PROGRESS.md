@@ -4,6 +4,47 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-10-29 (Thu) — SAI coupling knobs: `nuc_org_mass_frac`, `molar_so4_transfer`; Marianna dilution merged
+
+**Branch**: `feat/dev-sai-coupling` (from `dev` dd928b2). Prepares dev to be the TOMAS of the
+SAI coupled plume model (`coupled/tomas_bridge.py` in the plume-model repo: stratospheric,
+H2SO4-only, multi-week). The PI decided that in the coupled runs particle-phase sulfate is SO4
+with moles of S conserved.
+
+- Merge of `feat/marianna-dilution` (01fb6b8): the Marianna SAI dilution study in
+  `experimental_case/` and `docs/marianna_dilution.md`, plus `coag_kernel_scale` (39535ea;
+  `make_step` step kwarg → `coag_euler_step`, multiplies the whole kernel, may be traced). The
+  branch's duplicate Tabazadeh scheme, its string `water_scheme` and its `water_fn` hook are
+  dropped for dev's numeric `WATER_SCHEME_*` and `equilibrate_water` (same wt% to 1.2e-15 on a
+  190–255 K × 0.5–90 % RH grid); `run_marianna_dilution.py` uses `WATER_SCHEME_H2SO4`.
+- `nuc_org_mass_frac` (d760c19): the organic share of the nucleated cluster mass, hard-coded 0.1
+  before; `NUC_ORG_MASS_FRAC_DEFAULT` = 0.1. `nucleation_step`, `zhao2024_nucleation_step` and
+  the `make_step` step kwargs take it (traced, works under `jit`/`vmap`); only the (1 − f) SO4
+  part is taken from gas H2SO4. The coupled model uses 0.0. `_full_step_core`,
+  `condensation_step_with_nucleation_jax` and the scans keep 0.1.
+- `molar_so4_transfer` (2234464): static bool, default False (kg-for-kg, Fortran parity). True
+  conserves moles of S at every gas→particle sulfate transfer (`Mk[:, SRTSO4]` is SO4, MW 96;
+  `Gc[SRTSO4]` is H2SO4, MW 98): nucleation keeps the particle gain and dN and debits the gas
+  dM_SO4 × 98/96 (gas-limited clamp: all Gc consumed, Gc × 96/98 added, dN from the cluster SO4
+  mass (1 − f) × _MNUC); condensation, the numpy reference paths and the tiny-sink dump add the
+  condensed mass × 96/98 for the same gas debit. Accepted by `make_step`, both nucleation steps,
+  `condensation_step`, every step/scan function in `solvers/condensation.py` (static argname)
+  and `AerosolStepConfig.molar_so4_transfer`. The two nucleation steps now share
+  `_apply_nucleation`.
+- Defaults are bit-identical to dev: 113 arrays across `make_step`, the nucleation steps,
+  `condensation_step`, the scans and `coag_euler_step`, and 234 arrays of 3-step `make_step` runs
+  at 40 and 80 bins (one-off scripts on `git archive` copies of dd928b2 and 9c45acf).
+- Tests: `tests/test_molar_so4_transfer.py` (88: S moles to 1e-12 on the 80-bin grid, False does
+  not conserve them, False == omitted bitwise, 14 step/scan entry points incl.
+  `condensation_step_tfl_jit`) and `tests/test_sai_coupling_knobs.py` (20).
+- Docs: CLAUDE.md (nucleation and `molar_so4_transfer` bullets), `docs/aaar/aerosol_step.md`,
+  `MARIANNA_DILUTION_NOTES.md` and `docs/marianna_dilution.md` updated to the merged API.
+- Open (pre-existing on dev, not changed here): TFL condensation gains +13–17 % S per step at 80
+  bins once nucleated particles are present (PPM conserves to 1e-10); coagulation loses ~3e-10 S
+  per 600 s step after a 210 K burst. Questions for review: make `molar_so4_transfer` the
+  default; the default clamp-path cluster mass ((1 + f) × _MNUC); thread both knobs into
+  `_full_step_core` and the scans.
+
 ## 2026-10-23 (Fri) — Urban air: VOC selector benzene / toluene / m-xylene (MCM v3.3.1), stacked on the full-day Urban (B1)
 
 **Branch**: `urban-toluene` (from `urban-full-day`, PR #30); PR #31. Shantanu (2026-10-22, verbatim):
@@ -1099,6 +1140,138 @@ are bit-identical to before.
 ### Next steps
 - After merge into dev: bump the tomas-api `tomas-jax` submodule.
 - Optional: closed-form destination index for geometric grids, to close the speed gap.
+
+---
+
+## 2026-06-17 (Wed) — Injected-sulfur (background-subtracted) figures + SO₂ cutoff + low-Lx redefinition
+
+**Branch**: `feat/marianna-dilution`
+
+### Summary
+Resolved the puzzle where the **sulfur-normalized surface-area comparison showed
+high dilution (D5) as spuriously highest**. Root cause: the mixed per-S figures
+divided an area numerator that floors at the entrained background aerosol by a
+total-S denominator that crashes toward background SO₂, so at strong dilution the
+ratio just measured the background atmosphere, not the injected plume.
+
+**Fix — count only SO₂-derived ("injected") sulfur, by background subtraction:**
+- New comparison figures `compare_d{N,A,V}_injPerS[_linear].{png,pdf}`:
+  numerator = per-bin distribution with the **constant entrained background
+  subtracted** (`max(total_Nk − bg_Nk, 0)`); denominator = **injected sulfur**
+  `(SO₂+H₂SO₄)_init × inert_tracer` (validated equal to the full injected budget
+  to ~3e‑9). Background mixing into the plume is negligible (measured 2.2e‑3),
+  so the subtraction is clean.
+- Implemented in `compare_matrix.py` (`_injected_sulfur`, `_bg_Nk_cm3`,
+  `_snap_distribution` `_injPerS` branch; non-positive bins masked as NaN).
+
+**Plume cutoff** (`run_marianna_dilution.py`): each run now **stops when
+SO₂ ≤ 1.1×background** (perturbation < 10 % of background — plume merged in),
+capped at 2 weeks. NPZ truncated at cutoff; figures auto-prune snapshots past it.
+Cutoffs: D5 ≈ 64–66 h, D1 ≈ 114–118 h, D3 ≈ 173–179 h; D2 & D4 hit the 2-wk cap.
+
+**Low-Lx (D1) redefined**: 5 km scale (was 1.5 km) → late coefficient `5.33e‑8`
+so the plume reaches background within the window (t_max ≈ 5.2 d). Snapshot
+columns changed to **12/24/48/96/168/240 h**.
+
+### Investigated & rejected
+A per-component **sulfate tag** (track injected sulfate in a spare organic column)
+was prototyped and then reverted: although mass-exact, it introduced a **~10 %
+drift in N_tot** from the per-column PPM positivity clamp (systematic,
+mass-conserving, accumulates over ~84k steps). Background subtraction on untagged
+runs avoids this entirely and matches the prior production runs. Kernels
+(`nucleation.py`, `solvers/condensation.py`) are back to pristine.
+
+### Files
+- `experimental_case/run_marianna_dilution.py` — SO₂ cutoff + truncation; D1 = low-Lx 5 km; SNAPSHOT_HOURS.
+- `experimental_case/compare_matrix.py` — injected (background-subtracted) per-S figures + NaN masking.
+- `experimental_case/plot_dilution_regimes.py` — new D1–D5 overlay (V/V₀ and inert tracer).
+
+### Validation
+- Injected-S identity vs `(SO₂+H₂SO₄)_init × tracer`: worst rel err 3.1e‑9.
+- Plume↔background mixing: 2.2e‑3 (negligible). D5 injected area/S now finite
+  (4e‑22…1.8e‑21 band across all regimes), no blow-up.
+- 30/30 runs (15 cells × {40,80} bin) completed, 0 failures.
+
+---
+
+## 2026-06-16 (Tue) — Marianna run matrix (3×5) + RF diagnostics + 80-bin
+
+**Branch**: `feat/marianna-dilution`
+
+### Summary
+Extended the Marianna case to a **3 baselines × 5 dilution regimes** matrix
+(15 runs), at both 40- and 80-bin resolution, plus radiative-forcing diagnostics.
+
+### Changes
+- `run_marianna_dilution.py`: piecewise-segment dilution (`DILUTIONS` D1–D5,
+  incl. D4's 4-piece burst), `BASELINES` (B1/B2/B3), `make_matrix(nbins)` →
+  15 `ScenarioConfig`s (ids `B1-D2` …). nbins-aware grid (`make_grid_for`;
+  80-bin uses √2 `make_grid_80bin`) and output paths (`<id>` / `<id>_80bin`).
+  Runner CLI `--scenario/--baseline/--dilution/--all/--nbins/--no-plot`.
+- `rf_efficiency.py`: choice-(c) intensive RF — MSE, per-gram forcing [W/g,
+  all-sky ≈ Pinatubo], r_eff vs solar-broadband r_opt (~224 nm), global-mean
+  RF contribution, and sulfur-normalized efficacy (forcing per total S).
+- `compare_matrix.py`: four 3×6 comparison figures (dN, dA, dV, and dN÷total-S
+  dilution-corrected), per resolution.
+
+### Results
+- All 15 runs converge per regime: `tracer_final` depends only on dilution
+  (D1 1.6e-5 … D5 8e-80); N_final orders D1 > D4 > D2 > D3 ≳ D5(→bg).
+- B1-D2 reproduces the prior single scenario exactly.
+- D4≈D2 cumulative dilution at 7 d (brief's claim), diverges after.
+- Forcing efficiency peaks ~4.6 d; particles stay undersized (r_eff/r_opt<1);
+  only ~26 % of S converts to aerosol by day 10 (low OH + dilution).
+- **Resolution**: dry mass converged to 0.1 % (40 vs 80 bin); N_total differs
+  ~1–16 % (40-bin over-counts the coagulation tail), 80-bin is the reference.
+
+### Known issues / next steps
+- Condensation uses PPM (`cond_method='ppm_jit'`) for all runs; TFL (`tfl_jit`)
+  not run — could add as a PPM-vs-TFL cross-check if needed.
+- Comparison figures available in both log-y and linear-y (shared x-axis).
+
+---
+
+## 2026-06-15 (Mon) — Marianna SAI dilution case (10-day box model)
+
+**Time**: afternoon PST
+**Branch**: `feat/marianna-dilution` (based on `dev`)
+
+### Summary
+Added a self-contained experimental case simulating a concentrated
+stratospheric SO2 plume diluting under an **explicit analytic `V(t)/V0`**
+parameterization, with ion-induced nucleation, over 10 days.
+
+### Changes
+- `experimental_case/background_aerosol_distribution.py`: ported from
+  `feat/experimental-sai-dilution` (seaborn removed). Added the `redcircles`
+  distribution (digitized Fig. S4 obs 220–230 ppbv, cm⁻³ STP),
+  `stp_to_ambient_factor()`, a `to_ambient` option in `get_initial_state()`,
+  and `plot_redcircles_crosscheck()` (STP vs ambient).
+- `experimental_case/check_ion_nucleation.py`: pre-check that the Dunne 2016
+  ion mechanism fires at T=210 K, NH3=0, fion=30 (Jbi>0, total↑). Passes.
+- `experimental_case/run_marianna_dilution.py`: 10-day box model.
+  ICs T=210 K, P=55 hPa, [H2O]=4 ppm (rh=0.0172), OH=5e5, SO2=2.9e9 ppt,
+  H2SO4=1e5, fion=30, red-circles ambient aerosol. Analytic `V_ratio(t)`
+  (`t^0.8` clamped ≥1, then `1585·exp{8.89e-9 (t−1e4)^1.5}`), per-step
+  `kdil=ln(V(t+dt)/V(t))/dt`, entrains background aerosol + SO2=0.01 ppb,
+  H2SO4=0. Inert tracer validated (= V0/V(t)). Multi-res stepping → NPZ.
+- `experimental_case/plot_marianna_dilution.py`: dilution trend, gas
+  timeseries, banana, dN/dA/dV size dists (12/24/48/72/168/240 h, log+linear),
+  N_total.
+- `docs/marianna_dilution.md`, `experimental_case/MARIANNA_DILUTION_NOTES.md`:
+  full spec + run notes.
+
+### Results (240 h)
+N_total peaks ~4e6/cm³ (d1) → 2.4e4/cm³ (d10); SO2 5.5e15 → 6.9e9; H2SO4 gas
+peaks ~1.4e7 (d4); aerosol grows nucleation mode (~2 nm) → ~150–200 nm. Wall
+time ~22 s.
+
+### Known issues / next steps
+- SO2 = 2.9e9 ppt represents only 1.76 t in V0=3e6 m³ (not mass-equivalent to
+  the prior 10 t plume; 1.65e10 ppt would match). Documented as a future-run
+  alternative, along with: start H2SO4 at 0, background SO2 = 0.
+- Red-circles `_DATA3` is an eyeball digitization — pending user confirmation
+  against `redcircles_crosscheck.png`.
 
 ---
 
