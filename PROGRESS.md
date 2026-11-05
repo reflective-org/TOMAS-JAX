@@ -4,6 +4,17 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-11-03 (Tue) 19:00 PST — MNFIX speed-up
+
+- **`core/mnfix_jax.py`:** phases 1–2 vectorised over all bins. Phase 3 stays a sequential `while_loop` in Fortran order (an upward shift feeds later bins), but runs only from the first out-of-range bin to `hi` (the last out-of-range bin, extended by each upward-shift target) and writes only rows k and kk.
+- **Results:** unbatched, bit-identical to the original port, kept as `tests/reference/mnfix_sequential.py`. Under `vmap`/`jacfwd` they agree to about 1e-13 (FMA fusion differs; the original was not batch-invariant either).
+  - Up and down shift arithmetic is kept as separate expressions: XLA CPU FMA contraction changes merged expressions by ulps, which cancellation amplifies.
+- **Speed:** 70 → 1.6 µs per call with all bins in range, 70 → 24 µs worst case (40 bins). A stratospheric plume step is 6.6× faster on 40 bins and 2.5× on 80.
+- **Tests:** `tests/test_mnfix.py` adds comparisons with the reference port (no-op, 12-bin jumps, cascades, grid ends, batched). Full suite: 725 pass; the 37 failures are pre-existing (35 missing `tuvx_photolysis`, 2 stale NIT fingerprints whose values match the original MNFIX).
+- **Docs:** `CLAUDE.md` (MNFIX rule).
+
+---
+
 ## 2026-10-29 (Thu) 21:30 PDT — Phase 2: time step resolved at high SO₂
 
 - **Problem.** dt = 60 s is not converged at ≥ 1 ppmv SO₂.
