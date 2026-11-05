@@ -4,7 +4,7 @@ Aerosol water is a diagnostic species (`Mk[:, SRTH2O]`). It is not moved by
 coagulation or condensation; it is recomputed from the dry composition and RH.
 Wet mass and density set the particle sizes used by coagulation
 (`calc_particle_properties`), the condensation sink (`calc_condensation_sink`)
-and condensational growth (PPM/TFL wet/dry ratio), so water uptake affects all
+and condensational growth (PPM/top-hat wet/dry ratio), so water uptake affects all
 three.
 
 ## Schemes

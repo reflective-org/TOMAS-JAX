@@ -349,7 +349,7 @@ Nucleated clusters: d ≈ 1.7 nm, placed in bin 0, 90% SO₄ + 10% organic. Adap
 ### Condensation
 
 - H₂SO₄ condensation onto existing aerosol. Gas depletion: Gc(t) = Gc(0) × exp(−CS×t)
-- **TFL** (Tzivion-Feingold-Levin): semi-Lagrangian moving-center with top-hat reconstruction
+- **Top-hat (TFL**, Tzivion-Feingold-Levin): semi-Lagrangian moving-center with top-hat reconstruction
 - **PPM** (Piecewise Parabolic Method): Eulerian advection with analytical mass-weighted flux
 - Condensation sink computed from Fuchs-Sutugin corrected diffusion
 

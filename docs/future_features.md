@@ -193,7 +193,7 @@ The Zhao 2024 11-mechanism NPF scheme (mechanisms 6–7) uses pure-biogenic nucl
 
 **What:** One place that explains TOMAS-JAX and the web app to users and collaborators:
 - Model overview and the order processes run in each step
-- Numerical schemes and why they were chosen: TFL coagulation at 40 bins vs the linear sub-bin scheme (Simmel et al. 2002) at 80/160 bins; PPM vs TFL condensation
+- Numerical schemes and why they were chosen: TFL coagulation at 40 bins vs the linear sub-bin scheme (Simmel et al. 2002) at 80/160 bins; PPM vs top-hat (TFL) condensation
 - Water uptake: the ammonium bisulfate and Tabazadeh schemes, the Auto rule, and water after every process
 - Validation: the constant-kernel exact solution (Scott 1968), Brownian convergence at 40/80/160/320 bins, Fortran comparisons, with their figures
 - The interactive coagulation explainer (how added mass is distributed between bins)

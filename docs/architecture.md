@@ -44,7 +44,7 @@ tomas_jax/
 │   ├── density.py                 ─── Mixed-salt aerosol density
 │   ├── gas_properties.py          ─── Gas diffusivity, MFP, Fuchs-Sutugin
 │   ├── condensation_sink.py       ─── CS [s^-1] and per-bin sinkfrac
-│   ├── condensation.py            ─── TFL algorithm: dmdt_int + tmcond (sequential)
+│   ├── condensation.py            ─── Top-hat (TFL) algorithm: dmdt_int + tmcond (sequential)
 │   ├── condensation_ppm.py        ─── PPM advection (3rd-order, JIT via fori_loop)
 │   ├── condensation_tfl_jax.py    ─── TFL JIT: tmcond_jax + ezcond_tfl_jax
 │   ├── ezcond.py                  ─── TFL ezcond driver (numpy, sequential)
@@ -243,11 +243,11 @@ This ensures smooth, gradual redistribution instead of emptying entire bins.
 
 ---
 
-## 5. TFL Condensation — Sequential and JIT
+## 5. Top-hat (TFL) Condensation — Sequential and JIT
 
-### 5.1 TFL Algorithm (shared physics)
+### 5.1 Top-hat (TFL) Algorithm (shared physics)
 
-The TFL (Tzivion-Feingold-Levin) algorithm is a semi-Lagrangian moving-center scheme:
+The top-hat condensation scheme, TFL (Tzivion-Feingold-Levin) in the TOMAS code and literature, is a semi-Lagrangian moving-center scheme. The docs call it "top-hat" after its uniform within-bin profile, as opposed to PPM's parabolic one; code names keep `tfl`. TFL coagulation (`multicoag.f`) is a different scheme with no top-hat.
 
 1. **Top-hat construction** — Each bin's mass distribution is approximated as a top-hat (uniform) with width computed from shape factor and bin boundaries
 2. **Analytic translation** — `dmdt_int()` grows/shrinks the top-hat edges using the Stevens et al. (1996) growth equation

@@ -9,7 +9,7 @@ This document catalogs all physics and chemistry not yet implemented in TOMAS-JA
 | Process | Status | Notes |
 |---------|--------|-------|
 | Brownian coagulation (Fuchs correction) | Done | Two JIT solvers (Tsit5 adaptive, forward Euler) |
-| H₂SO₄ condensation (TFL + PPM) | Done | JIT-compiled, machine-precision conservation |
+| H₂SO₄ condensation (top-hat (TFL) + PPM) | Done | JIT-compiled, machine-precision conservation |
 | Nucleation (Riccobono 2014 + Dunne 2016) | Done | Adaptive sub-stepping, JIT |
 | Nucleation (Zhao 2024, 11 mechanisms) | Done | HNO₃, organic, amine, iodine pathways |
 | NH₃/NH₄⁺ equilibrium | Done | Stoichiometric (eznh3eqm.f port) |

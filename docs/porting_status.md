@@ -64,7 +64,7 @@
 1. **SO2 Chemistry** — Sun et al. 2022 Troe formalism, H2O enhancement, diurnal OH
 2. **Nucleation** — 3 schemes: Riccobono 2014, Dunne 2016, Zhao 2024 (11 mechanisms)
 3. **Coagulation** — Brownian (Fuchs correction), 2 solvers (Tsit5 adaptive, forward Euler)
-4. **Condensation** — 4 methods: TFL numpy, TFL JIT, PPM numpy, PPM JIT
+4. **Condensation** — 4 methods: top-hat (TFL) numpy and JIT, PPM numpy and JIT
 5. **Dilution** — First-order exponential relaxation toward background
 6. **Equilibria** — NH3 stoichiometric + water hygroscopic (ISORROPIA fits)
 

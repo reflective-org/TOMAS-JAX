@@ -145,7 +145,7 @@ Each timestep:
 1. H2SO4 production (constant source)
 2. **Nucleation** — creates particles in bin 0, depletes gas
 3. Coagulation (JIT, diffrax)
-4. Condensation (TFL/PPM JIT, includes MNFIX)
+4. Condensation (top-hat (TFL) or PPM, JIT, includes MNFIX)
 
 ### Gas Depletion
 

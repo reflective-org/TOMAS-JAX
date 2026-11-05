@@ -5,7 +5,7 @@
 The 24-hour benchmark evaluates TOMAS-JAX against the original Fortran TOMAS implementation across 50 diverse atmospheric scenarios. It compares three implementations:
 
 - **Fortran** — Original TOMAS Fortran (multicoag + ezcond)
-- **JAX-TFL** — JAX port using the sequential TFL condensation (`method='tfl'`)
+- **JAX-TFL** — JAX port using the sequential top-hat (TFL) condensation (`method='tfl'`)
 - **JAX-TFL_JIT** — Pure-JAX JIT-compiled TFL (`method='tfl_jit'`, matches Fortran output)
 - **JAX-PPM_JIT** — Pure-JAX JIT-compiled PPM with analytical mass-weighted flux (`method='ppm_jit'`)
 
@@ -274,7 +274,7 @@ A: Delete the NPZ files: `rm benchmarks/results/24h/*.npz`
 | Pi constant | 3.141592654 | 3.141592653589793 |
 | Boltzmann | 1.38e-23 | 1.380649e-23 |
 | MNFIX | Fortran MNFIX (sequential loops) | Fortran-faithful partial-transfer (fori_loop) |
-| Condensation | ezcond (TFL) | TFL, TFL_JIT (Fortran-matching), PPM, PPM_JIT |
+| Condensation | ezcond (top-hat, TFL) | TFL, TFL_JIT (Fortran-matching), PPM, PPM_JIT |
 | Water equilibrium | ezwatereqm.f | water_equilibrium.py (piecewise polynomial port) |
 | NH3 equilibrium | eznh3eqm.f | nh3_equilibrium.py (stoichiometric port) |
 

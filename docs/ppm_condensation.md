@@ -2,14 +2,14 @@
 
 ## 1. Introduction
 
-The Piecewise Parabolic Method (PPM) is an alternative to the TFL (Tzivion-Feingold-Levin) semi-Lagrangian scheme for condensational growth in TOMAS. Key advantages:
+The Piecewise Parabolic Method (PPM) is an alternative to the top-hat (TFL, Tzivion-Feingold-Levin) semi-Lagrangian scheme for condensational growth in TOMAS. Key advantages:
 
-- **3rd-order accuracy** (vs 1st-order top-hat in TFL)
+- **3rd-order accuracy** (vs 1st-order top-hat)
 - **JIT-compilable** via `jax.lax.fori_loop` (no Python for-loops)
 - **Less numerical diffusion** — preserves sharper peaks and narrower distributions
 - **CFL-based substepping** — automatically adaptive, no mass-fraction heuristic
 
-| Property | TFL (current) | PPM (new) |
+| Property | Top-hat (TFL) | PPM (new) |
 |----------|--------------|-----------|
 | Scheme | Semi-Lagrangian moving-center | Eulerian flux-form advection |
 | Coordinate | Mass space (linear) | Log-mass space (xi = ln m) |
