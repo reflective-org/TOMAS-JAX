@@ -32,8 +32,8 @@ import jax.numpy as jnp
 
 from tomas_jax.core.config import make_grid, make_grid_80bin, XK0
 from tomas_jax.physics import nucleation as nuc
-from .common import (STRAT, BOXVOL, OH_CONC, DT, lognormal_state, make_runner,
-                     ppbv_to_molec)
+from .common import (STRAT, BOXVOL, OH_CONC, DT, NUC_PARAMS, NUC_PARAMS_S2,
+                     lognormal_state, make_runner, ppbv_to_molec)
 from .sabre_bins import (NMASS_CUTOFFS_M, SABRE_NUMBER_REL_ERR,
                          rebin_to_sabre, nmass_cumulative)
 
@@ -59,7 +59,7 @@ def h2so4_cal_factor(temp):
     return float(np.exp((1.0 - w) * np.log(1.5) + w * np.log(2.0)))
 
 
-def directions(temp, params=nuc.DEFAULT_NUCLEATION_PARAMS):
+def directions(temp, params=NUC_PARAMS):
     """Published uncertainty directions as {name: delta-theta vector}.
 
     J x 2.5 (measured nucleation rate): d u_x = ln 2.5, since dlnJ_x/du_x = 1.
@@ -163,8 +163,8 @@ def run_cell_set(nbins, temp, so2_ppbv, hours, outdir, oh_conc,
 
     # Coefficients as float64 JAX arrays so jacfwd treats every field as an
     # input (Python floats would be closed over as constants).
-    P = jax.tree.map(jnp.float64, nuc.DEFAULT_NUCLEATION_PARAMS)
-    S2 = jax.tree.map(jnp.float64, nuc.DUNNE_TABLE_S2_PARAMS)
+    P = jax.tree.map(jnp.float64, NUC_PARAMS)
+    S2 = jax.tree.map(jnp.float64, NUC_PARAMS_S2)
     dirs = directions(temp)
     D = jnp.array(np.stack(list(dirs.values())))     # (ndir, nfields)
 

@@ -4,6 +4,17 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-11-05 (Thu) 07:00 PST — Stratospheric model setup: cluster density, pure sulfate clusters, sparse-bin density
+
+- **New doc `docs/stratosphere_setup.md`:** the stratospheric settings that differ from the library defaults (kept for Fortran parity), with reasons and measured effects.
+- **Settings** (`sensitivities/dunne_nuc/common.py`; used by `phase0_warmup.py`, `phase1_sabre_check.py`, `run_map.py`):
+  - `NUC_PARAMS` / `NUC_PARAMS_S2`: cluster density `rho_nuc` = 1770 kg/m³, the grid density, so the 1.7 nm cluster mass equals xk[0] (with the library's 1350, MNFIX resets bin 0's number: new particles born at 1.58× the cluster mass, 64% as many); `org_frac` = 0, pure sulfate (the library's 10% organic comes from TRACER_SOM-TOMAS without a source and is added with no organic vapour).
+  - `SPARSE_DENSITY` = 1770 (was 1700, H₂SO₄ solution).
+  - Unchanged: Tabazadeh water, SABRE sizing at 1836 kg/m³, constant OH, no NH₃ or organics.
+- **Library defaults unchanged.**
+
+---
+
 ## 2026-11-03 (Tue) 19:00 PST — MNFIX speed-up
 
 - **`core/mnfix_jax.py`:** phases 1–2 vectorised over all bins. Phase 3 stays a sequential `while_loop` in Fortran order (an upward shift feeds later bins), but runs only from the first out-of-range bin to `hi` (the last out-of-range bin, extended by each upward-shift target) and writes only rows k and kk.

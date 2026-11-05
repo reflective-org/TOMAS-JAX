@@ -21,6 +21,8 @@ import jax.numpy as jnp
 import tomas_jax.core.config  # noqa: F401  (enables float64)
 from tomas_jax.physics import nucleation as nuc
 
+from .common import NUC_PARAMS
+
 OUTDIR = os.path.join(os.path.dirname(__file__), 'results', 'phase0')
 
 # Stratospheric reference point (~20 km)
@@ -221,7 +223,7 @@ def ln_mechanisms(p, h2so4=H2SO4_0B, nh3=1e7, org=1e5):
 
 
 def part_0b():
-    P = nuc.DEFAULT_NUCLEATION_PARAMS
+    P = NUC_PARAMS
     Pj = as_jax(P)
     print("=" * 100)
     print("0b: jacfwd of ln Jbn w.r.t. NucleationParams (analytic + FD check)")
@@ -326,7 +328,7 @@ def part_0c():
     so2 = ppbv_to_molec(SO2_0C_PPBV, STRAT['temp'], STRAT['pres'])
     Nk0, Mk0, Gc0 = lognormal_state(xk, so2=so2)
     run = make_runner(xk, nsteps=60)
-    P = nuc.DEFAULT_NUCLEATION_PARAMS
+    P = NUC_PARAMS
     Pj = as_jax(P)
 
     def outputs(p):

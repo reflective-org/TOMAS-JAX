@@ -19,7 +19,8 @@ import jax.numpy as jnp
 
 from tomas_jax.core.config import make_grid, make_grid_80bin, XK0
 from tomas_jax.physics import nucleation as nuc
-from .common import STRAT, BOXVOL, lognormal_state, make_runner, ppbv_to_molec
+from .common import (STRAT, BOXVOL, NUC_PARAMS, lognormal_state, make_runner,
+                     ppbv_to_molec)
 from .sabre_bins import (SABRE_EDGES_M, SABRE_MID_M, NMASS_CUTOFFS_M,
                          SABRE_NUMBER_REL_ERR, rebin_to_sabre, nmass_cumulative)
 
@@ -39,7 +40,7 @@ def run_grid(nbins):
     so2 = ppbv_to_molec(SO2_PPBV, STRAT['temp'], STRAT['pres'])
     Nk0, Mk0, Gc0 = lognormal_state(xk, so2=so2)
     run = make_runner(xk, nsteps=HOURS * 60)
-    P = jax.tree.map(jnp.float64, nuc.DEFAULT_NUCLEATION_PARAMS)
+    P = jax.tree.map(jnp.float64, NUC_PARAMS)
 
     def outputs(p):
         Nk, Mk, _, diag = run(p, Nk0, Mk0, Gc0)
@@ -68,7 +69,7 @@ def run_grid(nbins):
           f"steps with n_sub>1: {np.sum(n_sub > 1)}, clamp: {np.sum(clamp)}")
     os.makedirs(OUTDIR, exist_ok=True)
     np.savez(npz_path(nbins), fields=np.array(fields),
-             params=np.array(nuc.DEFAULT_NUCLEATION_PARAMS, dtype=float),
+             params=np.array(NUC_PARAMS, dtype=float),
              dndlog=np.array(dndlog), nmass=np.array(nmass),
              jac_bins=jac_bins, jac_nmass=jac_nmass, n_sub=n_sub, clamp=clamp,
              h2so4=np.array(diag['h2so4']), J=np.array(diag['J']))
