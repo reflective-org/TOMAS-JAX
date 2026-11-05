@@ -35,6 +35,13 @@ SABRE_EDGES_M = 3e-9 * 10.0 ** (np.arange(64) / SABRE_BINS_PER_DECADE)
 SABRE_MID_M = np.sqrt(SABRE_EDGES_M[:-1] * SABRE_EDGES_M[1:])
 NMASS_CUTOFFS_M = np.array([3.0, 8.0, 12.0, 27.0, 53.0]) * 1e-9
 SABRE_NUMBER_REL_ERR = 0.08
+
+# Nucleation-mode number N(3-10.65 nm): the first 11 SABRE bins (10.65 nm is
+# the SABRE edge nearest 10 nm). Post-processed from dN/dlogDp, so it needs no
+# rerun; add_nuc_mode_channel appends it after the NMASS channels.
+NUC_MODE_EDGES_M = (SABRE_EDGES_M[0], SABRE_EDGES_M[11])
+NUC_MODE_CH = len(NMASS_CUTOFFS_M)
+NUC_MODE_LABEL = '3-10.65 nm'
 RHO_WATER = 1000.0  # kg/m3
 
 
@@ -102,3 +109,38 @@ def nmass_cumulative(Nk, Mk, xk, boxvol, cutoffs=NMASS_CUTOFFS_M, water_frac=0.0
     c = jnp.log(jnp.asarray(cutoffs))[None, :]
     above = jnp.clip((hi - c) / (hi - lo), 0.0, 1.0)
     return (Nk / boxvol) @ above
+
+
+def n_range(dndlog, lo, hi, edges=SABRE_EDGES_M, axis=-1):
+    """N(lo < Dp < hi) [cm-3] from dN/dlogDp on the SABRE bins (numpy).
+
+    lo and hi must be bin edges. Linear, so applying it to a saved Jacobian
+    of dN/dlogDp gives the Jacobian of N. ``axis`` is the SABRE-bin axis.
+    """
+    e = np.asarray(edges)
+    i0, i1 = (int(np.argmin(np.abs(np.log(e / x)))) for x in (lo, hi))
+    if not (np.isclose(e[i0], lo, rtol=1e-9) and np.isclose(e[i1], hi, rtol=1e-9)
+            and i1 > i0):
+        raise ValueError(f"n_range: {lo:.4g}-{hi:.4g} m are not SABRE bin edges")
+    w = np.zeros(len(e) - 1)
+    w[i0:i1] = np.diff(np.log10(e))[i0:i1]
+    return np.tensordot(np.asarray(dndlog), w, axes=([axis], [0]))
+
+
+def add_nuc_mode_channel(d):
+    """Copy of a saved result with N(3-10.65 nm) appended to the NMASS arrays.
+
+    The new channel is index NUC_MODE_CH of nmass, nmass_s2, jac_nmass and
+    jac_dir_nmass, whichever are present (dndlog: bins last; Jacobians:
+    bins second to last).
+    """
+    d = dict(d)
+    for s in ('', '_s2'):
+        if f'dndlog{s}' in d:
+            n = n_range(d[f'dndlog{s}'], *NUC_MODE_EDGES_M, axis=-1)
+            d[f'nmass{s}'] = np.concatenate([d[f'nmass{s}'], n[..., None]], -1)
+    for j in ('jac', 'jac_dir'):
+        if f'{j}_dndlog' in d:
+            n = n_range(d[f'{j}_dndlog'], *NUC_MODE_EDGES_M, axis=-2)
+            d[f'{j}_nmass'] = np.concatenate([d[f'{j}_nmass'], n[..., None, :]], -2)
+    return d

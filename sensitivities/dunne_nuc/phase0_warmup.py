@@ -160,15 +160,30 @@ def plot_0a():
         raise FileNotFoundError(f"Missing NPZ: {fname}. Run --part 0a first.")
     d = np.load(fname)
 
-    fig, ax = plt.subplots(figsize=(6, 4))
+    temps = d['temps']
+    curves = [('binary neutral (Jbn)', d['dT_bn'], analytic_dlnJbn_dT(temps), 'C0'),
+              ('binary ion (Jbi)', d['dT_bi'], analytic_dlnJbi_dT(temps), 'C1')]
+
+    fig, (ax, axe) = plt.subplots(2, 1, figsize=(6, 6), sharex=True,
+                                  gridspec_kw={'height_ratios': [3, 1.3]})
     # dlnJ/dT < 0 (colder -> faster); plot its magnitude. Independent of H2SO4.
-    ax.plot(d['temps'], -d['dT_bn'], label='binary neutral (Jbn)')
-    ax.plot(d['temps'], -d['dT_bi'], label='binary ion (Jbi)')
-    ax.set_xlabel('Temperature [K]')
+    for label, ad, ref, c in curves:
+        ax.plot(temps, -ad, color=c, label=f'{label}, AD')
+        ax.plot(temps[::5], -ref[::5], 'o', color=c, mfc='none', ms=5,
+                label=f'{label}, analytic')
+        rel = np.abs(ad - ref) / np.abs(ref)
+        # Exact agreement gives 0, which a log axis cannot show
+        axe.semilogy(temps, np.maximum(rel, 1e-17), '.', color=c, ms=3, label=label)
     ax.set_ylabel(r'$-\mathrm{d}\ln J/\mathrm{d}T$  [K$^{-1}$]')
-    ax.set_title('Dunne 2016 relative T-sensitivity')
+    ax.set_title('Dunne 2016 relative T-sensitivity: AD vs analytic')
     ax.grid(True, which='both', alpha=0.3)
-    ax.legend()
+    ax.legend(fontsize=8)
+    axe.axhline(np.finfo(float).eps, color='k', lw=0.8, ls='--')
+    axe.text(temps[-1], np.finfo(float).eps, ' machine eps', va='bottom', ha='right', fontsize=7)
+    axe.set_ylim(1e-17, 1e-13)
+    axe.set_xlabel('Temperature [K]')
+    axe.set_ylabel('|AD − analytic| / |analytic|', fontsize=8)
+    axe.grid(True, which='both', alpha=0.3)
     fig.tight_layout()
     out = os.path.join(OUTDIR, 'part0a_dlnJ_dT.png')
     fig.savefig(out, dpi=150)

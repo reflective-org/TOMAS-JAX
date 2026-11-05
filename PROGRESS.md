@@ -15,6 +15,106 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-11-05 (Thu) 06:30 PST — Nucleation sensitivity: pure sulfate rerun complete; 80-bin Phase 2; prescribed-J results
+
+- **All phases rerun with `org_frac = 0`** (Phases 0–4, Phase 2 at 40 and 80 bins, prescribed J at 217 K / 40 bins), in three parallel chains (~4 h). Results in `results/`; org_frac 0.1 kept in `results/orgfrac0.1/`. Docs: `docs/nucleation_sensitivity.md`, `docs/prescribed_j.md`.
+- **The change matched the Phase 3 prediction:** plume N(>3 nm) +11.5% (40 bins) and +15% (80) against +12–15% predicted; bg_ttl N(>12 nm) −4/−5% against −5%. Phase 2 N(>3 nm) −13% to +19% (≥ 1 ppmv), N(>12 nm) within 6%. Elasticities mostly within a few %; plume N(>12 nm) sensitivity +35%.
+- **80-bin Phase 2 map:** N(>3 nm) falls to 0.27–0.61× the 40-bin value at 10–100 ppmv (the plume's grid dependence again); N(>12 nm) within 10% except at 1 ppbv (0.24–0.76×). Sensitivities larger on 80 bins at ≥ 1 ppmv.
+- **Found: the PPM tangent instability in the Phase 2 map.** 80 bins, 240 K, 100 ppmv: the tangent grows ×1e7 per hour after 12 h (to 1e38) once N(3–10.65) drops below ~100 cm⁻³ with H₂SO₄ high; 223 K, 100 ppmv starts to grow in the last 2 h. Both cells marked invalid. Forward results unaffected.
+- **Prescribed J (217 K):** d ln N(>3 nm)/d ln J at J_ref is 0.26–0.60 at 1–100 ppbv and 1.1–2.0 at ≥ 1 ppmv (0 above the H₂SO₄ ceiling); higher than the scheme's J_all elasticity because a prescribed J has no H₂SO₄ feedback. AD and FD agree up to 1 ppmv; at 10–100 ppmv the 2% FD is erratic, so neither is confirmed there.
+- **Fix:** `phase4_linearity.py` crashed in its summary after all runs finished (Phase 3 loads now carry the N(3–10.65) channel, Phase 4 NPZs did not). It now appends the channel on load (`load4`) and reports N(3–10.65) in its table and figure; summary and figures regenerated with `--plot-only`.
+- **Next:** an FD check of the high-SO₂ Phase 2 cells (and a guard that fails on tangent blow-up); a larger FD step or a stable PPM tangent at ≥ 10 ppmv; prescribed J at other temperatures and 80 bins; HiLa scenario.
+
+---
+
+## 2026-11-05 (Thu) 02:00 PST — Prescribed-J analysis; PPM derivative instability
+
+- **New:** `common.make_prescribed_j_runner` (nucleation at a constant prescribed J; same cluster, gas clamp, sub-steps and MNFIX as `nucleation_step`) and `prescribed_j.py` (d ln N / d ln J over J = J_ref × 10^(±1) × the 8 Phase 2 SO₂ levels; J_ref = Phase 2 24 h mean Dunne J; AD tangent plus central FD at ±2% in every cell). Doc: `docs/prescribed_j.md`.
+- **Checks:** with one sub-step the runner matches `make_runner` to round-off (with and without clamp).
+- **Found: PPM condensation's tangent is unstable at low J and high H₂SO₄** (×22 per hour at 100 ppbv, J = 0.01, 217 K; AD diverges from FD after ~6 h; TFL gives NaN). A first absolute-J grid (1e-4–1e6) hit it; hence the window around J_ref (kept in `results/prescribed_j/absolute_J_grid/`). Inside the window AD and FD agree within a few % at 12–24 h, apart from early N(>12 nm) and switch-affected cells.
+- **H₂SO₄ ceiling on J:** J_max ≈ k₁[OH][SO₂]/25 (about 43 cm⁻³ s⁻¹ per ppbv at 217 K, 55 hPa); the window's top exceeds it at ≥ 1 ppmv, where N stops responding to J.
+- **Running:** 217 K, 40 bins. 80-bin Phase 2 map still running (190, 200 K done).
+- **Configuration change: pure sulfate clusters** (`NUC_PARAMS`/`NUC_PARAMS_S2` `org_frac = 0`). The library's 10% organic (TRACER_SOM-TOMAS `nucleation.f`, uncited) is added with no organic vapour; these runs have none. Phase 3 Jacobian estimate: plume N(>3 nm) +12–15%, bg_ttl N(>12 nm) −5%. The 80-bin Phase 2 run (190–217 K done) and the prescribed-J run were stopped; org_frac 0.1 results moved to `results/orgfrac0.1/`. Sequential rerun started: Phases 0, 1, 2 (40 bins), prescribed J (217 K), 3, 4, 2 (80 bins), about 8–9 h.
+- **Next:** results into the docs; FD spot-check of Phase 2 cells for the PPM instability; other temperatures and 80 bins for prescribed J.
+
+---
+
+## 2026-11-04 (Wed) 23:30 PST — Nucleation sensitivity: N(3–10.65 nm), elasticity to J, HiLa plan
+
+- **Phase 1** rerun (same numbers); its NPZ also saves native-bin dN/dlogDp and dry-diameter edges.
+- **N(3–10.65 nm)** (nucleation mode, first 11 SABRE bins): `sabre_bins.n_range` / `add_nuc_mode_channel` append it to the NMASS arrays and Jacobians when results are loaded; no rerun. Used in Phases 2 and 3. Caveat: where N(3–10.65) ≪ 1 cm⁻³ (0.01 ppbv, bg_midlat) the relative changes are large but not measurable.
+- **Elasticity to J, d ln N / d ln J_all** (`run_map.dlnY_dlnJall`; one tangent): Phase 2 from the J_all direction, Phase 3 from the summed u_x columns; no rerun. N(3–10.65 nm): ~1 at warm high SO₂ and in the plume (N ∝ J), 0.07–0.14 at 1 ppbv, 0.1–0.3 when cold, 0.04–0.08 in bg_ttl; N(>12 nm) ≤ 0.13 everywhere.
+- **80-bin Phase 2 map** (`--resolved-dt --grids 80`, ~2.1 h) started; log `results/phase2_dt/run_80bin.log`.
+- **Results reorganised:** `phase2_dt_hox` and `phase2_smoke_dt_hox` moved to `results/hox/`.
+- **HiLa plan** (13 km, 60°S, 1–100 ppmv SO₂): `docs/nucleation_sensitivity.md` "Planned: HiLa". The Phase 2 map does not represent it: ~4.7× the H₂SO₄ production per ppmv at 160 hPa, and constant OH ignores titration (OH lifetime ~0.2 s at 1 ppmv). Adjustments: 160 hPa, 205/215/227 K, H₂O 5 ppmv, ~30 ion pairs, OH titration or OH-limited H₂SO₄ production, dt below 0.5 s at 100 ppmv, plume dilution.
+- **Next:** 80-bin Phase 2 results into the doc; HiLa scenario.
+
+---
+
+## 2026-11-04 (Wed) 19:40 PST — Nucleation sensitivity: cluster density matched to the grid, all phases rerun
+
+- **Problem.** The nucleated cluster (d = 1.7 nm, `rho_nuc` = 1350) is 0.76 of the bin-0 lower edge `XK0` (1.7 nm at 1770 kg/m³). MNFIX phase 2 keeps the mass and sets the number to M/(1.2·xk[0]): the new particles were in effect born at 1.58× the cluster mass, and there were about 64% as many as J·V·dt. This is a grid clamp, not coagulation. It made N scale with the cluster mass (elasticity +2.8 to r_nuc, +0.94 to ρ_nuc in Phase 0). The Fortran has the same mismatch, worse (standard grid Mo = 1.5625e-23 kg: 0.22).
+- **Change** (study only; library defaults unchanged for Fortran parity):
+  - `sensitivities/dunne_nuc/common.py`: `NUC_PARAMS` and `NUC_PARAMS_S2` (`rho_nuc` = 1770); `SPARSE_DENSITY` = `DENS_INIT` (1770, was 1700).
+  - `phase0_warmup.py`, `phase1_sabre_check.py`, `run_map.py`, `phase3_scenarios.py`, `profile_step.py` use them.
+  - Old results moved to `results/rho1350/`.
+- **Results so far:**
+  - Phase 0 (1 h, 40 bins): N 271 → 408 cm⁻³; new particles per cluster 0.655 → 0.996; r_nuc/ρ_nuc elasticities +2.83/+0.94 → −0.009/−0.003; Dunne elasticities change by about 1%. All checks pass.
+  - Phase 1 (6 h): N(>3 nm) 2.74e4 (40 bins) and 2.56e4 (80); the 40/80 gap falls from 14% to 7%.
+- **Phases 2–4 rerun** (Phase 3 2.1 h, Phase 4 44 min, Phase 2 resolved-dt map 56 min; the 60 s Phase 2 maps are not rerun):
+  - **Plume:** N(>3 nm) +52% (40 bins) and +64% (80); the 40/80 gap ×2.8 → ×2.6. N(>12 nm) sensitivities about 1.8× larger, N(>3 nm) about 10% smaller.
+  - **AD/FD gap closed in the plume's growth channels.** H₂SO₄ cal, N(>8 nm), 48 h: AD 77.6, FD 77.7 (was 38.8 against 49.6); r_nuc: AD 44.7, FD 44.4 (was 12.4 against 5.0). The FD steps had been switching the MNFIX reset. Remaining plume failures: 6 h and N(>27–53 nm), FD/AD 0.96–1.19. bg_ttl unchanged (FD/AD median 1.12).
+  - **The cluster mass still matters where particles grow:** plume N(>3 nm) elasticity to r_nuc +6.1 (40) and +8.4 (80), larger than at 1350; ρ_nuc a third of that. bg_ttl N within about 4% (the reset rarely fired there).
+  - **Phase 2:** N(>3 nm) 0.76–1.52× the 1350 map at ≥ 10 ppbv; δ ln N(>3 nm) along the H₂SO₄ calibration 1.1–1.75 at 208–223 K and 10–100 ppmv.
+  - Phase 4: same pattern; counts and NMASS changes move by up to about 30%.
+- **Known issue:** the cluster sits exactly on the bin-0 edge. FD from both sides agrees with AD in Phase 0 and in the plume's r_nuc check; low-growth cases could still switch the reset on.
+- **Docs:** `docs/nucleation_sensitivity.md` (configuration note, new "Cluster density matched to the grid" section, main findings and all phase results updated to 1770); `CLAUDE.md`.
+- **Next:** find why the cluster mass drives plume N(>3 nm) (growth time to 3 nm or the bin-0 position); bg_ttl's AD/FD gap; the 40/80-bin difference.
+
+---
+
+## 2026-11-03 (Tue) 19:10 PST — Nucleation sensitivity Phases 3 and 4
+
+- **OH.** A reduced HOx scheme (OH titrated by SO₂, checked against SANDBOX) was built and then reverted at the user's request. It is saved on branch `hox-oh` (3c801f5). Phases 3–4 use constant OH = 1e6.
+- **Scenarios** (`sensitivities/dunne_nuc/scenarios.py`), all 48 h:
+  - `bg_midlat` (217 K, 55 hPa, 20 pptv SO₂);
+  - `bg_ttl` (195 K, 100 hPa, 50 pptv);
+  - `sai_plume` (10 ppmv, dilution kdil = ln2/86400 toward `bg_midlat`).
+  - `make_runner` gains optional dilution and an `so2` diagnostic; with no dilution it is bit-identical to before.
+- **Phase 3** (`phase3_scenarios.py`): dt ladder, full 25-coefficient `jacfwd` on 40/80 bins, regression FD check.
+  - The plume runs at dt = 0.5 s on 40 bins only (user decision). There N(>3 nm) is about 10% from converged in dt and ×2.8 from the 80-bin value; N(>12 nm) and the sensitivities are converged.
+  - **Two-point FD replaced by a 9-point regression.** About 1% run-to-run jitter in the growth channels defeated two-point FD.
+  - **AD and FD disagree systematically in the growth channels.** FD exceeds AD by about 20–35% in N(>8–12 nm) for bg_ttl and the plume. This is attributed to AD blind spots (bin selection, sub-step count), so AD is a lower bound there.
+- **Phase 4** (`phase4_linearity.py`): 16 forward runs per scenario/grid along the published directions at α = ±1, ±2.
+  - Most detectable SABRE-bin changes are nonlinear.
+  - Plume N(>12 nm) is strongly convex in H₂SO₄/joint directions.
+  - N(>53 nm) stays within SABRE ±8%.
+- **MNFIX speed-up:** see the separate entry below. `profile_step.py` added (per-step profile).
+- **Docs:** `docs/nucleation_sensitivity.md` (Phase 3/4 method and results, profile, MNFIX timings); `CLAUDE.md`.
+- **Known issues:**
+  - Grid resolution (40 vs 80 bins) is the largest structural uncertainty, and its cause is untested: the coagulation scheme, bin-0 width, or PPM.
+  - The FD/AD growth-channel gap has not been separated by cause.
+- **Next:**
+  - Diagnose the 40/80-bin difference.
+  - Isolate the AD/FD gap, e.g. by freezing MNFIX bin selection in the FD runs.
+  - Scale `n_coag_substeps` with dt.
+
+**Update 2026-11-04 01:30 PST — plume on 80 bins.**
+- `scenarios.py`: `sai_plume` grids are now (40, 80). It keeps the 40-bin dt (0.5 s), coag solver and FD check.
+- The 80-bin Jacobian took 4033 s. Phase 4's 16 runs took 6446 s and are nonlinear in 7055 of 12 045 detectable SABRE bins.
+- The coefficient ranking matches 40 bins. N(>3 nm) is about 20% more sensitive on 80 bins; N(>12 nm) is about 2.7× less.
+- See `docs/nucleation_sensitivity.md`, "Phase 3 and 4 results".
+
+**Update 2026-11-04 02:00 PST — multi-core forward batches.**
+- `common.vmap_over_devices` splits a vmapped batch over 6 virtual CPU devices (`pmap(vmap)`). The device count is set at the top of `phase3_scenarios.py`.
+- Used for the FD batch and the Phase 4 runs. Measured on the plume: FD 2746 → 861 s, Phase 4 919 → 214 s (40 bins) and 6446 → 2388 s (80 bins).
+  - Every rerun (background and plume, FD and Phase 4) was bit-identical to the single-device results.
+- `docs/nucleation_sensitivity.md` was rewritten to be shorter (764 → about 330 lines), with a main-findings section and one wall-time table.
+- `jacfwd` is left on one device. It already uses several threads; splitting its tangents gains only 1.26×.
+- See `docs/nucleation_sensitivity.md`, "Running on several cores".
+
+---
+
 ## 2026-11-03 (Tue) 19:00 PST — MNFIX speed-up
 
 - **`core/mnfix_jax.py`:** phases 1–2 vectorised over all bins. Phase 3 stays a sequential `while_loop` in Fortran order (an upward shift feeds later bins), but runs only from the first out-of-range bin to `hi` (the last out-of-range bin, extended by each upward-shift target) and writes only rows k and kk.

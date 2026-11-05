@@ -33,9 +33,11 @@ import jax.numpy as jnp
 from tomas_jax.core.config import make_grid, make_grid_80bin, XK0
 from tomas_jax.physics import nucleation as nuc
 from .common import (STRAT, BOXVOL, OH_CONC, DT, NUC_PARAMS, NUC_PARAMS_S2,
+                     FION, BG_N, BG_GMD, BG_GSD, SPARSE_DENSITY,
                      lognormal_state, make_runner, ppbv_to_molec)
 from .sabre_bins import (NMASS_CUTOFFS_M, SABRE_NUMBER_REL_ERR,
-                         rebin_to_sabre, nmass_cumulative)
+                         rebin_to_sabre, nmass_cumulative,
+                         NUC_MODE_CH, NUC_MODE_LABEL, add_nuc_mode_channel)
 
 RESULTS = os.path.join(os.path.dirname(__file__), 'results')
 GRIDS = {40: lambda: make_grid(40, XK0, 2.0), 80: make_grid_80bin}
@@ -105,17 +107,18 @@ def npz_path(outdir, nbins, temp):
 
 
 def build_sim(xk, temp, hours, dunne_form='double_exp', oh_conc=OH_CONC,
-              coag_solver='euler_fixed', dt=DT):
+              coag_solver='euler_fixed', dt=DT, runner_kw=None):
     """sim(params, Nk0, Mk0, Gc0) -> (hourly outputs, hourly diagnostics).
 
     params enters only through nucleation, so sim is a function of the fit
-    coefficients that jax.jacfwd can differentiate.
+    coefficients that jax.jacfwd can differentiate. runner_kw (e.g. from
+    scenarios.runner_kwargs: cond, dilution) overrides the map defaults.
     """
-    cond = dict(STRAT, temp=temp)
+    kw = dict(cond=dict(STRAT, temp=temp), oh_conc=oh_conc,
+              dunne_form=dunne_form, coag_solver=coag_solver)
+    kw.update(runner_kw or {})
     # One hour = 3600/dt steps (SO2 chem -> nucl -> coag -> cond), as a scan.
-    run_hour = make_runner(xk, nsteps=round(3600.0 / dt), dt=dt, cond=cond,
-                           oh_conc=oh_conc,
-                           dunne_form=dunne_form, coag_solver=coag_solver)
+    run_hour = make_runner(xk, nsteps=round(3600.0 / dt), dt=dt, **kw)
 
     def sim(params, Nk0, Mk0, Gc0):
         # Outer scan over hours: carry the aerosol and gas state forward and
@@ -129,6 +132,7 @@ def build_sim(xk, temp, hours, dunne_form='double_exp', oh_conc=OH_CONC,
             aux = dict(N_total=jnp.sum(Nk) / BOXVOL,
                        h2so4_mean=jnp.mean(d['h2so4']),
                        h2so4_max=jnp.max(d['h2so4']),
+                       so2_mean=jnp.mean(d['so2']),
                        J_mean=jnp.mean(d['J']),
                        J_bn_mean=jnp.mean(d['J_bn']),
                        J_bi_mean=jnp.mean(d['J_bi']),
@@ -269,7 +273,7 @@ def load(outdir, nbins, temps):
         fname = npz_path(outdir, nbins, T)
         if not os.path.exists(fname):
             raise FileNotFoundError(f"Missing NPZ: {fname}. Run simulations first.")
-        data.append(np.load(fname))
+        data.append(add_nuc_mode_channel(np.load(fname)))
     return data
 
 
@@ -285,6 +289,36 @@ def delta_ln(d, key, name, temp, floor):
     return np.where(y > floor, dy / np.where(y > 0, y, 1.0), np.nan)
 
 
+def conditions_note(d):
+    """Figure footnote: the conditions every cell of the map assumes."""
+    dts = ', '.join(f'{dt:g}' for dt in sorted(set(d['dt_s'].tolist()), reverse=True))
+    return (f"Conditions: {STRAT['pres'] / 100:.0f} hPa (~20 km), RH {100 * STRAT['rh']:.0f}%, "
+            f"constant OH {float(d['oh_conc']):.0e} cm$^{{-3}}$ (not titrated by SO$_2$), "
+            f"{FION:g} ion pairs cm$^{{-3}}$ s$^{{-1}}$, no NH$_3$ or nucleating organics, no dilution; "
+            f"initial sulfate {BG_N:g} cm$^{{-3}}$, GMD {BG_GMD * 1e9:.0f} nm, GSD {BG_GSD:g}; "
+            f"cluster and sparse-bin density {NUC_PARAMS.rho_nuc:.0f}/{SPARSE_DENSITY:.0f} kg m$^{{-3}}$; "
+            f"dt {dts} s by SO$_2$; {str(d['coag_solver'])} coagulation.\n"
+            f"SO$_2$ is a mixing ratio at {STRAT['pres'] / 100:.0f} hPa. At higher pressure the same "
+            f"ppbv makes more H$_2$SO$_4$ (about 4.7x at 13 km, 160 hPa), and at $\\geq$1 ppmv "
+            f"real OH would be titrated, so H$_2$SO$_4$ production here is an upper bound.")
+
+
+def dlnY_dlnJall(d, key='nmass', floor=1e-3):
+    """d ln Y / d ln J_all: the four Dunne rates scaled by one common factor.
+
+    d ln J_x = d u_x, so this is the J_all direction per unit ln J (Phase 2)
+    or the sum of the u_x columns of the full Jacobian (Phase 3). NaN where
+    Y < floor.
+    """
+    y = d[key]
+    if f'jac_dir_{key}' in d:
+        k = list(d['dir_names']).index('J_all x2.5')
+        dy = d[f'jac_dir_{key}'][..., k] / np.log(2.5)
+    else:
+        dy = d[f'jac_{key}'][..., [FIELDS.index(f'u_{m}') for m in MECHS]].sum(-1)
+    return np.where(y > floor, dy / np.where(y > 0, y, 1.0), np.nan)
+
+
 def plot(outdir, nbins, temps):
     import matplotlib
     matplotlib.use('Agg')
@@ -297,7 +331,7 @@ def plot(outdir, nbins, temps):
     xt = np.arange(len(so2))
     yt = np.arange(len(temps))
     xlab = [f'{c:g}' for c in so2]
-    nm = [f'>{c * 1e9:.0f} nm' for c in NMASS_CUTOFFS_M]
+    nm = [f'>{c * 1e9:.0f} nm' for c in NMASS_CUTOFFS_M] + [NUC_MODE_LABEL]
     det = np.log(1.0 + SABRE_NUMBER_REL_ERR)
 
     def frame(ax, title):
@@ -312,6 +346,8 @@ def plot(outdir, nbins, temps):
     stack = lambda f: np.array([f(d) for d in data])
     panels = [
         ('N(>3 nm) [cm$^{-3}$]', stack(lambda d: d['nmass'][:, -1, 0]), LogNorm()),
+        (f'N({NUC_MODE_LABEL}) [cm$^{{-3}}$]',
+         stack(lambda d: np.maximum(d['nmass'][:, -1, NUC_MODE_CH], 1e-3)), LogNorm()),
         ('N(>12 nm) [cm$^{-3}$]', stack(lambda d: d['nmass'][:, -1, 2]), LogNorm()),
         ('N(>53 nm) [cm$^{-3}$]', stack(lambda d: d['nmass'][:, -1, 4]), LogNorm()),
         ('mean H$_2$SO$_4$ [cm$^{-3}$]', stack(lambda d: d['aux_h2so4_mean'].mean(1)), LogNorm()),
@@ -321,7 +357,8 @@ def plot(outdir, nbins, temps):
         ('steps sub-stepped / clamped', stack(lambda d: np.maximum(
             d['aux_frac_sub'].mean(1), d['aux_frac_clamp'].mean(1))), None),
     ]
-    fig, axes = plt.subplots(2, 3, figsize=(13, 7))
+    fig, axes = plt.subplots(2, 4, figsize=(17, 7))
+    axes.flat[-1].set_visible(False)
     for ax, (title, z, norm) in zip(axes.flat, panels):
         im = ax.pcolormesh(xt, yt, z, norm=norm, shading='nearest',
                            cmap='viridis')
@@ -333,7 +370,8 @@ def plot(outdir, nbins, temps):
         ax.set_ylabel('T [K]')
     fig.suptitle(f'Phase 2 baseline after {hours} h, {nbins} bins '
                  f'(dashed: below CLOUD 208 K)', fontsize=10)
-    fig.tight_layout()
+    fig.text(0.01, 0.005, conditions_note(data[0]), fontsize=7, va='bottom', wrap=True)
+    fig.tight_layout(rect=(0, 0.06, 1, 1))
     out = os.path.join(outdir, f'map_{nbins}bin_baseline.png')
     fig.savefig(out, dpi=150)
     plt.close(fig)
@@ -341,15 +379,18 @@ def plot(outdir, nbins, temps):
 
     # --- Fig B: sensitivity along published directions + Table S2 --------
     # Rows: uncertainty directions (linear, from the Jacobian) plus the Table S2
-    # forward run (exact ln ratio). Columns: NMASS N(>3, >12, >53 nm) at the
+    # forward run (exact ln ratio). Columns: N(>3, 3-10.65, >12, >53 nm) at the
     # final hour. Dots mark changes SABRE's 8% number uncertainty could detect.
-    rows = list(directions(temps[0]).keys()) + ['Table S2 fit']
-    chans = [0, 2, 4]
-    fig, axes = plt.subplots(len(rows), len(chans), figsize=(11, 2.3 * len(rows)))
+    # Last row: elasticity to a common scaling of all Dunne rates (1 = N ∝ J)
+    rows = list(directions(temps[0]).keys()) + ['Table S2 fit', 'J_all elasticity']
+    chans = [0, NUC_MODE_CH, 2, 4]
+    fig, axes = plt.subplots(len(rows), len(chans), figsize=(14.5, 2.3 * len(rows)))
     for r, name in enumerate(rows):
         z = np.full((len(chans), len(temps), len(so2)), np.nan)
         for i, (d, T) in enumerate(zip(data, temps)):
-            if name == 'Table S2 fit':
+            if name == 'J_all elasticity':
+                v = dlnY_dlnJall(d)[:, -1]
+            elif name == 'Table S2 fit':
                 y, y2 = d['nmass'][:, -1], d['nmass_s2'][:, -1]
                 v = np.where((y > 1e-3) & (y2 > 1e-3),
                              np.log(np.maximum(y2, 1e-300) / np.maximum(y, 1e-300)),
@@ -359,6 +400,12 @@ def plot(outdir, nbins, temps):
             z[:, i, :] = v[:, chans].T
         for c, ch in enumerate(chans):
             ax = axes[r, c]
+            if name == 'J_all elasticity':
+                im = ax.pcolormesh(xt, yt, z[c], shading='nearest', cmap='viridis',
+                                   vmin=0.0, vmax=max(1.2, np.nanmax(z)))
+                fig.colorbar(im, ax=ax, shrink=0.8)
+                frame(ax, f'd ln N({nm[ch]}) / d ln J$_{{all}}$')
+                continue
             vmax = max(np.nanmax(np.abs(z)), 2 * det) if np.isfinite(z).any() else 1.0
             im = ax.pcolormesh(xt, yt, z[c], shading='nearest', cmap='RdBu_r',
                                norm=TwoSlopeNorm(0.0, -vmax, vmax))
@@ -371,7 +418,8 @@ def plot(outdir, nbins, temps):
     fig.suptitle(f'Phase 2: response after {hours} h, {nbins} bins. Linear '
                  f'(AD) except Table S2 (forward run). Dots: |change| > SABRE '
                  f'±{100 * SABRE_NUMBER_REL_ERR:.0f}%', fontsize=10)
-    fig.tight_layout()
+    fig.text(0.01, 0.003, conditions_note(data[0]), fontsize=7, va='bottom', wrap=True)
+    fig.tight_layout(rect=(0, 0.035, 1, 1))
     out = os.path.join(outdir, f'map_{nbins}bin_sensitivity.png')
     fig.savefig(out, dpi=150)
     plt.close(fig)

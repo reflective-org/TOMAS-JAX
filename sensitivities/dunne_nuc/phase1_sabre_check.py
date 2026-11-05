@@ -22,7 +22,8 @@ from tomas_jax.physics import nucleation as nuc
 from .common import (STRAT, BOXVOL, NUC_PARAMS, lognormal_state, make_runner,
                      ppbv_to_molec)
 from .sabre_bins import (SABRE_EDGES_M, SABRE_MID_M, NMASS_CUTOFFS_M,
-                         SABRE_NUMBER_REL_ERR, rebin_to_sabre, nmass_cumulative)
+                         SABRE_NUMBER_REL_ERR, rebin_to_sabre, nmass_cumulative,
+                         model_bin_diameters)
 
 OUTDIR = os.path.join(os.path.dirname(__file__), 'results', 'phase1')
 GRIDS = {40: lambda: make_grid(40, XK0, 2.0), 80: make_grid_80bin}
@@ -45,10 +46,10 @@ def run_grid(nbins):
     def outputs(p):
         Nk, Mk, _, diag = run(p, Nk0, Mk0, Gc0)
         return (rebin_to_sabre(Nk, Mk, xk, BOXVOL),
-                nmass_cumulative(Nk, Mk, xk, BOXVOL), diag)
+                nmass_cumulative(Nk, Mk, xk, BOXVOL), (diag, Nk, Mk))
 
     t0 = time.time()
-    dndlog, nmass, diag = jax.block_until_ready(jax.jit(outputs)(P))
+    dndlog, nmass, (diag, Nk, Mk) = jax.block_until_ready(jax.jit(outputs)(P))
     t_fwd = time.time() - t0
     t0 = time.time()
     J_bins, J_nmass = jax.block_until_ready(
@@ -62,6 +63,10 @@ def run_grid(nbins):
         if not np.all(np.isfinite(arr)):
             raise RuntimeError(f"{nbins}-bin: non-finite Jacobian ({name})")
 
+    # Native model bins on the same dry-diameter edges the SABRE rebinning uses
+    d_lo, d_hi = (np.array(d) for d in model_bin_diameters(Mk, xk))
+    native_dndlog = np.array(Nk) / BOXVOL / np.log10(d_hi / d_lo)
+
     n_sub = np.array(diag['n_sub'])
     clamp = np.array(diag['clamp'])
     print(f"  {nbins}-bin: forward {t_fwd:.1f} s, jacfwd {t_jac:.1f} s "
@@ -72,6 +77,7 @@ def run_grid(nbins):
              params=np.array(NUC_PARAMS, dtype=float),
              dndlog=np.array(dndlog), nmass=np.array(nmass),
              jac_bins=jac_bins, jac_nmass=jac_nmass, n_sub=n_sub, clamp=clamp,
+             native_dndlog=native_dndlog, native_d_lo=d_lo, native_d_hi=d_hi,
              h2so4=np.array(diag['h2so4']), J=np.array(diag['J']))
 
 
@@ -91,16 +97,23 @@ def plot():
                              sharex=True)
     dmid_nm = SABRE_MID_M * 1e9
     ax = axes[0]
-    for nbins, ls, mk in ((40, '--', 's'), (80, '-', 'o')):
+    for nbins, ls, mk, c in ((40, '--', 's', 'C0'), (80, '-', 'o', 'C1')):
         d = data[nbins]
-        ax.step(dmid_nm, d['dndlog'], where='mid', ls=ls, label=f'{nbins}-bin model')
-        ax.plot(NMASS_CUTOFFS_M * 1e9, d['nmass'], mk, ms=5, mfc='none',
+        if 'native_dndlog' not in d:
+            raise KeyError(f"{npz_path(nbins)} has no native_dndlog. "
+                           "Rerun without --plot-only.")
+        ax.stairs(d['native_dndlog'], np.append(d['native_d_lo'], d['native_d_hi'][-1]) * 1e9,
+                  color=c, lw=4, alpha=0.3, label=f'{nbins}-bin model, native bins')
+        ax.step(dmid_nm, d['dndlog'], where='mid', ls=ls, color=c,
+                label=f'{nbins}-bin model, SABRE bins')
+        ax.plot(NMASS_CUTOFFS_M * 1e9, d['nmass'], mk, ms=5, mfc='none', color=c,
                 label=f'N(>Dc) NMASS, {nbins}-bin')
     ax.set_xscale('log'); ax.set_yscale('log')
     ax.set_ylim(1e-3, None)
     ax.set_ylabel('dN/dlogDp [cm$^{-3}$]\n(o: cumulative N)')
+    ax.axvline(SABRE_EDGES_M[0] * 1e9, color='k', lw=0.6, ls=':', label='SABRE lower edge')
     ax.set_title(f'{HOURS} h at {STRAT["temp"]:.0f} K, SO$_2$ {SO2_PPBV} ppbv, '
-                 'on SABRE bins (dry)')
+                 'native and SABRE bins (dry)')
     ax.legend(fontsize=7)
 
     fields = list(data[80]['fields'])
@@ -117,7 +130,8 @@ def plot():
         ax.set_ylabel(f'd ln(dN/dlogDp)\n/ d {f}')
         ax.legend(fontsize=7)
     axes[-1].set_xlabel('Dry diameter [nm]')
-    axes[-1].set_xlim(SABRE_EDGES_M[0] * 1e9, 2e3)
+    # Start below SABRE's 3 nm edge so the native grid's 1.7-3 nm bins show
+    axes[-1].set_xlim(1.5, 2e3)
     fig.tight_layout()
     out = os.path.join(OUTDIR, 'sabre_jacobian.png')
     fig.savefig(out, dpi=150)

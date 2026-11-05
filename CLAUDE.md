@@ -122,13 +122,20 @@ benchmarks/
                                 PyCHAM install recipe and the list of model differences per case
 
 sensitivities/dunne_nuc/
-  common.py                   — Stratospheric conditions, NUC_PARAMS/SPARSE_DENSITY (1770, the grid density), lognormal init, differentiable scan runner with n_sub/clamp diagnostics
+  common.py                   — Stratospheric conditions, NUC_PARAMS/SPARSE_DENSITY (1770, the grid density), lognormal init, differentiable scan runner with n_sub/clamp diagnostics,
+                                make_prescribed_j_runner (nucleation at a prescribed J, scheme bypassed),
+                                vmap_over_devices (forward batches split over 6 virtual CPU devices, set in phase3_scenarios.py;
+                                jacfwd stays on one device, it already uses several threads)
   phase0_warmup.py            — Phase 0: grad/jacfwd checks vs analytic + FD (rate level, then 1 h full model)
   sabre_bins.py               — SABRE (Lyu et al. 2026) dry dN/dlogDp rebinning + NMASS cumulative channels (differentiable)
   phase1_sabre_check.py       — Phase 1: SABRE-binned output and its coefficient Jacobian, 40/80 bins
   run_map.py                  — Phase 2: T × SO2 map, hourly SABRE Jacobian, published-uncertainty directions, Dunne Table S2 run;
                                 --resolved-dt: dt per SO2 (60 s clamps the gas at ≥1 ppmv and zeroes the sensitivity)
-  results/                    — Outputs (NPZ, figures)
+  scenarios.py                — Phase 3/4 scenarios: bg_midlat, bg_ttl, sai_plume (constant OH, plume dilution)
+  phase3_scenarios.py         — Phase 3: dt ladder, full Jacobian 40/80 bins, regression-FD check (9-point stencil)
+  phase4_linearity.py         — Phase 4: ±1/±2 published-direction runs vs linear AD prediction
+  prescribed_j.py             — d ln N / d ln J for a prescribed J over J_ref×10^(±1) × SO2 (J_ref from the Phase 2 map), AD + FD check
+  results/                    — Outputs (NPZ, figures); results/rho1350/ = runs before the 2026-11-04 density change; results/orgfrac0.1/ = runs before the 2026-11-05 org_frac = 0 change
 
 tomas_fortran/
   src/                        — 14 core TOMAS Fortran source files (TFL condensation)
@@ -155,6 +162,7 @@ docs/
   zhao2024_nucleation.md      — Zhao 2024 11-mechanism NPF scheme documentation
   stratosphere_setup.md       — Stratospheric settings vs library defaults: cluster density = grid density, pure sulfate clusters, sparse-bin density, Tabazadeh water
   nucleation_sensitivity.md   — Forward-mode AD sensitivity to nucleation fit coefficients (method, blind spots, results)
+  prescribed_j.md             — Response of N to a prescribed nucleation rate; H2SO4 ceiling on J; PPM tangent instability
   so2_chemistry.md            — SO2+OH chemistry (Sun et al. 2022), validation, usage
   dilution.md                 — Dilution/entrainment algorithm, parameters, usage
   water_uptake.md             — Water uptake schemes (bisulfate fit, Tabazadeh), water_every_process, assumptions
