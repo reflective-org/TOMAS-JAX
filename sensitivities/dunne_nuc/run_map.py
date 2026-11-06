@@ -349,7 +349,6 @@ def plot(outdir, nbins, temps):
         (f'N({NUC_MODE_LABEL}) [cm$^{{-3}}$]',
          stack(lambda d: np.maximum(d['nmass'][:, -1, NUC_MODE_CH], 1e-3)), LogNorm()),
         ('N(>12 nm) [cm$^{-3}$]', stack(lambda d: d['nmass'][:, -1, 2]), LogNorm()),
-        ('N(>53 nm) [cm$^{-3}$]', stack(lambda d: d['nmass'][:, -1, 4]), LogNorm()),
         ('mean H$_2$SO$_4$ [cm$^{-3}$]', stack(lambda d: d['aux_h2so4_mean'].mean(1)), LogNorm()),
         ('J$_{bi}$ / (J$_{bn}$+J$_{bi}$)', stack(lambda d: d['aux_J_bi_mean'].mean(1)
                                     / np.maximum(d['aux_J_bn_mean'].mean(1)
@@ -357,8 +356,7 @@ def plot(outdir, nbins, temps):
         ('steps sub-stepped / clamped', stack(lambda d: np.maximum(
             d['aux_frac_sub'].mean(1), d['aux_frac_clamp'].mean(1))), None),
     ]
-    fig, axes = plt.subplots(2, 4, figsize=(17, 7))
-    axes.flat[-1].set_visible(False)
+    fig, axes = plt.subplots(2, 3, figsize=(13, 7))
     for ax, (title, z, norm) in zip(axes.flat, panels):
         im = ax.pcolormesh(xt, yt, z, norm=norm, shading='nearest',
                            cmap='viridis')
@@ -379,12 +377,17 @@ def plot(outdir, nbins, temps):
 
     # --- Fig B: sensitivity along published directions + Table S2 --------
     # Rows: uncertainty directions (linear, from the Jacobian) plus the Table S2
-    # forward run (exact ln ratio). Columns: N(>3, 3-10.65, >12, >53 nm) at the
+    # forward run (exact ln ratio). Columns: N(>3, 3-10.65, >12 nm) at the
     # final hour. Dots mark changes SABRE's 8% number uncertainty could detect.
     # Last row: elasticity to a common scaling of all Dunne rates (1 = N ∝ J)
+    # Colour limits come from the 95th percentile of each row, not its maximum:
+    # a few 80-bin cells have tangents of ~1e42 (blown-up AD, not a response),
+    # which a max-based scale turns into one flat colour. Crosses mark cells
+    # with |value| > BLOWUP, left grey like the masked (NaN) cells.
+    BLOWUP = 10.0
     rows = list(directions(temps[0]).keys()) + ['Table S2 fit', 'J_all elasticity']
-    chans = [0, NUC_MODE_CH, 2, 4]
-    fig, axes = plt.subplots(len(rows), len(chans), figsize=(14.5, 2.3 * len(rows)))
+    chans = [0, NUC_MODE_CH, 2]
+    fig, axes = plt.subplots(len(rows), len(chans), figsize=(11.5, 2.3 * len(rows)))
     for r, name in enumerate(rows):
         z = np.full((len(chans), len(temps), len(so2)), np.nan)
         for i, (d, T) in enumerate(zip(data, temps)):
@@ -398,26 +401,33 @@ def plot(outdir, nbins, temps):
             else:
                 v = delta_ln(d, 'nmass', name, T, 1e-3)[:, -1]
             z[:, i, :] = v[:, chans].T
+        absz = np.abs(z[np.isfinite(z)])
+        vmax = max(np.percentile(absz, 95), 2 * det) if absz.size else 1.0
         for c, ch in enumerate(chans):
             ax = axes[r, c]
+            blown = np.abs(np.nan_to_num(z[c])) > BLOWUP
+            zc = np.where(blown, np.nan, z[c])
+            ax.set_facecolor('0.8')
             if name == 'J_all elasticity':
-                im = ax.pcolormesh(xt, yt, z[c], shading='nearest', cmap='viridis',
-                                   vmin=0.0, vmax=max(1.2, np.nanmax(z)))
-                fig.colorbar(im, ax=ax, shrink=0.8)
+                im = ax.pcolormesh(xt, yt, zc, shading='nearest', cmap='viridis',
+                                   vmin=0.0, vmax=1.2)
+                fig.colorbar(im, ax=ax, shrink=0.8, extend='both')
                 frame(ax, f'd ln N({nm[ch]}) / d ln J$_{{all}}$')
-                continue
-            vmax = max(np.nanmax(np.abs(z)), 2 * det) if np.isfinite(z).any() else 1.0
-            im = ax.pcolormesh(xt, yt, z[c], shading='nearest', cmap='RdBu_r',
-                               norm=TwoSlopeNorm(0.0, -vmax, vmax))
-            jj, ii = np.where(np.abs(np.nan_to_num(z[c])) > det)
-            ax.plot(xt[ii], yt[jj], 'k.', ms=3)
-            fig.colorbar(im, ax=ax, shrink=0.8)
-            frame(ax, f'{name}: $\\delta$ ln N({nm[ch]})')
+            else:
+                im = ax.pcolormesh(xt, yt, zc, shading='nearest', cmap='RdBu_r',
+                                   norm=TwoSlopeNorm(0.0, -vmax, vmax))
+                jj, ii = np.where((np.abs(np.nan_to_num(z[c])) > det) & ~blown)
+                ax.plot(xt[ii], yt[jj], 'k.', ms=3)
+                fig.colorbar(im, ax=ax, shrink=0.8, extend='both')
+                frame(ax, f'{name}: $\\delta$ ln N({nm[ch]})')
+            jj, ii = np.where(blown)
+            ax.plot(xt[ii], yt[jj], 'kx', ms=6, mew=1.2)
     for ax in axes[-1]:
         ax.set_xlabel('SO$_2$ [ppbv]')
     fig.suptitle(f'Phase 2: response after {hours} h, {nbins} bins. Linear '
                  f'(AD) except Table S2 (forward run). Dots: |change| > SABRE '
-                 f'±{100 * SABRE_NUMBER_REL_ERR:.0f}%', fontsize=10)
+                 f'±{100 * SABRE_NUMBER_REL_ERR:.0f}%. Crosses: |value| > '
+                 f'{BLOWUP:g}. Grey: masked', fontsize=10)
     fig.text(0.01, 0.003, conditions_note(data[0]), fontsize=7, va='bottom', wrap=True)
     fig.tight_layout(rect=(0, 0.035, 1, 1))
     out = os.path.join(outdir, f'map_{nbins}bin_sensitivity.png')

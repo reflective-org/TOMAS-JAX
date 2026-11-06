@@ -244,7 +244,7 @@ All run 48 h from the Phase 2 background aerosol, with constant OH = 1e6 and the
 4. **Figures:**
    - `phase3_evolution.png`: dN/dlogDp(t), NMASS with the SABRE band and ±1-direction envelopes, H₂SO₄ and SO₂;
    - `phase3_spectra.png`: δ ln dN/dlogDp at 6, 24 and 48 h;
-   - `phase3_elasticity.png`;
+   - `phase3_directions.png`: δ ln N along each published direction at the final hour;
    - `phase3_fd_check.png`.
 
 ### Results

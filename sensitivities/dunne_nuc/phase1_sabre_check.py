@@ -131,7 +131,7 @@ def plot():
         ax.legend(fontsize=7)
     axes[-1].set_xlabel('Dry diameter [nm]')
     # Start below SABRE's 3 nm edge so the native grid's 1.7-3 nm bins show
-    axes[-1].set_xlim(1.5, 2e3)
+    axes[-1].set_xlim(1., 2e3)
     fig.tight_layout()
     out = os.path.join(OUTDIR, 'sabre_jacobian.png')
     fig.savefig(out, dpi=150)

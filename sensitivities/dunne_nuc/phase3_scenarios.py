@@ -280,7 +280,7 @@ def plot(outdir, names, grids):
     chans = ((0, 'C0'), (NUC_MODE_CH, 'C3'), (2, 'C1'), (4, 'C2'))
 
     # --- A: evolution, NMASS with linear envelopes, OH/H2SO4 -------------
-    fig, axes = plt.subplots(len(names), 3, figsize=(15, 3.6 * len(names)), squeeze=False)
+    fig, axes = plt.subplots(len(names), 4, figsize=(20, 3.6 * len(names)), squeeze=False)
     for r, name in enumerate(names):
         d = load(outdir, name, gmax(name))
         hrs = np.arange(1, int(d['hours']) + 1)
@@ -307,7 +307,19 @@ def plot(outdir, names, grids):
         ax.set_title('NMASS (band: SABRE ±8%; -- H$_2$SO$_4$ cal ±1, : J ×2.5 ±1)',
                      fontsize=9)
         ax.legend(fontsize=7)
+        # d ln N / d ln J_all as in the last row of the Phase 2 map (1 = N ∝ J).
+        # The shaded band is what SABRE's 8% could not see for a x2.5 change in J.
         ax = axes[r, 2]
+        ej = dlnY_dlnJall(d)
+        for ch, col in chans:
+            ax.plot(hrs, ej[:, ch], color=col, label=f'N({nm_lab[ch]})')
+        ax.axhspan(-det / np.log(2.5), det / np.log(2.5), color='0.9')
+        ax.axhline(1.0, color='k', ls=':', lw=0.8)
+        ax.axhline(0.0, color='k', lw=0.5)
+        ax.set_title('d ln N / d ln J$_{all}$ (band: below SABRE ±8% for J ×2.5)',
+                     fontsize=9)
+        ax.legend(fontsize=7)
+        ax = axes[r, 3]
         ax.semilogy(hrs, d['aux_h2so4_mean'], label='H$_2$SO$_4$')
         ax.semilogy(hrs, d['aux_so2_mean'], label='SO$_2$')
         ax.set_title(f'hourly mean gas [cm$^{{-3}}$] (dt {float(d["dt"]):g} s, '
@@ -344,25 +356,28 @@ def plot(outdir, names, grids):
     fig.savefig(os.path.join(outdir, 'phase3_spectra.png'), dpi=130)
     plt.close(fig)
 
-    # --- C: elasticities of all 25 coefficients ---------------------------
-    fig, axes = plt.subplots(len(names), 1, figsize=(12, 3 * len(names)), squeeze=False)
+    # --- C: response to each published direction at the final hour -------
+    # Same units for every bar: the change for the published uncertainty.
+    # Dunne gives no per-coefficient sigma, so coefficient elasticities
+    # (1% changes) are not comparable with each other or with J.
+    fig, axes = plt.subplots(len(names), 1, figsize=(8, 3 * len(names)), squeeze=False)
     for r, name in enumerate(names):
         d = load(outdir, name, gmax(name))
-        # Coefficient elasticities, then d ln N / d ln J_all after a gap
-        x = np.append(np.arange(len(FIELDS)), len(FIELDS) + 1)
-        ej = dlnY_dlnJall(d, floor=0.0)[-1]
+        x = np.arange(len(dnames))
         for j, (ch, col) in enumerate(chans):
-            e = d['theta'] * d['jac_nmass'][-1, ch] / d['nmass'][-1, ch]
-            axes[r, 0].bar(x + (j - 1.5) * 0.2, np.append(e, ej[ch]), 0.2, color=col,
+            dy = np.array([d['jac_nmass'][-1, ch] @ d['directions'][list(d['dir_names']).index(nd)]
+                           for nd in dnames]) / d['nmass'][-1, ch]
+            axes[r, 0].bar(x + (j - 1.5) * 0.2, dy, 0.2, color=col,
                            label=f'N({nm_lab[ch]})')
-        axes[r, 0].axvline(len(FIELDS), color='0.5', lw=0.8)
-        axes[r, 0].set_xticks(x, list(FIELDS) + ['ln J$_{all}$'], rotation=60, fontsize=7)
-        axes[r, 0].set_ylabel(r'$\theta\,\partial$ln N/$\partial\theta$')
-        axes[r, 0].set_title(f'{name}: elasticity after {int(d["hours"])} h, {gmax(name)} bins',
-                             fontsize=9)
+        axes[r, 0].axhspan(-det, det, color='0.9', zorder=0)
+        axes[r, 0].axhline(0.0, color='k', lw=0.5)
+        axes[r, 0].set_xticks(x, dnames, fontsize=8)
+        axes[r, 0].set_ylabel(r'$\delta$ ln N (published size)')
+        axes[r, 0].set_title(f'{name}: response after {int(d["hours"])} h, {gmax(name)} bins '
+                             f'(band: SABRE ±{100 * SABRE_NUMBER_REL_ERR:.0f}%)', fontsize=9)
         axes[r, 0].legend(fontsize=7)
     fig.tight_layout()
-    fig.savefig(os.path.join(outdir, 'phase3_elasticity.png'), dpi=130)
+    fig.savefig(os.path.join(outdir, 'phase3_directions.png'), dpi=130)
     plt.close(fig)
 
     # --- D: FD vs AD -------------------------------------------------------
