@@ -89,6 +89,40 @@ With few new particles and fast growth (low J, high H₂SO₄), the AD derivativ
 - **Inside the window AD agrees with FD up to 1 ppmv** (Results). At 10–100 ppmv the 2% FD is erratic, so neither derivative is confirmed there.
 - **The coefficient study also differentiates through PPM.** Its Phase 3 FD check passed in the plume's growth channels, but no FD check has been run on the Phase 2 map, and some Phase 4 nonlinearity could be this artefact. Not yet checked.
 
+## Frozen-shape tangent (`ppm_tangent='frozen_shape'`)
+
+`make_step(..., ppm_tangent='frozen_shape')` (also `common.make_runner`, `make_prescribed_j_runner`, `--ppm-tangent frozen_shape` in `run_map` and `prescribed_j`, which write to `*_frozen` directories) leaves every value unchanged, bit for bit, and changes only the derivative of the PPM reconstruction (`condensation_ppm._freeze_shape`).
+
+- **What it does.** Each bin's parabola (n_L, n_R, n_6) is held at its current shape, s_X = n_X/n̄ under `stop_gradient` (flat for empty bins), and scaled by that bin's own tangent: δn_X = s_X·δn̄. Written as `stop_gradient(n_X) + s_X·(n̄ − stop_gradient(n̄))`, the added term is exactly 0 in value.
+- **Why it is stable.** The exact derivative is the 4th-order edge interpolation with the limiter branches held fixed, which has negative weights and can amplify. With the shape frozen, a bin's flux derivative is its swept fraction (in [0, 1]) times its own δN: an upwind scheme with non-negative weights. Tangents through the growth velocity (H₂SO₄, coefficients) are unchanged.
+- **It is not the exact derivative.** It drops the response of the sub-bin shape to neighbouring bins.
+
+Checks (`benchmarks/python/ppm_tangent_stability.py`, 217 K, 40 bins, 18 h, d N(>3 nm)/dJ against central FD at ±2%; 2026-11-09):
+
+| case | exact vs FD | frozen vs FD |
+|---|---|---|
+| 100 ppbv, J = 0.01 (the table above) | diverges from 9 h (×10–300 off) | within 1% throughout |
+| 100 ppbv, J_ref = 317 | within 1–3% (8% at 9 h) | 2–7% high (12% at 9 h) |
+| 1 ppmv, J_ref = 6070 | within 0.2–4% | within 0.4–5% |
+| 1 ppbv, J_ref = 2.1 | FD itself erratic (negative in hours 1–2); exact and frozen within 16% of each other | |
+
+At the 9 h state of the J = 0.01 case, the leading tangent mode of one hour's linearised step grows ×2–11 per hour with the exact derivative and ×0.99 with the frozen one.
+
+**Not fixed: 80 bins at 100 ppmv.** In the Phase 2 cells at 223 K and 240 K / 100 ppmv (adaptive f = 0.1), exact, frozen and FD (±0.05 along the H₂SO₄-calibration direction) agree at 6 h (L1 within 0.01), but at 24 h the frozen tangent also blows up (Σ|δN|/ΣN 9e4 and 3e27, against ~1 for FD). From the 240 K state at 14 h, the leading mode grows ×170 per 10 min with either derivative (×800 at 20 h). Measured in Σ|δN| it sits in bins 31–33 (35–36 at 20 h): the small-size tail of the seed mode, 0.04–1 particle per cell (1e-8–1e-6 cm⁻³).
+
+The source is the **linear sub-bin coagulation scheme** (`coagulation_rates_linear.py`, used on every non-doubling grid, so 80 bins and not 40). Power iteration on the 14 h state, one change at a time:
+
+| Tangent change (values unchanged) | Growth per 10 min |
+|---|---|
+| none (frozen PPM shape) | ×171 |
+| TAU's per-particle terms (mpw/N, sink share/N) frozen | ×169 |
+| `species_flux` composition ratio frozen | ×189 |
+| coagulation kernel frozen | ×171 |
+| coagulation tangent replaced by the identity | ×1.2 (×0.97 with TAU frozen too) |
+| absolute cut: bins < 1 #/cell enter condensation without a tangent | ×0.98 |
+
+Scavenging of the nucleated particles pushes these sparse bins' mean mass x̄ to within 1–2% of the bin width of the top edge b. There the scheme's ramp profile has n_hi = 2/(3(b − x̄)), so the fraction moved up a bin per collision has a derivative ∝ 1/(b − x̄)², capped only by `_NARROW` = 1e-6. Holding the profile, or x̄, fixed in the derivative is worse (tangent ~1e279 within one step): number and mass then move with inconsistent tangents. No fix yet. Cutting the tangent below a relative occupancy (1e-5·ΣN) bounds it but loses the growth front (N(>12 nm) off by up to 1000× at 40 bins), so it was removed.
+
 ## Checks
 
 - **Same step as the scheme runner.** With one nucleation sub-step and J set to the scheme's rate, one step of `make_prescribed_j_runner` matches `make_runner` to round-off, with and without the clamp (N to 8e-13 relative, gas exactly). With more sub-steps they differ on purpose: the scheme recomputes J as nucleation draws down H₂SO₄ within a step, while the prescribed J stays fixed.

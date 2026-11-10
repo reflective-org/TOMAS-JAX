@@ -26,6 +26,7 @@ import jax.numpy as jnp
 from typing import Tuple
 
 from .config import ICOMP_NODIAG
+from .bounded_loop import loop_while
 
 
 # Number MNFIX leaves in an empty bin [#/cell] (Fortran mnfix.f: parameter(Neps=1E-5))
@@ -36,7 +37,8 @@ def mnfix_jax(
     Nk: jnp.ndarray,
     Mk: jnp.ndarray,
     xk: jnp.ndarray,
-    icomp_nodiag: int = ICOMP_NODIAG
+    icomp_nodiag: int = ICOMP_NODIAG,
+    bounded: bool = False,
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Correct mass/number drift using Fortran-faithful partial transfer.
 
@@ -49,6 +51,8 @@ def mnfix_jax(
         Mk: Mass concentration [kg/grid cell], shape (ibins, icomp)
         xk: Bin boundaries [kg], shape (ibins+1,)
         icomp_nodiag: Number of non-diagnostic species.
+        bounded: If True (static), phase 3 runs as a bounded loop of nbins
+            iterations (core/bounded_loop.py) so reverse-mode AD works.
 
     Returns:
         Nk_new: Corrected number concentration
@@ -194,8 +198,9 @@ def mnfix_jax(
         Nk_s, Mk_s, kk_up = fix_drift(k, (Nk_s, Mk_s))
         return k + 1, jnp.maximum(hi, kk_up), Nk_s, Mk_s
 
-    _, _, Nk, Mk = jax.lax.while_loop(
+    _, _, Nk, Mk = loop_while(
         lambda s: (s[0] <= s[1]) & (s[0] < nbins), body,
-        (k_first, hi_first, Nk, Mk))
+        (k_first, hi_first, Nk, Mk), bounded, max_iter=nbins,
+        checkpoint=False)
 
     return Nk, Mk

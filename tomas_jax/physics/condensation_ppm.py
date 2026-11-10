@@ -23,6 +23,7 @@ from typing import Tuple
 from functools import partial
 
 from ..core.config import ICOMP, ICOMP_NODIAG
+from ..core.bounded_loop import loop_fori
 
 # =============================================================================
 # CONSTANTS
@@ -221,7 +222,8 @@ def compute_edge_velocity(
 # =============================================================================
 
 def ppm_reconstruct(
-    q_bar: jnp.ndarray
+    q_bar: jnp.ndarray,
+    freeze_shape: bool = False,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """PPM reconstruction on uniform log-mass grid.
 
@@ -236,6 +238,10 @@ def ppm_reconstruct(
 
     Args:
         q_bar: Cell-average density, shape (nbins,)
+        freeze_shape: If True (static), the derivative holds each cell's
+            shape (q_L, q_R, q_6 divided by q_bar) fixed and scales it with
+            that cell's own q_bar; values are unchanged bit for bit. See
+            _freeze_shape.
 
     Returns:
         q_L: Left edge value, shape (nbins,)
@@ -278,7 +284,31 @@ def ppm_reconstruct(
     # Step 5: Limit parabola to prevent new extrema inside cell
     q_L, q_R, q_6 = _limit_parabola(q_L, q_R, q_6, q_bar)
 
+    if freeze_shape:
+        q_L, q_R, q_6 = _freeze_shape(q_L, q_R, q_6, q_bar)
+
     return q_L, q_R, q_6
+
+
+def _freeze_shape(q_L, q_R, q_6, q_bar):
+    """Same values; derivative d q_X = s_X d q_bar with s_X = stop_gradient(q_X / q_bar).
+
+    The exact derivative of the reconstruction is the 4th-order edge
+    interpolation with the limiter branches held fixed: a linear scheme with
+    negative weights that can amplify a perturbation without bound while the
+    limited forward scheme stays smooth (docs/prescribed_j.md). With the shape
+    held, a cell's flux derivative is its swept fraction (in [0, 1]) times its
+    own d q_bar: an upwind scheme with non-negative weights. Empty cells take
+    the flat shape (s_L = s_R = 1, s_6 = 0).
+    """
+    sg = jax.lax.stop_gradient
+    occupied = q_bar > EPSN
+    q_safe = jnp.where(occupied, q_bar, 1.0)
+    s_L = sg(jnp.where(occupied, q_L / q_safe, 1.0))
+    s_R = sg(jnp.where(occupied, q_R / q_safe, 1.0))
+    s_6 = sg(jnp.where(occupied, q_6 / q_safe, 0.0))
+    dq = q_bar - sg(q_bar)      # exactly 0.0 in value
+    return sg(q_L) + s_L * dq, sg(q_R) + s_R * dq, sg(q_6) + s_6 * dq
 
 
 def _monotonicity_limit_edges(
@@ -856,7 +886,10 @@ def ppm_condensation_step(
     cspecies: int,
     dt: float,
     icomp_nodiag: int,
-    C_max: float = 0.8
+    C_max: float = 0.8,
+    bounded: bool = False,
+    max_substeps: int = 64,
+    freeze_shape: bool = False,
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """PPM condensation step - Eulerian advection in log-mass space.
 
@@ -880,6 +913,13 @@ def ppm_condensation_step(
         dt: Full timestep [s]
         icomp_nodiag: Number of dry (non-diagnostic) species
         C_max: Maximum Courant number for substepping
+        bounded: If True (static), the sub-step loop is a bounded loop
+            (core/bounded_loop.py) so reverse-mode AD works. The CFL count
+            is then capped at max_substeps, which coarsens the sub-step
+            (Courant number above C_max) when the cap binds.
+        max_substeps: Sub-step cap when bounded (static).
+        freeze_shape: Static; frozen-shape derivative of the reconstruction
+            (ppm_reconstruct). Values are unchanged.
 
     Returns:
         Nk_new: Updated number per bin [#], shape (nbins,)
@@ -896,6 +936,8 @@ def ppm_condensation_step(
 
     # 2. Compute substep count
     n_sub = compute_substeps(xk, TAU, WR, dt, C_max)
+    if bounded:
+        n_sub = jnp.minimum(n_sub, max_substeps)
     dt_sub = dt / n_sub
     TAU_sub = TAU / n_sub
 
@@ -909,7 +951,7 @@ def ppm_condensation_step(
 
         # 4a. Reconstruct number density
         n_bar = Nk_curr / delta_xi
-        n_L, n_R, n_6 = ppm_reconstruct(n_bar)
+        n_L, n_R, n_6 = ppm_reconstruct(n_bar, freeze_shape)
 
         # 4b. Compute number flux and advect
         F_N = ppm_flux(n_L, n_R, n_6, u_edges, dt_sub, delta_xi)
@@ -934,7 +976,8 @@ def ppm_condensation_step(
         return (Nk_next, Mk_next)
 
     # Run substep loop
-    Nk_new, Mk_new = jax.lax.fori_loop(0, n_sub, substep_body, (Nk, Mk))
+    Nk_new, Mk_new = loop_fori(0, n_sub, substep_body, (Nk, Mk), bounded,
+                               max_iter=max_substeps)
 
     # 4. Positivity limiter
     Nk_new = jnp.maximum(Nk_new, 0.0)

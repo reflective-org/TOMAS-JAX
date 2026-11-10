@@ -110,7 +110,8 @@ def make_runner(xk, nsteps, cond=STRAT, fion=FION, oh_conc=OH_CONC,
                 max_nucleation_frac=0.5, sparse_density=SPARSE_DENSITY,
                 water_scheme=WATER_SCHEME, dunne_form='double_exp',
                 coag_solver='euler_fixed', kdil=None, Nk_bg=None, Mk_bg=None,
-                Gc_bg=None):
+                Gc_bg=None, gas_substep=None, gas_substep_frac=0.1,
+                ad_mode='forward', ppm_tangent='exact'):
     """Build run(params, Nk, Mk, Gc) -> (Nk, Mk, Gc, diag).
 
     One step = SO2 chemistry, then nucleation + coagulation + condensation,
@@ -124,9 +125,21 @@ def make_runner(xk, nsteps, cond=STRAT, fion=FION, oh_conc=OH_CONC,
     and SO2 [molec/cm3]. kdil (with Nk_bg, Mk_bg, Gc_bg) appends make_step's
     'dilution' process.
 
+    gas_substep='adaptive' (make_step's H2SO4-budget sub-steps,
+    docs/gas_substep.md): one make_step call per dt. n_sub is then the
+    number of gas sub-steps, clamp is k_nuc*dt_sub > 1 on any of them, and
+    J, J_bn, J_bi are evaluated at the end-of-step gas.
+
+    ad_mode='reverse': make_step's bounded loops, and each step is
+    checkpointed in the time scan, so jax.grad/vjp work (memory: one state
+    per step plus one step's inner loops).
+
+    ppm_tangent='frozen_shape': make_step's frozen-shape PPM derivative
+    (same values; a tangent that cannot blow up, not the exact one).
+
     Not JIT-wrapped: callers apply jax.jit / jax.jacfwd as needed.
     """
-    chem = make_step(['so2_chemistry'], jit=False)
+    chem = make_step(['so2_chemistry'], ad_mode=ad_mode, jit=False)
     procs = ['nucleation', 'coagulation', 'condensation']
     if kdil is not None:
         procs.append('dilution')
@@ -135,13 +148,40 @@ def make_runner(xk, nsteps, cond=STRAT, fion=FION, oh_conc=OH_CONC,
                      max_nuc_substeps=max_nuc_substeps,
                      sparse_density=sparse_density,
                      water_scheme=water_scheme, dunne_form=dunne_form,
-                     coag_solver=coag_solver, jit=False)
+                     coag_solver=coag_solver, ad_mode=ad_mode,
+                     ppm_tangent=ppm_tangent, jit=False)
     temp, pres, rh, alpha = (cond[k] for k in ('temp', 'pres', 'rh', 'alpha'))
+    if gas_substep is not None:
+        full = make_step(['so2_chemistry'] + procs,
+                         max_nucleation_frac=max_nucleation_frac,
+                         max_nuc_substeps=max_nuc_substeps,
+                         sparse_density=sparse_density,
+                         water_scheme=water_scheme, dunne_form=dunne_form,
+                         coag_solver=coag_solver, gas_substep=gas_substep,
+                         gas_substep_frac=gas_substep_frac,
+                         return_substep_info=True, ad_mode=ad_mode,
+                         ppm_tangent=ppm_tangent, jit=False)
 
     def run(params, Nk, Mk, Gc):
         kw = dict(org_conc=0.0, nh3_conc=0.0, fion=fion, nucl_params=params)
         if kdil is not None:
             kw.update(kdil=kdil, Nk_bg=Nk_bg, Mk_bg=Mk_bg, Gc_bg=Gc_bg)
+
+        def body_adaptive(carry, _):
+            Nk, Mk, Gc, info = full(*carry, xk, temp, pres, boxvol, rh, alpha,
+                                    dt, oh_conc=oh_conc, **kw)
+            fn = nuc.ricco_dunne_nucleation_rate(
+                Gc, temp, pres, boxvol, 0.0, 0.0, fion, params=params,
+                dunne_form=dunne_form)
+            h2so4 = Gc[SRTSO4] / boxvol * 1000.0 / MW_H2SO4 * AVOGADRO
+            mair = 2.69e19 * 273.15 / temp * pres / 101325.0
+            _, J_bn, _, J_bi, _ = nuc.dunne_nucleation_rate(
+                temp, fion, h2so4, 0.0, mair, params, dunne_form)
+            so2 = Gc[SRTSO2] / boxvol * 1000.0 / MW_SO2 * AVOGADRO
+            diag = dict(J=fn, J_bn=J_bn, J_bi=J_bi, n_sub=info['n_sub'],
+                        clamp=info['knuc_dt_max'] > 1.0, h2so4=h2so4, so2=so2,
+                        N_total=jnp.sum(Nk) / boxvol)
+            return (Nk, Mk, Gc), diag
 
         def body(carry, _):
             Nk, Mk, Gc = carry
@@ -168,7 +208,10 @@ def make_runner(xk, nsteps, cond=STRAT, fion=FION, oh_conc=OH_CONC,
                         h2so4=h2so4, so2=so2, N_total=jnp.sum(Nk) / boxvol)
             return (Nk, Mk, Gc), diag
 
-        (Nk, Mk, Gc), diag = jax.lax.scan(body, (Nk, Mk, Gc), None,
+        step_body = body if gas_substep is None else body_adaptive
+        if ad_mode == 'reverse':
+            step_body = jax.checkpoint(step_body)
+        (Nk, Mk, Gc), diag = jax.lax.scan(step_body, (Nk, Mk, Gc), None,
                                           length=nsteps)
         return Nk, Mk, Gc, diag
 
@@ -179,7 +222,8 @@ def make_prescribed_j_runner(xk, nsteps, cond=STRAT, fion=FION, oh_conc=OH_CONC,
                              boxvol=BOXVOL, dt=DT, max_nuc_substeps=20,
                              max_nucleation_frac=0.5, sparse_density=SPARSE_DENSITY,
                              water_scheme=WATER_SCHEME, coag_solver='euler_fixed',
-                             params=NUC_PARAMS, cond_method='ppm_jit'):
+                             params=NUC_PARAMS, cond_method='ppm_jit',
+                             ppm_tangent='exact'):
     """Build run(J, Nk, Mk, Gc) -> (Nk, Mk, Gc, diag) with a prescribed J [cm-3 s-1].
 
     Same step as make_runner, except that nucleation inserts clusters at the
@@ -189,11 +233,12 @@ def make_prescribed_j_runner(xk, nsteps, cond=STRAT, fion=FION, oh_conc=OH_CONC,
     count from compute_nucleation_substeps and MNFIX after each sub-step.
     diag['J_scheme'] is the Riccobono/Dunne rate at the same H2SO4, for
     reference. Gradients w.r.t. J are blind to the sub-step count and clamp.
+    ppm_tangent: see make_runner.
     """
     chem = make_step(['so2_chemistry'], jit=False)
     rest = make_step(['coagulation', 'condensation'], cond_method=cond_method,
                      sparse_density=sparse_density, water_scheme=water_scheme,
-                     coag_solver=coag_solver, jit=False)
+                     coag_solver=coag_solver, ppm_tangent=ppm_tangent, jit=False)
     temp, pres, rh, alpha = (cond[k] for k in ('temp', 'pres', 'rh', 'alpha'))
     mnuc = nuc._cluster_mass(params)
     org_frac = params.org_frac

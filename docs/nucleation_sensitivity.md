@@ -15,7 +15,7 @@ Code: `sensitivities/dunne_nuc/`. Results (git-ignored): `sensitivities/dunne_nu
 | 2 | T × SO₂ map along the published uncertainty directions | `run_map.py` | done, 40 and 80 bins at resolved dt (the 60 s maps only at 1350) |
 | 3 | Three 48 h scenarios: full Jacobian, FD check | `scenarios.py`, `phase3_scenarios.py` | done, 40 and 80 bins |
 | 4 | Linearity at published-size perturbations | `phase4_linearity.py` | done, 40 and 80 bins |
-| J | Response to a prescribed nucleation rate (scheme bypassed) | `prescribed_j.py` | done, 217 K, 40 bins ([prescribed_j.md](prescribed_j.md)) |
+| J | Response to a prescribed nucleation rate (scheme bypassed) | `prescribed_j.py` | done, 217, 223 and 240 K, 40 bins ([prescribed_j.md](prescribed_j.md), [AD against FD](#prescribed-j-ad-against-fd-at-217240-k-2026-11-10)) |
 | HiLa | High-latitude lowermost stratosphere (13 km, 60°S), 1–100 ppmv SO₂ | — | planned ([adjustments](#planned-hila-high-latitude-lowermost-stratosphere-scenario)) |
 
 ## Main findings
@@ -63,21 +63,18 @@ dN_dP = jax.jit(jax.jacfwd(n_total))(P)   # a NucleationParams of derivatives
 
 `common.make_runner` is the study's version of this loop. It adds per-step diagnostics (`n_sub`, clamp, H₂SO₄, J, SO₂) and optional dilution. The study starts from `common.NUC_PARAMS` (`rho_nuc = 1770`), not `DEFAULT_NUCLEATION_PARAMS`.
 
-### Forward mode only
+### Forward mode
 
-**Why reverse mode fails.** The nucleation sub-step loop is `lax.fori_loop(0, n_nuc, ...)` with a traced `n_nuc`, so reverse mode raises. The same goes for the PPM CFL sub-steps and the adaptive coagulation solver.
+**Why reverse mode fails by default.** The nucleation sub-step loop is `lax.fori_loop(0, n_nuc, ...)` with a traced `n_nuc`, so reverse mode raises. The same goes for the PPM CFL sub-steps, MNFIX phase 3 and the adaptive coagulation solver.
 
 **Why forward mode is the right choice here anyway.** It costs about one run per parameter (25), whatever the number of outputs (63 SABRE bins × 48 h). It also stores no scan history.
 
-**Enabling reverse mode later.** It only pays for a scalar objective, such as calibrating against SABRE data.
-- The nucleation `fori_loop` would need to become a fixed-length `scan` over `max_nuc_substeps`, masked with `jnp.where`. Results stay the same, but the forward run is slower.
-- PPM's uncapped `n_sub` would need a hard cap, which is a numerics change that needs validating.
-- `jax.checkpoint` per step would bound memory.
+**Reverse mode (2026-11-05).** `make_step(ad_mode='reverse')` and `common.make_runner(ad_mode='reverse')` replace those loops with bounded ones, so `jax.grad` works ([gas_substep.md](gas_substep.md)). Values match forward mode to ~1e-11. It does not pay for this study: for one scalar at 24 h and all 25 coefficients, `grad` took 238 s and 1.26 GB against 34 s and 0.67 GB for `jacfwd`, with gradients equal to 2.4e-12. It is worth it only with many more inputs, such as the initial state.
 
 ### What gradients cannot see
 
 - **Integer and branch decisions:** the nucleation sub-step count, the gas-exhaustion clamp, MNFIX target-bin selection, and the adaptive coagulation sub-step count. The derivative is exact inside a branch and misses the jump across one. The runner records `n_sub` and the clamp, so each sensitivity can be tagged with its regime. Phase 3's FD check shows the size of this effect (finding 5).
-- **PPM condensation's derivative can be unstable.** With few new particles growing fast (low J, high H₂SO₄), the linearised PPM step amplifies the tangent (about ×22 per hour at 100 ppbv and J = 0.01, 217 K) while the model state stays smooth; AD then diverges from FD after a few hours. Found in the prescribed-J analysis ([prescribed_j.md](prescribed_j.md)). It also hit the 80-bin Phase 2 map at 240 K and 100 ppmv (tangent ~1e38 after 24 h). Phase 3's FD check passed in the plume's growth channels; the Phase 2 map has no FD check yet.
+- **PPM condensation's derivative can be unstable.** With few new particles growing fast (low J, high H₂SO₄), the linearised PPM step amplifies the tangent (about ×22 per hour at 100 ppbv and J = 0.01, 217 K) while the model state stays smooth; AD then diverges from FD after a few hours. Found in the prescribed-J analysis ([prescribed_j.md](prescribed_j.md)). It also hit the 80-bin Phase 2 map at 240 K and 100 ppmv (tangent ~1e38 after 24 h). Phase 3's FD check passed in the plume's growth channels; the Phase 2 map has no FD check yet. `make_step(ppm_tangent='frozen_shape')` removes the PPM part of this (same values, a tangent that cannot grow through the reconstruction; [prescribed_j.md](prescribed_j.md#frozen-shape-tangent-ppm_tangentfrozen_shape)), but not the 80-bin 100 ppmv blow-up, whose source is the linear sub-bin coagulation scheme's profile in nearly empty bins (no fix yet; [prescribed_j.md](prescribed_j.md#frozen-shape-tangent-ppm_tangentfrozen_shape)).
 - **No RH term in Dunne 2016.** The binary sensitivity to humidity is structurally absent.
 - **Correlated coefficients.** The 20 Dunne coefficients were fitted jointly and no covariance was published, so per-coefficient sensitivities must not be summed into a variance. The study uses published uncertainty directions instead (below).
 
@@ -201,7 +198,29 @@ The SO₂ levels that share a dt run as one vmapped batch. The Jacobian is taken
 
 **Coagulation solver** (`make_step(coag_solver='euler_adaptive')`: the Fortran multicoag.f sub-step limits, forward mode only). The fixed 10-sub-step Euler solver goes NaN above about 3e9 cm⁻³ of clusters (≥ 1000 ppmv at 60 s); the adaptive one stays stable. Up to 10 ppmv the two agree within 7%. At 100 ppmv and 60 s, the fixed solver gives 1.5–2× the adaptive N(>3 nm), but the sensitivities agree within 0.09.
 
-**Possible replacement for `dt_for`:** an adaptive inner step for gas → nucleation → condensation, keyed to the H₂SO₄ lifetime (`docs/future_features.md` §7). Not implemented.
+**Replacement for `dt_for` (2026-11-05):** `run_map --gas-substep adaptive` keeps dt = 60 s and sub-steps gas → nucleation → condensation by the H₂SO₄ budget (condensation sink + nucleation loss), with coagulation on adaptive intervals ([gas_substep.md](gas_substep.md)). On the T × SO₂ grid over 24 h (L1 distances over the whole size distribution, 6 h and 24 h), f = 0.1 is within 0.03 in number of small fixed-dt references (0.02 s at 100 ppmv) at ≥ 100 ppbv, except 240 K / 10 ppmv at 24 h (0.054, bin-shift noise); `dt_for` is 0.19–0.27 off at ≥ 10 ppmv. The clamp cannot fire. The map has not yet been rerun with it. `make_step(ad_mode='reverse')` (bounded loops) also makes `jax.grad` possible.
+
+## Prescribed J: AD against FD at 217–240 K (2026-11-10)
+
+Elasticity d ln N(>3 nm) / d ln J at J = J_ref from `prescribed_j.py` (40 bins, `dt_for`, AD jvp against the per-cell central FD at J(1 ± 2%); `results/prescribed_j/pj_40bin_T{217,223,240}.npz`):
+
+| SO₂ | T | AD (6 / 12 / 24 h) | FD (6 / 12 / 24 h) |
+|---|---|---|---|
+| 0.1 ppbv | 223 K | 0.17 / 0.85 / 0.91 | 1.77 / 1.76 / 0.82 |
+| 0.1 ppbv | 240 K | 0.01 / 0.18 / 0.86 | 0.01 / 0.18 / 0.86 |
+| 10 ppmv | 240 K | 0.80 / 0.92 / 0.80 | 0.80 / 0.93 / −0.43 |
+| 100 ppmv | 217 K | 1.54 / 1.63 / 1.95 | 1.54 / 2.66 / 5.02 |
+| 100 ppmv | 223 K | 1.61 / 1.64 / 1.66 | 1.60 / 2.17 / −4.30 |
+| 100 ppmv | 240 K | 1.17 / 0.93 / 0.59 | 1.17 / 2.87 / 1.24 |
+
+At 100 ppbv and 1 ppmv AD and FD agree within about 0.07 at every hour shown.
+
+- **No tangent blow-up on 40 bins.** |AD| ≤ about 2 in every cell, at every T and J level. The 80-bin blow-up comes from the linear sub-bin coagulation scheme, which 40 bins (TFL coagulation) do not use.
+- **At 100 ppmv after about 12 h (and 240 K / 10 ppmv at 24 h) the FD is the suspect number.** It jumps (−4.3 at 223 K, −0.43 at 240 K) where AD changes smoothly, as at 217 K ([prescribed_j.md](prescribed_j.md#results)): a 2% change in J moves particles across bin edges and sub-step counts. The gas clamp fires in 33% (217 K) and 22% (223 K) of these cell-hours, which AD cannot see; at 240 K it does not fire, so the 240 K gap has no identified cause. Not yet separated: a larger FD step or a regression stencil (as in Phase 3) would tell FD noise from AD error.
+- **At 0.1–1 ppbv in the first hours (223 K) FD is 2–10× AD,** while at 240 K they agree. Most likely the first particles are just crossing 3 nm, so N(>3 nm) is a step function of the growth and neither derivative is reliable until the mode has grown past the cutoff. Not checked.
+- **Usable:** the 40-bin elasticities everywhere except 100 ppmv after about 12 h (AD only, unconfirmed) and the growth-front hours at 0.1–1 ppbv.
+- **80 bins not run.** It needs the 80-bin J_ref (`run_map --resolved-dt --grids 80`). At 223 and 240 K / 100 ppmv the AD tangent would blow up as in the coefficient runs (the unstable mode belongs to the linearised step, not to the input being differentiated), and the 2% FD is already erratic there on 40 bins, so those cells would need a larger step or a regression stencil.
+- The study uses `dt_for`, not adaptive gas sub-steps.
 
 ## Phase 3: scenarios, Jacobian and FD check (2026-11-02 to 11-04)
 

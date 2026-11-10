@@ -127,31 +127,30 @@ The 60 s step fails at high H₂SO₄ production
   - It is expensive: the 0.5 s level is about 70% of the 40-bin run time,
     because coagulation is repeated every short step.
 
-### Proposed design: adaptive inner loop for the gas-competing processes
+### Implemented (2026-11-05): adaptive gas sub-steps
 
-- **Loop structure.**
-  - Keep the outer `dt` (60 s).
-  - Sub-step only SO₂ chemistry → nucleation → condensation in an inner
-    `while_loop`.
-  - Coagulation, which is slow, stays on the outer step. It can still use
-    `coag_solver='euler_adaptive'` if N is high.
-- **Inner-step criterion** (pick one; compare both):
-  - a fraction of the H₂SO₄ lifetime, dt_sub ≤ f · [H₂SO₄] / (P + (CS + k_nuc)[H₂SO₄])
-    with f ≈ 0.1;
-  - or halving until the gas clamp does not fire and Δ[H₂SO₄] per sub-step
-    is < ~10%.
-- **API.** An opt-in `make_step(..., gas_substep='adaptive')`, with a cap on
-  inner sub-steps. The default must stay bit-identical (Fortran parity).
-- **Differentiation.**
-  - Forward-mode only, as already required by the traced nucleation loop and
-    adaptive coagulation.
-  - Gradients are blind to the sub-step choice. That is small if the choice
-    is converged.
-  - Under `vmap` the slowest batch member sets the pace.
-- **Validation.** Reproduce the converged runs in `results/phase2_dt`:
-  - 217 K over 2 h at dt = 2 s and 0.5 s;
-  - 190 K / 100 ppmv at ≤ 0.25 s.
-  - If it matches, it replaces `dt_for` and makes the 80-bin map affordable.
+`make_step(..., gas_substep='adaptive')`. See [gas_substep.md](gas_substep.md).
+- **Criterion.** SO₂ chemistry → nucleation → condensation are sub-stepped by the
+  largest Δt_rem/2^k with (CS + n_eff·k_nuc)·Δt ≤ 0.1. k_nuc is the
+  nucleation loss frequency at the post-chemistry gas, and n_eff = d ln J/d ln C.
+  The nucleation gas clamp cannot fire.
+- **Change from the proposal: coagulation does not stay on the outer step.** In
+  bursts that was 1.8× off in N(>3 nm). It now runs on coagulation intervals.
+  An interval ends after nucleation has added 0.01·N, and shrinks if
+  coagulation removed more than that. Each sub-step splits the chemistry
+  around nucleation (half before, half after), so nucleation does not see
+  the top of the H₂SO₄ sawtooth.
+- **Validation.** `benchmarks/python/gas_substep_convergence.py` covers the Phase 2
+  grid against small fixed dt over 24 h (whole-distribution L1, 6 h and 24 h).
+  f = 0.1 passes 140 of 144 checks; the 4 failures are bin-shift noise that
+  fixed-dt runs share. At 100 ppmv it is 3–10× cheaper than a 0.02 s run,
+  where `dt_for` (0.5 s) is 0.25 off in number at 24 h.
+- **Differentiation.** Forward mode by default. `ad_mode='reverse'` (bounded loops,
+  `core/bounded_loop.py`) makes `jax.grad` work through the whole step.
+- **Open.** 190 K / 100 ppmv still needs ~5700 sub-steps per 60 s (the H₂SO₄
+  relaxation time is ~0.01 s). A semi-implicit gas step, or the
+  pseudo-steady-state alternative below, would remove that limit.
+
 - **Alternative: pseudo-steady-state H₂SO₄.**
   - This is the usual TOMAS approach, Pierce & Adams (2009, Aerosol Sci.
     Technol.). It is cited from memory and should be checked against the paper.

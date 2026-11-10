@@ -35,6 +35,9 @@ def ezcond_ppm_jax(
     boxvol: jnp.ndarray,
     alpha: jnp.ndarray = jnp.array(1.0),
     sparse_density=None,
+    bounded: bool = False,
+    ppm_max_substeps: int = 64,
+    ppm_freeze_shape: bool = False,
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Condense a given mass using PPM advection scheme (pure JAX, JIT-compilable).
 
@@ -56,6 +59,10 @@ def ezcond_ppm_jax(
         alpha: Accommodation coefficient
         sparse_density: Low-occupancy bin density [kg/m3] for the
             condensation sink (calc_wet_diameters). None = Fortran defaults.
+        bounded, ppm_max_substeps: static; see ppm_condensation_step
+            (bounded sub-step loop for reverse-mode AD).
+        ppm_freeze_shape: static; ppm_condensation_step's freeze_shape
+            (frozen-shape derivative, same values).
 
     Returns:
         Nk_out: Updated number concentration, shape (ibins,)
@@ -106,7 +113,8 @@ def ezcond_ppm_jax(
             Nk_in, Mk_in, tau_in = args
             Nk2, Mk2 = ppm_condensation_step(
                 Nk_in, Mk_in, xk, tau_in, spec, dt=1.0,
-                icomp_nodiag=ICOMP_NODIAG
+                icomp_nodiag=ICOMP_NODIAG, bounded=bounded,
+                max_substeps=ppm_max_substeps, freeze_shape=ppm_freeze_shape,
             )
             mass_add = mcond * sinkfrac / safe_totsinkfrac
             Mk2 = Mk2.at[:, spec].add(mass_add)

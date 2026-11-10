@@ -17,6 +17,7 @@ For production use, prefer diffrax.py (Tsit5 adaptive RK) which is:
 import jax
 # float64 enforced by core/config.py
 import jax.numpy as jnp
+from functools import partial
 from typing import Tuple, Optional
 
 from ..physics.properties import calc_particle_properties
@@ -24,6 +25,7 @@ from ..physics.coagulation_kernel import calc_coagulation_kernel
 from ..physics.coagulation_rates import calc_coagulation_rates
 from ..core.mnfix_jax import mnfix_jax
 from ..core.mnfix_fortran import mnfix_fortran
+from ..core.bounded_loop import loop_while
 from ..core.config import ICOMP_NODIAG, TINY_N, TINY_M
 
 
@@ -91,6 +93,7 @@ def euler_step(
     max_substeps: int = 10000,
     return_info: bool = False,
     sparse_density=None,
+    bounded: bool = False,
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Forward Euler integration of coagulation over timestep dt.
 
@@ -118,6 +121,9 @@ def euler_step(
             can detect when max_substeps was hit (integration truncated).
         sparse_density: Density [kg/m3] for low-mass bins in the kernel
             (see calc_particle_properties). None = 1000 (Fortran).
+        bounded: If True (static), the sub-step loop is a bounded loop of
+            max_substeps iterations (core/bounded_loop.py) and MNFIX is
+            bounded too, so reverse-mode AD works.
 
     Returns:
         Nk_final: Updated number concentration
@@ -125,7 +131,10 @@ def euler_step(
         n_substeps: (only if return_info=True) Number of substeps used
     """
     # Select MNFIX function
-    mnfix_fn = mnfix_fortran if use_fortran_mnfix else mnfix_jax
+    if use_fortran_mnfix:
+        mnfix_fn = mnfix_fortran
+    else:
+        mnfix_fn = partial(mnfix_jax, bounded=bounded)
 
     # Initial kernel computation
     Dpk, Dk, ck = calc_particle_properties(Nk, Mk, temp, pres, sparse_density)
@@ -174,8 +183,8 @@ def euler_step(
         return Nk_new, Mk_new, kij_use, t_elapsed + dt_sub, n_steps + 1
 
     init_state = (Nk, Mk, kij, jnp.float64(0.0), jnp.int32(0))
-    Nk_final, Mk_final, _, _, n_substeps = jax.lax.while_loop(
-        cond_fn, body_fn, init_state)
+    Nk_final, Mk_final, _, _, n_substeps = loop_while(
+        cond_fn, body_fn, init_state, bounded, max_iter=max_substeps)
 
     if return_info:
         return Nk_final, Mk_final, n_substeps

@@ -21,6 +21,8 @@ Usage::
     python -m sensitivities.dunne_nuc.run_map --smoke      # 40 bins, 2 T x 3 SO2 x 2 h
     python -m sensitivities.dunne_nuc.run_map --resolved-dt --grids 40
         # dt per SO2 level (dt_for), Jacobian along directions() only
+    python -m sensitivities.dunne_nuc.run_map --gas-substep adaptive --grids 40
+        # dt = 60 s with adaptive H2SO4 sub-steps (docs/gas_substep.md)
 """
 import os
 import time
@@ -107,7 +109,8 @@ def npz_path(outdir, nbins, temp):
 
 
 def build_sim(xk, temp, hours, dunne_form='double_exp', oh_conc=OH_CONC,
-              coag_solver='euler_fixed', dt=DT, runner_kw=None):
+              coag_solver='euler_fixed', dt=DT, runner_kw=None,
+              gas_substep=None, ppm_tangent='exact'):
     """sim(params, Nk0, Mk0, Gc0) -> (hourly outputs, hourly diagnostics).
 
     params enters only through nucleation, so sim is a function of the fit
@@ -115,7 +118,8 @@ def build_sim(xk, temp, hours, dunne_form='double_exp', oh_conc=OH_CONC,
     scenarios.runner_kwargs: cond, dilution) overrides the map defaults.
     """
     kw = dict(cond=dict(STRAT, temp=temp), oh_conc=oh_conc,
-              dunne_form=dunne_form, coag_solver=coag_solver)
+              dunne_form=dunne_form, coag_solver=coag_solver,
+              gas_substep=gas_substep, ppm_tangent=ppm_tangent)
     kw.update(runner_kw or {})
     # One hour = 3600/dt steps (SO2 chem -> nucl -> coag -> cond), as a scan.
     run_hour = make_runner(xk, nsteps=round(3600.0 / dt), dt=dt, **kw)
@@ -150,13 +154,20 @@ def build_sim(xk, temp, hours, dunne_form='double_exp', oh_conc=OH_CONC,
 
 
 def run_cell_set(nbins, temp, so2_ppbv, hours, outdir, oh_conc,
-                 coag_solver='euler_fixed', resolved_dt=False):
+                 coag_solver='euler_fixed', resolved_dt=False,
+                 gas_substep=None, ppm_tangent='exact'):
     """All SO2 levels at one (grid, T), vmapped over SO2.
 
     resolved_dt=False: dt = 60 s everywhere, full Jacobian (25 fields).
     resolved_dt=True: dt = dt_for(SO2), SO2 levels grouped by dt, and the
     Jacobian only along directions(temp) (4 tangents instead of 25).
+    gas_substep='adaptive': dt = 60 s with make_step's H2SO4-budget
+    sub-steps (docs/gas_substep.md), Jacobian along the directions as for
+    resolved_dt. The SO2 levels are still batched by dt_for, so that a
+    vmapped batch does not wait for the stiffest level.
+    ppm_tangent: make_step's (frozen_shape: stable PPM tangent, same values).
     """
+    dir_jac = resolved_dt or gas_substep is not None
     # Initial state: same background aerosol for every cell; only the SO2 in
     # the gas array differs, so Gc0 is the one batched input (nso2, ngas).
     xk = GRIDS[nbins]()
@@ -172,23 +183,27 @@ def run_cell_set(nbins, temp, so2_ppbv, hours, outdir, oh_conc,
     dirs = directions(temp)
     D = jnp.array(np.stack(list(dirs.values())))     # (ndir, nfields)
 
-    dts = np.array([dt_for(c) if resolved_dt else DT for c in so2_ppbv])
+    dts = np.array([dt_for(c) if resolved_dt or gas_substep else DT
+                    for c in so2_ppbv])
     parts, timing = [], []
     # One compiled program per dt group: batched while_loops run until the
     # slowest member finishes, so mixing dt (or SO2 regimes) in one vmap
     # would make every level pay for the most expensive one.
-    for dt in sorted(set(dts.tolist()), reverse=True):
-        idx = np.where(dts == dt)[0]
+    for group in sorted(set(dts.tolist()), reverse=True):
+        idx = np.where(dts == group)[0]
+        dt = DT if gas_substep else group
         sim = build_sim(xk, temp, hours, oh_conc=oh_conc,
-                        coag_solver=coag_solver, dt=dt)
+                        coag_solver=coag_solver, dt=dt,
+                        gas_substep=gas_substep, ppm_tangent=ppm_tangent)
         sim_s2 = build_sim(xk, temp, hours, dunne_form='single_exp',
-                           oh_conc=oh_conc, coag_solver=coag_solver, dt=dt)
+                           oh_conc=oh_conc, coag_solver=coag_solver, dt=dt,
+                           gas_substep=gas_substep, ppm_tangent=ppm_tangent)
 
         # Forward-mode Jacobian. has_aux returns the primal outputs and
         # diagnostics from the same pass, so no separate baseline run is
-        # needed. Reverse mode is impossible here (traced loop trip counts in
-        # nucleation and coagulation sub-stepping).
-        if resolved_dt:
+        # needed. Forward mode is the cheaper one here (hundreds of outputs,
+        # 4-25 inputs); make_runner(ad_mode='reverse') would allow jax.grad.
+        if dir_jac:
             # theta = P + alpha @ D: d/d alpha_i is the derivative along
             # direction i, one tangent per direction.
             def with_jac(gc):
@@ -216,9 +231,10 @@ def run_cell_set(nbins, temp, so2_ppbv, hours, outdir, oh_conc,
         ys_s2, aux_s2 = jax.block_until_ready(
             jax.jit(jax.vmap(lambda gc: sim_s2(S2, Nk0, Mk0, gc)))(Gc0[idx]))
         t_s2 = time.time() - t0
-        timing.append(f"dt={dt:g}s x{len(idx)}: {t_jac:.0f}+{t_s2:.0f} s")
+        label = f"dt_for={group:g}s group" if gas_substep else f"dt={dt:g}s"
+        timing.append(f"{label} x{len(idx)}: {t_jac:.0f}+{t_s2:.0f} s")
 
-        if resolved_dt:
+        if dir_jac:
             # jac[key]: (n, hours, nout, ndir) already
             jac_d = {k: np.array(jac[k]) for k in ('dndlog', 'nmass')}
         else:
@@ -229,7 +245,7 @@ def run_cell_set(nbins, temp, so2_ppbv, hours, outdir, oh_conc,
         parts.append((idx, dict(
             dndlog=np.array(ys['dndlog']), nmass=np.array(ys['nmass']),
             dndlog_s2=np.array(ys_s2['dndlog']), nmass_s2=np.array(ys_s2['nmass']),
-            **{f'jac{"_dir" if resolved_dt else ""}_{k}': v
+            **{f'jac{"_dir" if dir_jac else ""}_{k}': v
                for k, v in jac_d.items()},
             **{f'aux_{k}': np.array(v) for k, v in aux.items()},
             **{f'aux_s2_{k}': np.array(v) for k, v in aux_s2.items()})))
@@ -451,7 +467,17 @@ def main():
     parser.add_argument('--resolved-dt', action='store_true',
                         help='dt per SO2 level (dt_for) and Jacobian along the '
                              'published directions only; writes results/phase2_dt')
+    parser.add_argument('--gas-substep', choices=['adaptive'], default=None,
+                        help="dt = 60 s with make_step(gas_substep='adaptive') "
+                             'and the directional Jacobian; writes '
+                             'results/phase2_gas')
+    parser.add_argument('--ppm-tangent', choices=['exact', 'frozen_shape'],
+                        default='exact',
+                        help="make_step's PPM derivative; frozen_shape (stable, "
+                             "not exact) appends _frozen to the results directory")
     args = parser.parse_args()
+    if args.resolved_dt and args.gas_substep:
+        parser.error('--resolved-dt and --gas-substep are alternatives')
 
     if args.smoke:
         grids, temps, so2, hours = [40], [208.0, 217.0], [1e-1, 1.0, 1e2], 2
@@ -461,14 +487,19 @@ def main():
         outdir = os.path.join(RESULTS, 'phase2')
     if args.resolved_dt:
         outdir += '_dt'
+    if args.gas_substep:
+        outdir += '_gas'
     if args.coag_solver != 'euler_fixed':
         outdir += '_adaptive'
+    if args.ppm_tangent == 'frozen_shape':
+        outdir += '_frozen'
 
     if not args.plot_only:
         for nbins in grids:
             for T in temps:
                 run_cell_set(nbins, T, so2, hours, outdir, args.oh,
-                             args.coag_solver, args.resolved_dt)
+                             args.coag_solver, args.resolved_dt,
+                             args.gas_substep, args.ppm_tangent)
     for nbins in grids:
         plot(outdir, nbins, temps)
 

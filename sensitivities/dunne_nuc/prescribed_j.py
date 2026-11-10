@@ -60,10 +60,11 @@ def j_reference(nbins, temp, so2_ppbv):
     return np.array([jm[c] for c in so2_ppbv])
 
 
-def build_sim(xk, temp, hours, dt):
+def build_sim(xk, temp, hours, dt, ppm_tangent='exact'):
     """sim(J, Gc0) -> (hourly outputs, hourly diagnostics), Phase 2 initial aerosol."""
     run_hour = make_prescribed_j_runner(xk, nsteps=round(3600.0 / dt), dt=dt,
-                                        cond=dict(STRAT, temp=temp))
+                                        cond=dict(STRAT, temp=temp),
+                                        ppm_tangent=ppm_tangent)
     Nk0, Mk0, _ = lognormal_state(xk)
 
     def sim(J, Gc0):
@@ -84,7 +85,8 @@ def build_sim(xk, temp, hours, dt):
     return sim
 
 
-def run_temp(nbins, temp, hours=HOURS, so2_ppbv=SO2_PPBV, j_factors=J_FACTORS):
+def run_temp(nbins, temp, hours=HOURS, so2_ppbv=SO2_PPBV, j_factors=J_FACTORS,
+             ppm_tangent='exact'):
     xk = GRIDS[nbins]()
     j_ref = j_reference(nbins, temp, so2_ppbv)
     J = j_ref[:, None] * j_factors[None, :]          # (nso2, nf)
@@ -96,7 +98,7 @@ def run_temp(nbins, temp, hours=HOURS, so2_ppbv=SO2_PPBV, j_factors=J_FACTORS):
     # One compiled program per dt group, vmapped over (SO2 in the group) x J
     for dt in sorted(set(dts.tolist()), reverse=True):
         idx = np.where(dts == dt)[0]
-        sim = build_sim(xk, temp, hours, dt)
+        sim = build_sim(xk, temp, hours, dt, ppm_tangent)
         gc_b = jnp.array(np.repeat(gcs[idx], nf, axis=0))
         J_b = jnp.array(J[idx].ravel())
 
@@ -218,19 +220,25 @@ def main():
     parser.add_argument('--temps', type=float, nargs='+', default=TEMPS)
     parser.add_argument('--smoke', action='store_true',
                         help='2 h, SO2 0.1/10 ppbv, J/J_ref 0.1/10; no plots')
+    parser.add_argument('--ppm-tangent', choices=['exact', 'frozen_shape'],
+                        default='exact',
+                        help="make_step's PPM derivative; frozen_shape (stable, "
+                             "not exact) writes results/prescribed_j_frozen")
     args = parser.parse_args()
+    global OUTDIR
+    if args.ppm_tangent == 'frozen_shape':
+        OUTDIR += '_frozen'
     if args.smoke:
-        global OUTDIR
         OUTDIR = os.path.join(RESULTS, 'prescribed_j_smoke')
         for nbins in args.grids:
             for T in args.temps:
                 run_temp(nbins, T, hours=2, so2_ppbv=[0.1, 10.0],
-                         j_factors=np.array([0.1, 10.0]))
+                         j_factors=np.array([0.1, 10.0]), ppm_tangent=args.ppm_tangent)
         return
     for nbins in args.grids:
         if not args.plot_only:
             for T in args.temps:
-                run_temp(nbins, T)
+                run_temp(nbins, T, ppm_tangent=args.ppm_tangent)
         plot(nbins, args.temps)
 
 

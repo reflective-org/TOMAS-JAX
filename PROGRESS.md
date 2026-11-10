@@ -4,6 +4,90 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-11-10 (Tue) 12:08 PST — 80-bin gas sub-step check: finite-difference sensitivity where the jvp blows up
+
+- **What:** at 223 K and 240 K / 100 ppmv (80 bins) the linear sub-bin coagulation tangent blows up after ~12 h in every run, the reference included (Σ|δN|/ΣN 3e6–3e45 at 24 h), so the sensitivity comparison was meaningless there. These two cells now use a central finite difference, α = ±0.05 along the H₂SO₄-calibration direction, for every run kind.
+- **Files:** `benchmarks/python/gas_substep_convergence.build(fd_alpha=)` (forward-only run at shifted coefficients); `benchmarks/python/gas_substep_psd80.py` (`FD_CELLS`, `FD_H`, `<kind>_fd±` runs in `--all`, `load_run` swaps the tangents, `fd_vs_jvp` printed by `--check`); `plot_gas_substep_grid.py` and `plot_gas_substep_psd.py` read through `load_run` (grid figure boxes the FD points); `docs/gas_substep.md`.
+- **Checked:** coarser outputs do not avoid the blow-up (2–80 bins merged, total N and N(>3 nm) are as far off as the per-bin tangent). Over the first 2 h at 240 K, FD is within 0.4% of the jvp (sensitivity ~0.5–0.7).
+- **Also this session:** constant dt = 60 s and 0.25 s run kinds replace `dt_for` in the 80-bin grid figure; hourly hour-mean series saved for the plotted kinds; `benchmarks/python/lognormal_fit.py` (1–3 lognormal mode fits, BIC) kept for later use.
+- **Next:** run the 28 FD runs (`gas_substep_psd80 --all`, roughly 25 CPU-h, 4–7 h wall, set by the four 0.02 s reference sides), then `--check` and the 80-bin figures.
+
+## 2026-11-09 (Mon) 18:10 PST — 80-bin tangent blow-up traced to linear sub-bin coagulation; occupancy cut removed
+
+- **Removed:** the relative occupancy cut that `ppm_freeze_shape` briefly applied in `ezcond_ppm_jax` (bins < 1e-5·ΣN entering condensation without a tangent). It bounded the 80-bin tangent but lost the growth front: in the 40-bin prescribed-J runs at 223/240 K, N(>12 nm) at 0.1–1 ppbv was off FD by 2–1000× with it, against ≤ 3 with the exact tangent. `ppm_tangent='frozen_shape'` is again the shape freeze only.
+- **Found:** the 80-bin 223/240 K / 100 ppmv blow-up comes from `coagulation_rates_linear.py`. In bins holding < 1 particle per cell, x̄ sits near the top edge and the ramp profile's n_hi = 2/(3(b − x̄)) has a derivative ∝ 1/(b − x̄)². Coagulation tangent → identity removes the mode (×171 → ×1.2 per 10 min); freezing TAU's per-particle terms, the species-flux ratio or the kernel does not; freezing the profile or x̄ is worse (inconsistent number/mass tangents). Table in `docs/prescribed_j.md`.
+- **40-bin prescribed-J (223/240 K):** the exact tangent does not blow up; remaining AD/FD gaps at 1e4–1e5 ppbv are the same with both tangents (likely FD across bin shifts/sub-step changes).
+- **Next:** a consistent stabilised derivative for the linear coagulation scheme (e.g. bounding the ramp's slope in the tangent only), then rerun the 80-bin cells against the saved FD.
+
+## 2026-11-09 (Mon) 12:38 PST — Frozen-shape PPM tangent (`make_step(ppm_tangent='frozen_shape')`)
+
+- **What:** an opt-in derivative for PPM condensation. Values are bit-identical to the default; the reconstruction's derivative holds each bin's parabola shape (n_L, n_R, n_6 divided by n̄) fixed and scales it by the bin's own tangent (`condensation_ppm._freeze_shape`, a straight-through `stop_gradient`). The linearised condensation step is then an upwind scheme with non-negative weights.
+- **Files:** `physics/condensation_ppm.py` (`ppm_reconstruct(freeze_shape=)`, `ppm_condensation_step(freeze_shape=)`), `physics/ezcond_ppm_jax.py` (`ppm_freeze_shape`), `solvers/condensation.py` (`make_step(ppm_tangent=)`, raises with TFL), `sensitivities/dunne_nuc/common.py` (both runners), `run_map.py`/`prescribed_j.py` (`--ppm-tangent`, `*_frozen` output dirs), `benchmarks/python/gas_substep_convergence.build(ppm_tangent=)`, new `benchmarks/python/ppm_tangent_stability.py`, new `tests/test_ppm_tangent.py`, a frozen case in `tests/test_reverse_mode.py`.
+- **Results:**
+  - 217 K, 100 ppbv, J = 0.01 (40 bins): frozen within 1% of FD for 18 h; exact diverges from 9 h. Leading mode per hour at 9 h: exact ×2–11, frozen ×0.99.
+  - Where exact was stable (100 ppbv and 1 ppmv at J_ref), frozen is 2–7% off FD against exact's 1–3%, so it stays opt-in.
+  - 80 bins, 223 K and 240 K / 100 ppmv: not fixed. Frozen also blows up by 24 h (Σ|δN|/ΣN 9e4, 3e27; FD ~1). At 240 K, 14 h, the leading mode grows ×170 per 10 min with nucleation in the step and ×1.01 without, in bins 1–3.
+- **Tests:** the new and reverse-mode tests pass. Full suite: 744 passed; 35 failures need the missing `tuvx_photolysis` module; 2 AAAR fingerprint mismatches (`level1_volatility`) also fail at the last commit 21ccbc6, so they predate this change.
+- **Known issue:** `_limit_parabola` Case 2 (flatten an out-of-bounds interior extremum) is undone by Case 3's unconditional recompute of q_6; not changed (forward model and Fortran PPM parity).
+- **Next:** identify the nucleation-linked amplifier on 80 bins (MNFIX after nucleation on the √2 grid, or the nucleation–gas coupling).
+
+---
+
+## 2026-11-07 (Sat) 13:09 PST — Adaptive gas sub-steps: 80-bin check at 40-bin resolution
+
+- **Benchmark (`benchmarks/python/gas_substep_psd80.py`):**
+  - `--check` now tests the hour-mean L1 distances (number, dry mass, sensitivity ≤ 0.05) with each pair of 80-bin bins merged (`MERGE` = 2), which are the 40-bin grid's bins.
+  - The per-80-bin distances are still printed on every line, untested.
+  - Sensitivity failures where the reference's own Σ|δN|/ΣN > `INVALID_TANGENT` (1e3) are listed apart, as the PPM tangent instability. They still make the check exit non-zero.
+  - `hour_mean_errors` also returns the merged distances (`eN40`, `eM40`, `edN40`) and the reference's Σ|δN|/ΣN (`ref_dN`).
+- **Why.** The 4 failures of the per-80-bin check were:
+  - 2 invalid-tangent cells (223 K and 240 K / 100 ppmv, 24 h; reference included);
+  - 200 K / 0.01 ppbv, 24 h and 200 K / 0.1 ppbv, 6 h, in sensitivity.
+- **A fixed-dt ladder at 200 K / 0.1 and 0.01 ppbv and 223 K / 0.1 ppbv (0.125–60 s, fixed and adaptive) showed the 200 K failures are bin placement, not a dt error:**
+  - The distances fall into two groups and do not fall with dt. Fixed 0.125 s is 0.160 off fixed 0.25 s at 200 K / 0.1 ppbv, 6 h, with the same total N, but 254 against 337 cm⁻³ in bin 1 (when MNFIX moves the slowly growing particles from bin 0 to bin 1).
+  - The snapshot distance is nearly the same as the hour mean, so a shorter averaging window would not help.
+  - No smaller dt_max passes all three cells.
+  - Merged to 40-bin bins, 0.125 s and 0.25 s are 0.010 apart, and the distance falls fairly steadily with dt.
+- **Result:** with merged bins, f = 0.1 passes every valid cell. The largest merged distances are 0.014 (number), 0.004 (dry mass) and 0.018 (sensitivity). The check fails only the two invalid-tangent cells.
+- **Docs:** `docs/gas_substep.md` (80-bin section: pass rule, why bins are merged, ladder table, result); CLAUDE.md.
+- **N(>D ≥ 3.4 nm) metric removed** (`gas_substep_convergence.tail_err`, `TAIL_DP`, `TAIL_FLOOR` and its uses in `gas_substep_psd80`, `plot_gas_substep_grid`, `plot_gas_substep_psd`). It was never tested; the error it was added for (+24% in the 3.4–4.3 nm bin at 217 K / 10 ppmv, 40 bins) is gone at 80 bins.
+- **Known issues:**
+  - The PPM tangent instability still makes the 100 ppmv sensitivity at 223 K and 240 K invalid at 24 h, in all runs.
+  - f = 0.03 hits the sub-step cap at 190 K / 100 ppmv.
+- **Next:** decide whether `--check` should keep failing on the invalid-tangent cells or mark them as known.
+
+---
+
+## 2026-11-06 (Fri) 19:25 PST — Adaptive gas sub-steps: 80-bin grid judged on hour means
+
+- **Benchmark (`benchmarks/python/gas_substep_convergence.py`):**
+  - `build` now runs one compiled jvp segment per report hour.
+  - It records the time to each hour without compilation.
+  - It records the hour means of Nk, dry Mk and dNk, sampled once a minute; every fixed dt must divide 60 s.
+  - Added `tail_err`, the largest error in N(>D) and its tangent for D ≥ 3.4 nm. It is logged, not tested.
+- **New `benchmarks/python/gas_substep_psd80.py`:** the same grid on 80 bins. The reference step is 0.25 s up to 100 ppbv; 1 s was 0.17 off a 0.125 s run at 208 K / 0.1 ppbv.
+  - Pass/fail (`--check`, run at the end of `--all`) uses the hour means: L1 number, dry mass and sensitivity ≤ 0.05 at 6 h and 24 h, no clamp, no cap.
+  - At 217 K / 10 ppmv, f = 0.1's snapshot L1 number is 0.005–0.082 from hour to hour, and above 0.05 in 5 of 24 hours. Its hour mean is ≤ 0.014.
+  - The snapshot distance comes from bins 0–1 trading particles from minute to minute.
+- **Known issues:**
+  - The 40-bin grid has no hour means.
+  - At 40 bins and 100 ppmv, 200–217 K, the N(>D) error is above 0.05; the cause is not yet known.
+  - The 10 ppmv (0.1 s) and 1 ppmv (0.5 s) references are not yet checked for convergence at 80 bins.
+- **Next:** run `run_awake -m benchmarks.python.gas_substep_psd80 --all` (239 runs, ~8–11 h), then `--check`.
+
+---
+
+## 2026-11-06 (Fri) 03:00 PST — Adaptive gas sub-steps: split chemistry, 24 h whole-distribution validation
+
+- **Fix (adaptive path only, `tomas_jax/solvers/condensation.py`):** each gas sub-step now runs SO₂ chemistry for dt_sub/2 before nucleation and dt_sub/2 after it. With all of the chemistry first, nucleation saw the top of the H₂SO₄ sawtooth and J ∝ Cⁿ was n·CS·dt_sub/2 high (11% at 240 K / 10 ppmv, f = 0.1; the 1.7–2.7 nm bins 4–8% off from hour 1). The bias is now second order, at the same cost. The default `make_step` path is unchanged. Tests `test_gas_substep.py`, `test_reverse_mode.py` pass.
+- **Diagnosis path:** a bin-0 growth term in the step criterion was tried first and removed (growth out of the 1.7 nm bin is ~0.006 s⁻¹, too slow to matter); shorter coagulation intervals or a 10 s outer step did not help.
+- **Benchmark (`benchmarks/python/gas_substep_convergence.py`):** 24 h, pass/fail on L1 number, dry mass and sensitivity over the whole size distribution at 6 h and 24 h (tolerance 0.05). New `--so2`, `--runs`, `--part`, `--merge` options; `benchmarks/results/gas_substep/run_grid_parts.sh` runs the grid as 42 parts, 11 at a time (~1.5 h). The 10 ppmv reference is 0.1 s (the 0.5 s one was 0.04 off).
+- **Result:** f = 0.1 passes 140 of 144 checks (before the split: 131). Failures: 190 K and 200 K at 0.01 ppbv (24 h), 208 K at 0.1 ppbv (6 h), 240 K at 10 ppmv (24 h), all at 0.054–0.096. These are MNFIX bin-shift timing noise: fixed-dt runs at 60/15/5/2 s scatter by 0.01–0.07 in L1 sensitivity against 1 s, in no order with dt; at 240 K the 0.1 s and 0.05 s references differ by 80% in one bin at 24 h. `dt_for` is 0.19–0.27 off in number at ≥ 10 ppmv at 24 h. At ≥ 1 ppmv f = 0.1 costs 3–10× less than the reference and 3–8× more than `dt_for`. Pre-split results kept in `benchmarks/results/gas_substep/chem_before_nucl/`.
+- **Known issues:** 190 K / 100 ppmv at f = 0.03 hits the 16384 sub-step cap; the bin-shift noise floor (0.02–0.1) means the benchmark cannot test tighter than that bin by bin.
+- **Next:** decide whether the benchmark should judge against that noise floor (e.g. a coarser binning or several references); rerun the Phase 2 map with `--gas-substep adaptive`; semi-implicit gas step for the 190 K / 100 ppmv stiffness.
+
+---
+
 ## 2026-11-05 (Thu) 07:00 PST — Stratospheric model setup: cluster density, pure sulfate clusters, sparse-bin density
 
 - **New doc `docs/stratosphere_setup.md`:** the stratospheric settings that differ from the library defaults (kept for Fortran parity), with reasons and measured effects.
