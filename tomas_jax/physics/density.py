@@ -28,12 +28,17 @@ MWS0 = MWSO4 + 2.0         # 98.0 (H2SO4)
 MWS1 = MWSO4 + 1.0 + MWNH4 # 115.0 (NH4HSO4)
 MWS2 = 2.0 * MWNH4 + MWSO4 # 132.0 ((NH4)2SO4)
 
-def calc_density(Mk: jnp.ndarray) -> jnp.ndarray:
+def calc_density(Mk: jnp.ndarray, empty_density: float = 1000.0) -> jnp.ndarray:
     """
     Calculate density of mixed aerosol particles for all bins.
 
     Args:
         Mk: Mass concentration [kg/grid cell], shape (ibins, icomp)
+        empty_density: Density [kg/m3] for bins with total mass < 1e-15
+            kg/grid cell. Default 1000 matches Fortran aerodens.f. The
+            threshold is absolute, so sparse but real bins in small boxes
+            (stratosphere, SAI plumes) hit it; pass a sulfate density
+            (e.g. radiative_forcing.DENSITY_H2SO4_SOLUTION) there.
 
     Returns:
         Density [kg/m³], shape (ibins,)
@@ -153,6 +158,6 @@ def calc_density(Mk: jnp.ndarray) -> jnp.ndarray:
     # FORTRAN aerodens.f: if (mtot .lt. 1.e-15) aerodens=1000.
     # Match FORTRAN threshold for benchmark compatibility.
     is_empty = mtot < 1e-15
-    density = jnp.where(is_empty, 1000.0, density)
+    density = jnp.where(is_empty, empty_density, density)
 
     return density

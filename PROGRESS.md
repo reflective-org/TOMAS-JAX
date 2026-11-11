@@ -4,6 +4,34 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-11-10 — Adaptive gas sub-steps and reverse-mode AD into dev (library only)
+
+**Branch**: `adaptive-substep` (from `origin/dev`), PR into `dev`. Library, tests and docs of
+commit a064445 from `dlm`, plus the library changes it builds on (differentiable
+`NucleationParams`/`dunne_form`, `sparse_density`, vectorised MNFIX with the reference test).
+The sensitivity studies (`sensitivities/dunne_nuc/phase*.py`, `run_map.py`, ...) and the
+`benchmarks/python/gas_substep_*`, `plot_gas_substep_*`, `lognormal_fit`, `ppm_tangent_stability`
+and `reverse_mode_cost` scripts stay on `dlm`.
+
+- `solvers/gas_substep.py`, `make_step(gas_substep='adaptive')`: SO2 chemistry -> nucleation ->
+  condensation sub-stepped by the H2SO4 budget (CS + nucleation loss), coagulation and dilution on
+  coagulation intervals. Off (`None`) is bit-identical. `docs/gas_substep.md`.
+- `core/bounded_loop.py`, `make_step(ad_mode='reverse')`: traced-trip-count loops become bounded
+  scans, so `jax.grad`/`vjp` work; matches forward mode to <= 1e-11.
+- `ppm_tangent='frozen_shape'` (opt-in, PPM only; values bit-identical).
+- Tests: `test_gas_substep`, `test_reverse_mode`, `test_ppm_tangent`, `test_mnfix`,
+  `test_coag_adaptive`, `test_sparse_density`, `test_nucleation_gradients`;
+  `sensitivities/dunne_nuc/common.py` is the runner they use.
+- Docs: CLAUDE.md, `docs/{gas_substep,nucleation,nucleation_sensitivity,prescribed_j,stratosphere_setup}.md`.
+
+**Known issues**: the validation of record (`gas_substep_psd80.py --check`, ~70 CPU-h) lives on
+`dlm`, so docs that name it point at a script not on `dev`. f = 0.1 passes every cell except the
+two PPM invalid-tangent cells.
+
+**Next steps**: bring the benchmark and plotting scripts and the Phase 2-4 studies over from `dlm`.
+
+---
+
 ## 2026-10-23 (Fri) — Urban air: VOC selector benzene / toluene / m-xylene (MCM v3.3.1), stacked on the full-day Urban (B1)
 
 **Branch**: `urban-toluene` (from `urban-full-day`, PR #30); PR #31. Shantanu (2026-10-22, verbatim):

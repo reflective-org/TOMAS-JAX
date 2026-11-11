@@ -8,6 +8,7 @@ Ports of Fortran subroutines from TRACER_SOM-TOMAS:
 All functions are pure-JAX and JIT-compilable.
 """
 import warnings
+from typing import NamedTuple
 
 import jax.numpy as jnp
 
@@ -51,24 +52,85 @@ _RHO_NUC = 1350.0        # cluster density [kg/m^3]
 _MNUC = (4.0 / 3.0) * PI * _RNUC_M**3 * _RHO_NUC  # cluster mass [kg]
 
 
-def ricco_nucleation_rate(temp, h2so4, org):
+class NucleationParams(NamedTuple):
+    """Fit coefficients for the ricco_dunne scheme, as a differentiable pytree.
+
+    Pass to the rate/step functions (or make_step's ``nucl_params`` kwarg) to
+    perturb coefficients or take jax.jacfwd w.r.t. them. Defaults reproduce
+    the module constants bit-for-bit. See docs/nucleation_sensitivity.md.
+    """
+    # Dunne 2016, Table S1
+    p_bn: float = _PBN; u_bn: float = _UBN; v_bn: float = _VBN; w_bn: float = _WBN
+    p_tn: float = _PTN; u_tn: float = _UTN; v_tn: float = _VTN; w_tn: float = _WTN
+    p_an: float = _PAN; a_n: float = _AN
+    p_bi: float = _PBI; u_bi: float = _UBI; v_bi: float = _VBI; w_bi: float = _WBI
+    p_ti: float = _PTI; u_ti: float = _UTI; v_ti: float = _VTI; w_ti: float = _WTI
+    p_ai: float = _PAI; a_i: float = _AI
+    # Riccobono 2014 / Yu 2017
+    k_m: float = _KM
+    delta_h: float = _DELTA_H
+    # Nucleated cluster
+    r_nuc_nm: float = _RNUC_NM
+    rho_nuc: float = _RHO_NUC
+    org_frac: float = 0.1   # organic mass fraction; SO4 fraction = 1 - org_frac
+
+
+DEFAULT_NUCLEATION_PARAMS = NucleationParams()
+
+# Dunne 2016 rate-constant temperature forms (static choice):
+#   'double_exp' (Table S1, baseline): ln k = u - exp(v * (T/1000 - w))
+#   'single_exp' (Table S2, cross-check fit, R^2 0.83): ln k = u - v * T/1000
+# Dunne SM Sect. 19 treats the difference between the two as the measure of
+# uncertainty in the temperature dependence, especially for ion-induced
+# nucleation at low temperature.
+DUNNE_FORMS = ('double_exp', 'single_exp')
+
+# Dunne et al. (2016) SM Table S2. Riccobono and cluster fields keep their
+# defaults; w_* are unused by the single-exponential form.
+DUNNE_TABLE_S2_PARAMS = NucleationParams(
+    p_bn=3.62, u_bn=46.3, v_bn=245.0, w_bn=0.0,
+    p_tn=2.82, u_tn=41.2, v_tn=252.0, w_tn=0.0,
+    p_an=6.76, a_n=1.3e-4,
+    p_bi=2.73, u_bi=24.1, v_bi=166.0, w_bi=0.0,
+    p_ti=2.86, u_ti=18.3, v_ti=208.0, w_ti=0.0,
+    p_ai=5.0, a_i=5.0e-7,
+)
+
+
+def _dunne_lnk(u, v, w, t1000, dunne_form):
+    if dunne_form == 'double_exp':
+        return u - jnp.exp(v * (t1000 - w))
+    if dunne_form == 'single_exp':
+        return u - v * t1000
+    raise ValueError(f"Unknown dunne_form '{dunne_form}'. Valid: {DUNNE_FORMS}")
+
+
+def _cluster_mass(params):
+    """Nucleated cluster mass [kg] (equals _MNUC at default params)."""
+    return (4.0 / 3.0) * PI * (params.r_nuc_nm * 1e-9)**3 * params.rho_nuc
+
+
+def ricco_nucleation_rate(temp, h2so4, org, params=None):
     """Riccobono 2014 organic nucleation + Yu 2017 T-correction.
 
     Args:
         temp: Temperature [K] (scalar)
         h2so4: Gas-phase H2SO4 [molec/cm3] (scalar)
         org: Gas-phase oxidized organics [molec/cm3] (scalar)
+        params: NucleationParams (None = defaults)
 
     Returns:
         fn: Nucleation rate [cm^-3 s^-1]
     """
-    Jnotemp = _KM * h2so4**2 * org
-    ft = jnp.exp(_DELTA_H / _KB_NUC * (1.0 / temp - 1.0 / _T0))
+    p = DEFAULT_NUCLEATION_PARAMS if params is None else params
+    Jnotemp = p.k_m * h2so4**2 * org
+    ft = jnp.exp(p.delta_h / _KB_NUC * (1.0 / temp - 1.0 / _T0))
     fn = Jnotemp * ft
     return fn
 
 
-def dunne_nucleation_rate(temp, fion, h2so4, nh3, Mair):
+def dunne_nucleation_rate(temp, fion, h2so4, nh3, Mair, params=None,
+                          dunne_form='double_exp'):
     """Dunne 2016 inorganic nucleation (4 mechanisms).
 
     Args:
@@ -77,42 +139,53 @@ def dunne_nucleation_rate(temp, fion, h2so4, nh3, Mair):
         h2so4: Gas-phase H2SO4 [molec/cm3] (scalar)
         nh3: Gas-phase NH3 [molec/cm3] (scalar)
         Mair: Air number density [molec/cm3] (scalar)
+        params: NucleationParams (None = defaults)
+        dunne_form: 'double_exp' (Table S1, default) or 'single_exp'
+            (Table S2; pair with DUNNE_TABLE_S2_PARAMS). Static.
 
     Returns:
         (fn_total, Jbn, Jtn, Jbi, Jti) all [cm^-3 s^-1]
     """
+    p = DEFAULT_NUCLEATION_PARAMS if params is None else params
+
     # Scale to Dunne units (1e6 molec/cm3)
     cna = h2so4 * 1e-6
     nh3_s = nh3 * 1e-6
 
-    # Ion concentration from steady-state recombination
+    # Ion concentration from steady-state recombination.
+    # Double-where keeps the sqrt tangent finite at fion = 0.
     alpha_ion = (6e-8 * jnp.sqrt(300.0 / temp)
                  + 6e-26 * Mair * (300.0 / temp)**4)
-    ionc = jnp.sqrt(fion / alpha_ion)
+    ion_ratio = fion / alpha_ion
+    ionc = jnp.where(ion_ratio > 0.0,
+                     jnp.sqrt(jnp.where(ion_ratio > 0.0, ion_ratio, 1.0)), 0.0)
 
     # Rate constants (complex T-dependence)
     t1000 = temp / 1000.0
-    kbn = jnp.exp(_UBN - jnp.exp(_VBN * (t1000 - _WBN)))
-    ktn = jnp.exp(_UTN - jnp.exp(_VTN * (t1000 - _WTN)))
-    kbi = jnp.exp(_UBI - jnp.exp(_VBI * (t1000 - _WBI)))
-    kti = jnp.exp(_UTI - jnp.exp(_VTI * (t1000 - _WTI)))
+    kbn = jnp.exp(_dunne_lnk(p.u_bn, p.v_bn, p.w_bn, t1000, dunne_form))
+    ktn = jnp.exp(_dunne_lnk(p.u_tn, p.v_tn, p.w_tn, t1000, dunne_form))
+    kbi = jnp.exp(_dunne_lnk(p.u_bi, p.v_bi, p.w_bi, t1000, dunne_form))
+    kti = jnp.exp(_dunne_lnk(p.u_ti, p.v_ti, p.w_ti, t1000, dunne_form))
 
-    # Ternary f-values (with nh3 threshold)
+    # Ternary f-values (with nh3 threshold). nh3_safe keeps the untaken
+    # branch finite at nh3 = 0 (avoids 1/0 and NaN tangents).
+    has_nh3 = nh3_s > 1e-10
+    nh3_safe = jnp.where(has_nh3, nh3_s, 1.0)
     ffn = jnp.where(
-        nh3_s > 1e-10,
-        nh3_s * cna**_PTN / (_AN + cna**_PTN / nh3_s**_PAN),
+        has_nh3,
+        nh3_safe * cna**p.p_tn / (p.a_n + cna**p.p_tn / nh3_safe**p.p_an),
         0.0,
     )
     ffi = jnp.where(
-        nh3_s > 1e-10,
-        nh3_s * cna**_PTI / (_AI + cna**_PTI / nh3_s**_PAI),
+        has_nh3,
+        nh3_safe * cna**p.p_ti / (p.a_i + cna**p.p_ti / nh3_safe**p.p_ai),
         0.0,
     )
 
     # Four nucleation mechanisms
-    Jbn = kbn * cna**_PBN
+    Jbn = kbn * cna**p.p_bn
     Jtn = ktn * ffn
-    Jbi = kbi * ionc * cna**_PBI
+    Jbi = kbi * ionc * cna**p.p_bi
     Jti = kti * ionc * ffi
 
     fn_total = Jbn + Jtn + Jbi + Jti
@@ -546,17 +619,20 @@ def zhao2024_nucleation_step(
 def ricco_dunne_nucleation_rate(
                               Gc, temp, pres, boxvol,
                               org_conc, nh3_conc, fion,
-                              enable_organic=1.0, enable_inorganic=1.0, fn_scale=1.0):
+                              enable_organic=1.0, enable_inorganic=1.0, fn_scale=1.0,
+                              params=None, dunne_form='double_exp'):
     """Riccobono 2014 + Dunne 2016 total nucleation rate [cm^-3 s^-1].
 
     Pure rate calculation, no state mutation. Used by adaptive sub-stepping
-    and by the API diagnostic snapshots.
+    and by the API diagnostic snapshots. ``params``: NucleationParams
+    (None = defaults); ``dunne_form``: see dunne_nucleation_rate.
     """
     h2so4 = Gc[SRTSO4] / boxvol * 1000.0 / 98.0 * AVOGADRO
     Mair = 2.69e19 * 273.15 / temp * pres / 101325.0
 
-    fn_org = ricco_nucleation_rate(temp, h2so4, org_conc)
-    fn_inorg, _, _, _, _ = dunne_nucleation_rate(temp, fion, h2so4, nh3_conc, Mair)
+    fn_org = ricco_nucleation_rate(temp, h2so4, org_conc, params)
+    fn_inorg, _, _, _, _ = dunne_nucleation_rate(
+        temp, fion, h2so4, nh3_conc, Mair, params, dunne_form)
 
     return (fn_org * enable_organic + fn_inorg * enable_inorganic) * fn_scale
 
@@ -600,7 +676,8 @@ def compute_nucleation_substeps(fn, boxvol, dt, N_total,
 def nucleation_step(
     Nk, Mk, Gc, xk, temp, pres, boxvol, dt,
     org_conc, nh3_conc, fion,
-    enable_organic=1.0, enable_inorganic=1.0, fn_scale=1.0,
+    enable_organic=1.0, enable_inorganic=1.0, fn_scale=1.0, params=None,
+    dunne_form='double_exp',
 ):
     """Apply nucleation to aerosol state (JIT-compilable).
 
@@ -619,10 +696,16 @@ def nucleation_step(
         enable_organic: 1.0 to enable Riccobono, 0.0 to disable
         enable_inorganic: 1.0 to enable Dunne, 0.0 to disable
         fn_scale: Multiplicative scaling factor for total nucleation rate
+        params: NucleationParams (None = defaults)
+        dunne_form: Dunne temperature form, see dunne_nucleation_rate (static)
 
     Returns:
         (Nk_new, Mk_new, Gc_new)
     """
+    p = DEFAULT_NUCLEATION_PARAMS if params is None else params
+    mnuc = _cluster_mass(p)
+    org_frac = p.org_frac
+
     # Convert gas-phase H2SO4: kg/grid_cell -> molec/cm3
     h2so4 = Gc[SRTSO4] / boxvol * 1000.0 / 98.0 * AVOGADRO
 
@@ -630,11 +713,11 @@ def nucleation_step(
     Mair = 2.69e19 * 273.15 / temp * pres / 101325.0
 
     # Organic nucleation (Riccobono 2014)
-    fn_org = ricco_nucleation_rate(temp, h2so4, org_conc)
+    fn_org = ricco_nucleation_rate(temp, h2so4, org_conc, p)
 
     # Inorganic nucleation (Dunne 2016)
     fn_inorg, _, _, _, _ = dunne_nucleation_rate(
-        temp, fion, h2so4, nh3_conc, Mair
+        temp, fion, h2so4, nh3_conc, Mair, p, dunne_form
     )
 
     # Total rate with enable masks and scaling
@@ -644,9 +727,9 @@ def nucleation_step(
     dN = fn * boxvol * dt
 
     # Mass added to bin 0
-    dM_total = fn * _MNUC * boxvol * dt
-    dM_so4 = 0.9 * dM_total
-    dM_org = 0.1 * dM_total
+    dM_total = fn * mnuc * boxvol * dt
+    dM_so4 = (1.0 - org_frac) * dM_total
+    dM_org = org_frac * dM_total
 
     # Check if gas can supply the SO4 mass
     # Fortran depletes Gc by the SO4 mass added (without 98/96 MW correction)
@@ -660,12 +743,12 @@ def nucleation_step(
 
     # Clamped values (Fortran: use all available gas, convert H2SO4→SO4)
     dM_so4_clamped = gc_so4 * (96.0 / 98.0)
-    dN_clamped = dM_so4_clamped / _MNUC
+    dN_clamped = dM_so4_clamped / mnuc
 
     # Clamp organic mass proportionally when gas supply limits nucleation.
     # Without this, dM_org uses the full (enormous) fn while dN is clamped
     # to a tiny value, creating particles with avg mass >> bin boundary.
-    dM_org_clamped = dN_clamped * 0.1 * _MNUC
+    dM_org_clamped = dN_clamped * org_frac * mnuc
 
     # Select clamped or normal path
     dN_final = jnp.where(need_clamp, dN_clamped, dN)
