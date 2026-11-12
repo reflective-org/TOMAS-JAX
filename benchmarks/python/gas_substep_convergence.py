@@ -61,7 +61,8 @@ def ref_dt(so2_ppbv):
     return 0.1 if so2_ppbv > 1e3 else dt_for(so2_ppbv) / 4.0
 
 
-def build(xk, dt, report_hours, frac=None, ppm_tangent='exact', fd_alpha=None):
+def build(xk, dt, report_hours, frac=None, ppm_tangent='exact', fd_alpha=None,
+          pres=None, split_chemistry=False):
     """run(direction, temp, Nk0, Mk0, Gc0) -> (out, tangent, info). out and
     tangent hold, at each report hour, Nk [#/cm3], dry Mk per bin [kg/cell]
     and NMASS N(>3 nm), N(>12 nm) [#/cm3], and Nk_avg, Mk_avg: the means over
@@ -77,18 +78,23 @@ def build(xk, dt, report_hours, frac=None, ppm_tangent='exact', fd_alpha=None):
     ppm_tangent: make_step's (the tangent's PPM derivative; values unchanged).
     fd_alpha: run forward only, at the coefficients moved by fd_alpha along the
     direction (one side of a finite difference); the tangent is returned as 0.
+    pres: pressure [Pa]; None is STRAT's 5500 Pa.
+    split_chemistry: make_step's (fixed dt only; adaptive always splits).
     """
     kw = dict(sparse_density=c.SPARSE_DENSITY, water_scheme=c.WATER_SCHEME,
               ppm_tangent=ppm_tangent, jit=False)
     if frac is not None:
         kw.update(gas_substep='adaptive', gas_substep_frac=frac,
                   return_substep_info=True)
+    elif split_chemistry:
+        kw.update(split_chemistry=True)
     step = make_step(PROCS, **kw)
     per_minute = int(round(60.0 / dt))
     if dt > 60.0 or abs(per_minute * dt - 60.0) > 1e-9:
         raise ValueError(f"dt = {dt} s must divide 60 s (hour means sample once a minute)")
     P = jax.tree.map(jnp.float64, c.NUC_PARAMS)
-    pres, rh, alpha_acc = c.STRAT['pres'], c.STRAT['rh'], c.STRAT['alpha']
+    pres = c.STRAT['pres'] if pres is None else pres
+    rh, alpha_acc = c.STRAT['rh'], c.STRAT['alpha']
     dry = jnp.arange(ICOMP) != SRTH2O
 
     def segment(alpha, state, direction, temp, n_hours):

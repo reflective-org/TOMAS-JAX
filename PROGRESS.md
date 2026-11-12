@@ -4,6 +4,16 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-11-12 (Thu) 13:44 PST — 80-bin gas sub-step check over altitude, split-chemistry reference, sensitivity no longer tested
+
+- **What:** the 80-bin check (`gas_substep_psd80`) now runs over the AFGL tropical atmosphere (13, 15, 17, 20, 23, 25 km, T and P together) instead of T at 5500 Pa. Its reference is fixed dt with the SO2 chemistry split around nucleation, the scheme the adaptive sub-steps already use; the L1 sensitivity is printed but no longer part of pass/fail.
+- **Why the reference changed:** f = 0.1 failed L1 number at 13 km / 1 ppmv (0.050). A number budget showed the unsplit reference nucleating 2.3% more, because its full-step chemistry runs before nucleation (first order in dt). Split 0.5 s is 0.0014 off split 0.125 s, while unsplit 0.5 s is 0.022 off. Against the split reference, f = 0.1 is 0.002–0.003 there.
+- **Why sensitivity is not tested:** at 15 km / 100 ppbv, 6 h, f = 0.1 was 0.12 off the halved split reference. A central FD showed every tangent 0.16–0.28 off in merged bins 1–2 (~2–4 nm), with opposite-sign one-sided differences (MNFIX bin selection), while split and unsplit FDs agreed to 0.004 and total sensitivity agreed (FD 0.548, jvp 0.553).
+- **Files:** `tomas_jax/solvers/condensation.py` (`make_step(split_chemistry=False)`, fixed dt: chemistry dt/2 → nucleation → chemistry dt/2; validated, default bit-identical); `tests/test_gas_substep.py` (`test_split_chemistry_fixed_dt`, bad-argument case); `sensitivities/dunne_nuc/common.py` (`TROPICAL_AFGL`); `benchmarks/python/gas_substep_convergence.build(pres=, split_chemistry=)`; `benchmarks/python/gas_substep_psd80.py` (altitude grid, `ref_split`/`ref_split_half` kinds, `reference()`, check on number and dry mass); `plot_gas_substep_grid.py`, `plot_gas_substep_psd.py` (read the new reference); `docs/gas_substep.md`; `CLAUDE.md`.
+- **Result:** `--check` passes (f = 0.1, number and dry mass ≤ 0.05 in every cell at 6 h and 24 h; largest number 0.012, dry mass 0.002).
+- **Known issues:** the f = 0.1 tangent blows up at 13 km / 10 ppmv by 24 h (3.6), and every run's at 13 km / 100 ppmv; constant dt = 60 s goes NaN at 100 ppmv at 13–17 km (fixed-step coagulation).
+- **Next:** if per-bin sensitivities at 2–4 nm matter for the nucleation study, they need a different tangent treatment of MNFIX bin selection (or finite differences at a checked step).
+
 ## 2026-11-10 (Tue) 12:08 PST — 80-bin gas sub-step check: finite-difference sensitivity where the jvp blows up
 
 - **What:** at 223 K and 240 K / 100 ppmv (80 bins) the linear sub-bin coagulation tangent blows up after ~12 h in every run, the reference included (Σ|δN|/ΣN 3e6–3e45 at 24 h), so the sensitivity comparison was meaningless there. These two cells now use a central finite difference, α = ±0.05 along the H₂SO₄-calibration direction, for every run kind.

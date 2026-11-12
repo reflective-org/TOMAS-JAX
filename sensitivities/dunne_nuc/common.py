@@ -18,6 +18,11 @@ from tomas_jax.solvers.condensation import make_step
 
 # ~20 km lower stratosphere
 STRAT = dict(temp=217.0, pres=5500.0, rh=0.02, alpha=1.0)
+# AFGL tropical atmosphere (Anderson et al. 1986, AFGL-TR-86-0110; the table
+# pyrtlib ships as climatology/tropical.dat): altitude [km] -> (T [K], P [Pa])
+TROPICAL_AFGL = {13.0: (217.0, 18200.0), 15.0: (203.7, 13200.0),
+                 17.0: (194.8, 9370.0), 20.0: (206.7, 5650.0),
+                 23.0: (217.0, 3500.0), 25.0: (221.4, 2570.0)}
 FION = 10.0          # ion pairs/cm3/s
 OH_CONC = 1e6        # molec/cm3 (constant)
 BOXVOL = 1.0e6       # cm3
