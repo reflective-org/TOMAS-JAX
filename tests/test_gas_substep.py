@@ -49,6 +49,18 @@ def test_bad_arguments_rejected():
         make_step(['coagulation'], gas_substep='adaptive')
     with pytest.raises(ValueError, match='return_substep_info'):
         make_step(PROCS, return_substep_info=True)
+    with pytest.raises(ValueError, match='split_chemistry'):
+        make_step(['so2_chemistry', 'coagulation'], split_chemistry=True)
+
+
+def test_split_chemistry_fixed_dt(xk):
+    """Fixed dt, chemistry split around nucleation: sulfur conserved, and
+    nucleation sees less H2SO4 than with all the chemistry before it."""
+    state, (Nk, Mk, Gc), _ = _run(xk, 217.0, 1e3, 0.5, 120, split_chemistry=True)
+    _, (Nu, Mu, Gu), _ = _run(xk, 217.0, 1e3, 0.5, 120)
+    s0, s1 = _sulfur(state[1], state[2]), _sulfur(Mk, Gc)
+    assert abs(s1 / s0 - 1.0) < 1e-10
+    assert float(jnp.sum(Nk)) < float(jnp.sum(Nu))
 
 
 def test_low_so2_takes_the_outer_step(xk):

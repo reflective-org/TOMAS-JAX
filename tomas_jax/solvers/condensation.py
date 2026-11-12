@@ -814,6 +814,7 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
               coag_max_substeps=None, gas_substep=None,
               gas_substep_frac=0.1, gas_max_substeps=16384, gas_min_dt=1e-3,
               coag_interval_frac=0.01, return_substep_info=False,
+              split_chemistry=False,
               ad_mode='forward', ppm_max_substeps=64, ppm_tangent='exact',
               jit=True):
     """Build a step function from an ordered list of process names.
@@ -889,6 +890,13 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
             returns (Nk, Mk, Gc, info), info = dict(n_sub, dt_min, hit_cap,
             n_floor: sub-steps at gas_min_dt that failed the criterion,
             knuc_dt_max: largest k_nuc*dt_sub, > 1 means the clamp fired).
+        split_chemistry: gas_substep=None only (the adaptive path always
+            splits). False (default): so2_chemistry runs on the whole dt
+            before nucleation, which then sees H2SO4 at the top of the step's
+            sawtooth, about C*(1 + CS*dt/2), and J ~ C^n is high by about
+            n*CS*dt/2 (first order in dt). True: half of dt's chemistry before
+            nucleation and half after, as in the adaptive path; the bias is
+            O((CS*dt)^2). Needs so2_chemistry before nucleation in processes.
         ad_mode: 'forward' (default) or 'reverse'. Every loop with a traced
             trip count (MNFIX phase 3, PPM CFL sub-steps, nucleation
             sub-steps, euler_adaptive, the gas sub-steps) is a while_loop or
@@ -994,6 +1002,11 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                              "gas_max_substeps >= 1")
     elif return_substep_info:
         raise ValueError("return_substep_info needs gas_substep='adaptive'")
+    if split_chemistry and not ('so2_chemistry' in processes and 'nucleation' in processes
+                                and processes.index('so2_chemistry')
+                                < processes.index('nucleation')):
+        raise ValueError("split_chemistry needs so2_chemistry before nucleation "
+                         f"in processes, got {list(processes)}")
 
     def apply(process, Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
               kwargs):
@@ -1265,8 +1278,13 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
             )
         if gas_substep is None:
             for process in processes:
+                dt_p = 0.5 * dt if (split_chemistry and
+                                    process == 'so2_chemistry') else dt
                 Nk, Mk, Gc = apply(process, Nk, Mk, Gc, xk, temp, pres, boxvol,
-                                   rh, alpha, dt, kwargs)
+                                   rh, alpha, dt_p, kwargs)
+                if split_chemistry and process == 'nucleation':
+                    Nk, Mk, Gc = apply('so2_chemistry', Nk, Mk, Gc, xk, temp,
+                                       pres, boxvol, rh, alpha, 0.5 * dt, kwargs)
             return Nk, Mk, Gc
         Nk, Mk, Gc, info = _adaptive_gas_step(
             Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt, kwargs)

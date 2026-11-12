@@ -32,6 +32,8 @@ Criterion: **(CS + n_eff·k_nuc)·Δt ≤ f**, f = `gas_substep_frac` (0.1). Can
 
 If `so2_chemistry` precedes `nucleation`, each sub-step runs chemistry Δt/2 → nucleation → chemistry Δt/2 → condensation. With all chemistry first, nucleation sees the top of the H₂SO₄ sawtooth and J ∝ Cⁿ is n·CS·Δt/2 high (11% at 240 K / 10 ppmv, f = 0.1; 1.7–2.7 nm bins 4–8% off). The split makes the bias O((CS·Δt)²) at no measurable cost. The controller still uses the whole sub-step's chemistry, an upper bound.
 
+The same split is available at fixed dt: `make_step(..., split_chemistry=True)` (needs `so2_chemistry` before `nucleation`, else `ValueError`; default `False` is bit-identical). The 80-bin references use it. Without it a fixed-dt run is first order in dt through the H₂SO₄ nucleation sees: at 13 km / 1 ppmv, 6 h, unsplit 0.5 s was 0.022 off (L1 number) a split 0.125 s run and nucleated 2.3% more, while split 0.5 s was 0.0014 off and split 0.25 s 0.0005 (2026-11-11).
+
 ### Coagulation intervals
 
 Coagulation and dilution run on intervals, not on the outer 60 s step (that was 1.8× off in N(>3 nm) at 217 K / 100 ppmv) or every gas sub-step (too expensive).
@@ -64,16 +66,19 @@ Grid: T 190–240 K × SO₂ 10 pptv–100 ppmv, study settings, 24 h. Per cell:
 | dry mass | Σ\|M_k − M_k,ref\| / Σ M_k,ref |
 | sensitivity | Σ\|dN_k − dN_k,ref\| / Σ N_k,ref (dN_k: the tangent) |
 
-Pass: each ≤ 0.05, no clamp, no cap. Failures exit non-zero.
+Pass: each ≤ 0.05, no clamp, no cap (the 80-bin check tests number and dry mass only, below). Failures exit non-zero.
 
 ### 80 bins (`benchmarks/python/gas_substep_psd80.py`), the test of record
 
-- **Reference:** 0.25 s up to 100 ppbv; 0.5, 0.1, 0.02 s at 1, 10, 100 ppmv (1 s was 0.17 off a 0.125 s run at 208 K / 0.1 ppbv).
+- **Grid:** altitude × SO₂, T and P together from the AFGL tropical atmosphere (`common.TROPICAL_AFGL`: 13, 15, 17, 20, 23, 25 km; 217/203.7/194.8/206.7/217/221.4 K, 182/132/94/56/35/26 hPa). Until 2026-11-10 it was T × SO₂ at 5500 Pa.
+- **Reference** (`gas_substep_psd80.reference(so2)`): fixed dt with split chemistry (`split_chemistry=True`), 0.25 s up to 10 ppbv; at 100 ppbv, 1, 10 and 100 ppmv the halved run (`ref_split_half`: 0.125, 0.25, 0.05, 0.01 s). The split 0.25/0.5/0.1/0.02 s run (`ref_split`) is within 0.003 in L1 number of the halved one (24 h). The old unsplit reference (`ref`, same steps as `ref_split`) was up to 0.05 off it (13 km / 1 ppmv, 24 h), which is why f = 0.1 failed L1 number there. 1 s was 0.17 off a 0.125 s run at 208 K / 0.1 ppbv (L1 sensitivity).
 - **Hour means:** each run records Nk, dry Mk and dNk averaged over the 60 minutes before each report hour (fixed dt must divide 60 s). Snapshots catch bins 0–1 trading particles minute to minute: at 217 K / 10 ppmv, f = 0.1, snapshot L1 number reached 0.082, the hour mean ≤ 0.014.
 - **Bin pairs merged** (`MERGE` = 2, the 40-bin grid's bins). At 200 K and low SO₂, new particles sit in bins 0–2 for hours, and when MNFIX moves them up one 80-bin bin depends on dt in no order. Fixed 0.125 s and 0.25 s have the same total N but are 0.160 apart in L1 sensitivity per 80-bin bin, 0.010 merged; no smaller dt_max fixes it (ladder 0.125–60 s, 2026-11-07). Per-80-bin distances are printed, not tested. Merging to 20 bins would hide real differences.
-- **Invalid tangents:** where the reference's own Σ|δN|/ΣN > `INVALID_TANGENT` (1e3), a tangent instability has blown up every run of the cell. These are listed apart and still fail. Valid cells are ≤ 2.5. On 80 bins this happens at 223 K and 240 K / 100 ppmv after ~12 h; the source is the linear sub-bin coagulation scheme's derivative, not PPM ([prescribed_j.md](prescribed_j.md#frozen-shape-tangent-ppm_tangentfrozen_shape)), so `ppm_tangent='frozen_shape'` does not help.
+- **Sensitivity not tested (2026-11-12):** the L1 sensitivity is printed and plotted, not tested. At 15 km / 100 ppbv, 6 h, a central FD (±0.05) put every tangent, the references and f = 0.1 alike, 0.16–0.28 off in merged bins 1–2 (~2–4 nm), where the one-sided differences have opposite signs (−0.23, +0.50): MNFIX bin selection, which the tangent does not see. The FDs of split and unsplit chemistry agreed to 0.004 and the total sensitivity agreed (FD 0.548, jvp 0.553); the split tangent moved further off as dt shrank (0.24 at 0.25 s, 0.28 at 0.125 s), so f = 0.1 was 0.12 from the halved reference there. The adaptive tangent also blows up at 13 km / 10 ppmv, 24 h (3.6; the references agree to 0.1).
+- **Invalid tangents:** where the reference's own Σ|δN|/ΣN > `INVALID_TANGENT` (1e3), a tangent instability has blown up every run of the cell (13 km / 100 ppmv at 24 h on the altitude grid). Valid cells are ≤ 2.5. On 80 bins this happens at 223 K and 240 K / 100 ppmv after ~12 h; the source is the linear sub-bin coagulation scheme's derivative, not PPM ([prescribed_j.md](prescribed_j.md#frozen-shape-tangent-ppm_tangentfrozen_shape)), so `ppm_tangent='frozen_shape'` does not help.
 - **Finite differences in those cells** (`gas_substep_psd80.FD_CELLS`): every kind also runs forward only at α = ±`FD_H` (0.05) along the direction (runs `<kind>_fd+`, `<kind>_fd-`; 28 runs), and `load_run` replaces the jvp tangents by the central difference; the check, `plot_gas_substep_grid` (boxed points) and `plot_gas_substep_psd` read it. Coarser outputs do not avoid the blow-up: merging 2–80 bins, total N and NMASS N(>3 nm) are as far off as the per-bin tangent (2026-11-10). Over the first 2 h at 240 K, FD is within 0.4% of the jvp; `--check` prints FD against the jvp at every hour the jvp stays valid.
-- **Result (2026-11-07):** f = 0.1 passes every valid cell (largest: number 0.014, dry mass 0.004, sensitivity 0.018). The only failures are the invalid tangents at 223 K and 240 K / 100 ppmv, 24 h. f = 0.03 hits the cap at 190 K / 100 ppmv; `dt_for` is up to 0.31 off.
+- **Result (2026-11-12, altitude grid, split reference):** f = 0.1 passes L1 number and dry mass in every cell at 6 h and 24 h (largest number 0.012, dry mass 0.002). Constant dt = 60 s goes NaN at 100 ppmv at 13, 15 and 17 km (fixed-step coagulation).
+- **Result (2026-11-07, T grid at 5500 Pa, unsplit reference):** f = 0.1 passes every valid cell (largest: number 0.014, dry mass 0.004, sensitivity 0.018). The only failures are the invalid tangents at 223 K and 240 K / 100 ppmv, 24 h. f = 0.03 hits the cap at 190 K / 100 ppmv; `dt_for` is up to 0.31 off.
 - **Cost** (24 h, mean over T, compile excluded):
 
 | SO₂ | reference | f = 0.1 | `dt_for` |
@@ -82,7 +87,7 @@ Pass: each ≤ 0.05, no clamp, no cap. Failures exit non-zero.
 | 1 ppmv | 1090 s | 241 s | 270 s |
 | 100 ppmv | 25481 s | 4347 s | 1063 s |
 
-- **Running:** `run_awake -m benchmarks.python.gas_substep_psd80 --all` (missing runs only, 11 at a time; ~70 CPU-h, 8–11 h), then `--check`. Figures: `plot_gas_substep_grid --bins 80`, `plot_gas_substep_psd`.
+- **Running:** `run_awake -m benchmarks.python.gas_substep_psd80 --all` (missing runs only, `NJOBS` at a time, default 11; the split references alone are ~190 CPU-h, ~15 h on 12 jobs, set by the six 100 ppmv runs at 0.01 s), then `--check`. Figures: `plot_gas_substep_grid --bins 80`, `plot_gas_substep_psd`.
 
 ### 40 bins (`benchmarks/python/gas_substep_convergence.py`)
 

@@ -4,6 +4,13 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-11-12 — `make_step(split_chemistry=True)` (library only)
+
+- **What:** at fixed dt, run the SO2 chemistry dt/2 before and dt/2 after nucleation, as the adaptive path already does. With all the chemistry first, nucleation sees H2SO4 at the top of the step's rise, so J ~ C^n is high by about n*CS*dt/2 (first order in dt); split, the bias is O((CS*dt)^2). Default `False` is bit-identical; needs `so2_chemistry` before `nucleation` in `processes` (else `ValueError`); fixed dt only.
+- **Why:** the 80-bin fixed-dt reference was first order in dt: at 13 km / 1 ppmv it nucleated 2.3% more than a split run and put adaptive f = 0.1 at L1 number 0.050 (against the split reference it is 0.002-0.003). Split 0.5 s is 0.0014 off split 0.125 s there; unsplit 0.5 s is 0.022 off.
+- **Files:** `tomas_jax/solvers/condensation.py`; `tests/test_gas_substep.py` (`test_split_chemistry_fixed_dt`, bad-argument case); `docs/gas_substep.md` (split chemistry at fixed dt, the 80-bin check over altitude, sensitivity no longer tested); `CLAUDE.md`.
+- **Not in this PR:** the 80-bin benchmark and its plots stay on `dlm` (`benchmarks/python/gas_substep_psd80.py`, now altitude x SO2 on the AFGL tropical atmosphere against a split-chemistry reference; it tests L1 number and dry mass only, because every tangent, the references included, is 0.16-0.28 off a finite difference in the ~2-4 nm bins at 15 km / 100 ppbv).
+
 ## 2026-11-10 — Adaptive gas sub-steps and reverse-mode AD into dev (library only)
 
 **Branch**: `adaptive-substep` (from `origin/dev`), PR into `dev`. Library, tests and docs of
