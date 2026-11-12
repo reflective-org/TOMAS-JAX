@@ -404,3 +404,128 @@ class TestMNFIXJIT:
         np.testing.assert_allclose(
             np.array(Mk_jit), np.array(Mk_eager), atol=1e-15
         )
+
+
+# =========================================================================
+# Vectorised phases 1-2 / row-only phase 3: bit-identical to the original
+# one-bin-at-a-time port (tests/reference/mnfix_sequential.py)
+# =========================================================================
+
+def _random_states(xk, seed, n=25):
+    """States that exercise every MNFIX branch: empty bins, in-range bins,
+    up/down drift by one or many bins, mass above the grid / below it, and
+    mixed composition."""
+    rng = np.random.default_rng(seed)
+    nb = xk.shape[0] - 1
+    xm = np.sqrt(np.asarray(xk[:-1]) * np.asarray(xk[1:]))
+    for _ in range(n):
+        Nk = 10.0 ** rng.uniform(-8, 12, nb)
+        Nk[rng.random(nb) < 0.15] = 0.0
+        drift = 10.0 ** rng.normal(0.0, 1.2, nb)          # avg / bin centre
+        drift[rng.random(nb) < 0.4] = 1.0                 # many in range
+        Mk = np.zeros((nb, ICOMP))
+        frac = rng.dirichlet(np.ones(4), nb)
+        dry = Nk * xm * drift
+        for j, c in enumerate((SRTSO4, 1, 41, 42)):
+            Mk[:, c] = dry * frac[:, j]
+        Mk[:, ICOMP - 1] = dry * rng.uniform(0, 2, nb)    # water (diagnostic)
+        if rng.random() < 0.3:
+            Mk[-1, SRTSO4] = Nk[-1] * float(xk[-1]) * 50  # above the grid
+        if rng.random() < 0.3:
+            Mk[0, :] *= 1e-3                              # below the grid
+        yield jnp.array(Nk), jnp.array(Mk)
+
+
+@pytest.mark.parametrize('nbins,ratio', [(40, 2.0), (80, 2.0 ** 0.5), (30, 3.0)])
+def test_bit_identical_to_sequential_reference(nbins, ratio):
+    from tests.reference.mnfix_sequential import mnfix_reference
+    from tomas_jax.core.config import XK0
+    xk = make_grid(nbins, XK0, ratio)
+    new, ref = jax.jit(mnfix_jax), jax.jit(mnfix_reference)
+    for Nk, Mk in _random_states(xk, seed=nbins):
+        a, b = new(Nk, Mk, xk), ref(Nk, Mk, xk)
+        np.testing.assert_array_equal(np.array(a[0]), np.array(b[0]))
+        np.testing.assert_array_equal(np.array(a[1]), np.array(b[1]))
+
+
+def test_forward_mode_matches_reference(xk):
+    from tests.reference.mnfix_sequential import mnfix_reference
+    Nk, Mk = next(_random_states(xk, seed=7))
+    f = lambda fn: jax.jvp(lambda m: fn(Nk, m, xk)[0], (Mk,), (Mk * 1e-3,))[1]
+    np.testing.assert_array_equal(np.array(f(mnfix_jax)), np.array(f(mnfix_reference)))
+
+
+# =========================================================================
+# Phase 3 bin skipping: loop only over [first out-of-range bin, hi], where hi
+# grows with upward-shift targets. Edge cases against the full-loop reference.
+# =========================================================================
+
+def _in_range_state(xk, n=1e6):
+    nb = xk.shape[0] - 1
+    Nk = jnp.full(nb, n)
+    Mk = jnp.zeros((nb, ICOMP)).at[:, SRTSO4].set(Nk * jnp.sqrt(xk[:-1] * xk[1:]))
+    return Nk, Mk
+
+
+def _assert_same_as_reference(Nk, Mk, xk):
+    from tests.reference.mnfix_sequential import mnfix_reference
+    a = jax.jit(mnfix_jax)(Nk, Mk, xk)
+    b = jax.jit(mnfix_reference)(Nk, Mk, xk)
+    np.testing.assert_array_equal(np.array(a[0]), np.array(b[0]))
+    np.testing.assert_array_equal(np.array(a[1]), np.array(b[1]))
+    return a
+
+
+class TestPhase3BinSkipping:
+
+    def test_all_in_range_is_a_no_op(self, xk):
+        Nk, Mk = _in_range_state(xk)
+        a = _assert_same_as_reference(Nk, Mk, xk)
+        np.testing.assert_array_equal(np.array(a[0]), np.array(Nk))
+        np.testing.assert_array_equal(np.array(a[1]), np.array(Mk))
+
+    def test_multi_bin_jump_past_last_out_of_range_bin(self, xk):
+        """Bin 3 drifts ~12 bins up: its target lies far beyond every bin that
+        was out of range, so hi must grow with the shift target."""
+        Nk, Mk = _in_range_state(xk)
+        Mk = Mk.at[3, SRTSO4].mul(5000.0)
+        _assert_same_as_reference(Nk, Mk, xk)
+
+    def test_cascade_into_out_of_range_bins(self, xk):
+        """Consecutive bins all drifting up: each shift lands in a bin that is
+        itself out of range and is processed next."""
+        Nk, Mk = _in_range_state(xk)
+        for k in range(10, 16):
+            Mk = Mk.at[k, SRTSO4].mul(1.7)
+        _assert_same_as_reference(Nk, Mk, xk)
+
+    def test_downward_shifts_only(self, xk):
+        Nk, Mk = _in_range_state(xk)
+        for k in (5, 20, 33):
+            Mk = Mk.at[k, SRTSO4].mul(0.02)
+        _assert_same_as_reference(Nk, Mk, xk)
+
+    def test_grid_ends_and_empty_bins(self, xk):
+        """Bin 0 drifting down and the top bin drifting up are not shifted;
+        empty bins take the N = 0 branch."""
+        Nk, Mk = _in_range_state(xk)
+        Mk = Mk.at[0, SRTSO4].mul(0.8).at[-1, SRTSO4].mul(1.5)
+        Nk = Nk.at[12].set(0.0)
+        Mk = Mk.at[12].set(0.0)
+        _assert_same_as_reference(Nk, Mk, xk)
+
+    def test_vmap_batch_matches_reference(self, xk):
+        """Batched states run the loop to the furthest member's hi.
+
+        Not bit-identical: under vmap XLA fuses multiply-adds (FMA) differently
+        from the unbatched graph, so even the original sequential port differs
+        between batched and unbatched calls (up to ~5e-15 relative). The new
+        and original batched results agree to ~1 ulp."""
+        from tests.reference.mnfix_sequential import mnfix_reference
+        states = list(_random_states(xk, seed=3, n=6))
+        Nb = jnp.stack([s[0] for s in states])
+        Mb = jnp.stack([s[1] for s in states])
+        a = jax.jit(jax.vmap(lambda n, m: mnfix_jax(n, m, xk)))(Nb, Mb)
+        b = jax.jit(jax.vmap(lambda n, m: mnfix_reference(n, m, xk)))(Nb, Mb)
+        np.testing.assert_allclose(np.array(a[0]), np.array(b[0]), rtol=1e-14, atol=0)
+        np.testing.assert_allclose(np.array(a[1]), np.array(b[1]), rtol=1e-14, atol=0)

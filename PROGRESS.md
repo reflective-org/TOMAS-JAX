@@ -4,6 +4,41 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-11-12 — `make_step(split_chemistry=True)` (library only)
+
+- **What:** at fixed dt, run the SO2 chemistry dt/2 before and dt/2 after nucleation, as the adaptive path already does. With all the chemistry first, nucleation sees H2SO4 at the top of the step's rise, so J ~ C^n is high by about n*CS*dt/2 (first order in dt); split, the bias is O((CS*dt)^2). Default `False` is bit-identical; needs `so2_chemistry` before `nucleation` in `processes` (else `ValueError`); fixed dt only.
+- **Why:** the 80-bin fixed-dt reference was first order in dt: at 13 km / 1 ppmv it nucleated 2.3% more than a split run and put adaptive f = 0.1 at L1 number 0.050 (against the split reference it is 0.002-0.003). Split 0.5 s is 0.0014 off split 0.125 s there; unsplit 0.5 s is 0.022 off.
+- **Files:** `tomas_jax/solvers/condensation.py`; `tests/test_gas_substep.py` (`test_split_chemistry_fixed_dt`, bad-argument case); `docs/gas_substep.md` (split chemistry at fixed dt, the 80-bin check over altitude, sensitivity no longer tested); `CLAUDE.md`.
+- **Not in this PR:** the 80-bin benchmark and its plots stay on `dlm` (`benchmarks/python/gas_substep_psd80.py`, now altitude x SO2 on the AFGL tropical atmosphere against a split-chemistry reference; it tests L1 number and dry mass only, because every tangent, the references included, is 0.16-0.28 off a finite difference in the ~2-4 nm bins at 15 km / 100 ppbv).
+
+## 2026-11-10 — Adaptive gas sub-steps and reverse-mode AD into dev (library only)
+
+**Branch**: `adaptive-substep` (from `origin/dev`), PR into `dev`. Library, tests and docs of
+commit a064445 from `dlm`, plus the library changes it builds on (differentiable
+`NucleationParams`/`dunne_form`, `sparse_density`, vectorised MNFIX with the reference test).
+The sensitivity studies (`sensitivities/dunne_nuc/phase*.py`, `run_map.py`, ...) and the
+`benchmarks/python/gas_substep_*`, `plot_gas_substep_*`, `lognormal_fit`, `ppm_tangent_stability`
+and `reverse_mode_cost` scripts stay on `dlm`.
+
+- `solvers/gas_substep.py`, `make_step(gas_substep='adaptive')`: SO2 chemistry -> nucleation ->
+  condensation sub-stepped by the H2SO4 budget (CS + nucleation loss), coagulation and dilution on
+  coagulation intervals. Off (`None`) is bit-identical. `docs/gas_substep.md`.
+- `core/bounded_loop.py`, `make_step(ad_mode='reverse')`: traced-trip-count loops become bounded
+  scans, so `jax.grad`/`vjp` work; matches forward mode to <= 1e-11.
+- `ppm_tangent='frozen_shape'` (opt-in, PPM only; values bit-identical).
+- Tests: `test_gas_substep`, `test_reverse_mode`, `test_ppm_tangent`, `test_mnfix`,
+  `test_coag_adaptive`, `test_sparse_density`, `test_nucleation_gradients`;
+  `sensitivities/dunne_nuc/common.py` is the runner they use.
+- Docs: CLAUDE.md, `docs/{gas_substep,nucleation,nucleation_sensitivity,prescribed_j,stratosphere_setup}.md`.
+
+**Known issues**: the validation of record (`gas_substep_psd80.py --check`, ~70 CPU-h) lives on
+`dlm`, so docs that name it point at a script not on `dev`. f = 0.1 passes every cell except the
+two PPM invalid-tangent cells.
+
+**Next steps**: bring the benchmark and plotting scripts and the Phase 2-4 studies over from `dlm`.
+
+---
+
 ## 2026-10-23 (Fri) — Urban air: VOC selector benzene / toluene / m-xylene (MCM v3.3.1), stacked on the full-day Urban (B1)
 
 **Branch**: `urban-toluene` (from `urban-full-day`, PR #30); PR #31. Shantanu (2026-10-22, verbatim):
