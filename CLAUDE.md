@@ -124,6 +124,7 @@ benchmarks/
   python/plot_gas_substep_psd.py — dN/dlogDp and KDE per cell at 6 h and 24 h (dndlogD_<h>h.png; 80-bin hour mean where psd80/ has both runs, else 40-bin snapshot) and the KDE at several σ (dndlogD_sigma_<bins>bins_<h>h.png)
   python/benchmark_nucleation_constgc.py — Nucleation full-mode benchmark (constant-gas + fixed-production)
   python/validate_so2_chemistry.py — SO2 chemistry validation (7 figures vs Sun et al. 2022, incl. stratospheric lifetime heatmaps)
+  python/h2so4_kelvin_driving_force.py — Growth lost (1/S = C_eq/C) by treating H2SO4 as nonvolatile in the sai_plume scenario: equilibrium over sulfate-water droplets (Ayers/Kulmala + Giauque activity, Tabazadeh composition) × Kelvin, vs diameter and vs AFGL tropical 13–22 km (why H2SO4 condensation has no Kelvin term; docs/missing_physics.md #3)
   python/benchmark_so2_sensitivity.py — SO2 sensitivity benchmark (5 SO2 × 4 modes × 3 altitudes × 2 grids, 48h, 12 figures)
   python/benchmark_dilution.py — Dilution benchmark (3 cases × 24h, all processes + SO2 + dilution, 6 figures)
   pycham/                     — AAAR box model vs PyCHAM (independent check): config.py (single source of truth),

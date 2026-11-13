@@ -1,6 +1,6 @@
 # TOMAS Fortran → JAX Port — Status, Gaps, and Roadmap
 
-*As of v0.2.0 (2026-04-13)*
+*As of v0.2.0 (2026-04-13). Updated 2026-11-12 for the Kelvin-effect assessment and adaptive sub-stepping (gas sub-steps, adaptive coagulation, reverse-mode AD); other sections still describe v0.2.0.*
 
 ---
 
@@ -13,7 +13,7 @@
 | `multicoag.f` (coag kernel) | `coagulation_kernel.py` | Yes | 1 | Kernel values match Fortran |
 | `multicoag.f` (coag rates) | `coagulation_rates.py` | Yes | 1 | TFL vectorized, overflow tracked |
 | `multicoag.f` (properties) | `properties.py` | Yes | 22 | STP viscosity, MFP, Dpk, Dk, ck |
-| `multicoag.f` (time-step) | `euler.py` | Yes | — | Adaptive dt matches Fortran loop |
+| `multicoag.f` (time-step) | `euler.py` | Yes | 5 | Sub-step limits min(0.25 N/\|dN/dt\|, 10 M/\|dM/dt\|) as in Fortran; `make_step(coag_solver='euler_adaptive')` (`tests/test_coag_adaptive.py`) |
 | `mnfix.f` | `mnfix_jax.py` | Yes | 22 | Partial-transfer matches Fortran exactly |
 | `aerodens.f` | `density.py` | Yes | 22 | Tang 1997 fits, pure SO4/NH4/mixed |
 | `tmcond.f` + `dmdt_int.f` | `condensation_tfl_jax.py` | Yes | 15 | Matches sequential TFL to 60 steps |
@@ -42,6 +42,8 @@
 | `radiative_forcing.py` | Direct SW RF (Chylek & Wong 1995) | Yes (runtime + precomputation) | 84 |
 | `diffrax.py` | Tsit5 adaptive ODE solver | Yes | — |
 | `condensation.py` (solver) | `make_step()` composable orchestrator + scan loops | Yes | 8 |
+| `gas_substep.py` | Adaptive H2SO4 sub-steps: chemistry → nucleation → condensation sized by (CS + n_eff·k_nuc)·Δt ≤ 0.1, coagulation/dilution on coagulation intervals (`make_step(gas_substep='adaptive')`, [gas_substep.md](gas_substep.md)) | Yes | 6 |
+| `bounded_loop.py` | Static-length loops (scan + cond + checkpoint) so `jax.grad`/`vjp` work (`make_step(ad_mode='reverse')`) | Yes | 5 |
 | `state.py` | TomasState NamedTuple | Yes | — |
 
 **Note:** PPM condensation was back-ported TO Fortran (`tomas_fortran/src_ppm/tmcond_ppm.f`) for cross-validation.
@@ -63,7 +65,7 @@
 
 1. **SO2 Chemistry** — Sun et al. 2022 Troe formalism, H2O enhancement, diurnal OH
 2. **Nucleation** — 3 schemes: Riccobono 2014, Dunne 2016, Zhao 2024 (11 mechanisms)
-3. **Coagulation** — Brownian (Fuchs correction), 2 solvers (Tsit5 adaptive, forward Euler)
+3. **Coagulation** — Brownian (Fuchs correction); solvers: Tsit5 adaptive (standalone), fixed forward Euler (`euler_fixed`, default) and adaptive Euler with Fortran sub-step limits (`euler_adaptive`, stable where fixed Euler goes NaN at K·N·dt ≳ 1)
 4. **Condensation** — 4 methods: top-hat (TFL) numpy and JIT, PPM numpy and JIT
 5. **Dilution** — First-order exponential relaxation toward background
 6. **Equilibria** — NH3 stoichiometric + water hygroscopic (ISORROPIA fits)
@@ -73,6 +75,8 @@
 - **Composable API**: `make_step(['so2_chemistry', 'nucleation', 'coagulation', 'condensation', 'dilution'])`
 - **Scan-fused loops**: Zero Python dispatch — single XLA program for 1440 steps
 - **Configurable grid**: 40-bin default (1.7nm-17.5um), `make_grid()` for arbitrary, 80-bin preset
+- **Adaptive gas sub-steps** (`gas_substep='adaptive'`, opt-in): the H2SO4 budget sets the sub-step, so the nucleation gas clamp cannot fire; one setting covers 10 pptv–100 ppmv SO2 at 190–240 K. Validated on 80 bins over AFGL tropical 13–25 km × SO2 against a fixed-dt split-chemistry reference (hour-mean L1 number/dry mass ≤ 0.05 at 6 h and 24 h, `benchmarks/python/gas_substep_psd80.py --check`). Off is bit-identical
+- **Reverse-mode AD** (`ad_mode='reverse'`, opt-in): every traced-trip-count loop (MNFIX phase 3, PPM CFL sub-steps, nucleation sub-steps, `euler_adaptive`, gas sub-steps) runs as a bounded `lax.scan`; matches forward mode to ≤ 1e-11
 - **Float64 everywhere**: Centralized in `config.py`, enforced project-wide
 - **GPU-ready**: All JIT paths documented in `docs/gpu_deployment.md`
 
@@ -109,8 +113,8 @@ See `docs/AUDIT_JAX_VS_FORTRAN.md` for the consolidated audit (JIT status, compr
 
 | Physics | Priority | Effort | Notes |
 |---|---|---|---|
-| VBS organic condensation | HIGH | 1-2 weeks | Saturation-dependent partitioning. Prototype on `vbs-soa` branch but broken |
-| Kelvin effect | HIGH | 2-3 days | Curvature correction exp(4sM/RTrDp). Critical for <10nm growth |
+| VBS organic condensation | DONE | — | c*-class partitioning via vbs-jax (`physics/soa_partitioning.py`, AAAR); the `vbs-soa` prototype (§3.3) is superseded |
+| Kelvin effect | DONE for SOA / NOT NEEDED for H2SO4 | — | SOA: vbs-jax Kelvin factor (σ = 0.025 N/m). H2SO4 stays nonvolatile (Fortran parity): in the SAI plume the growth lost is ≤ 6e-4 at 1.7 nm, ≤ 1.6e-4 over AFGL 13–22 km; background air ~3–10 % at 1.7 nm, < 1 % at ≥ 3 nm (`benchmarks/python/h2so4_kelvin_driving_force.py`, [missing_physics.md](missing_physics.md) #3). Needed for new low-volatility species (ELVOC, HIO3) and for H2SO4 above ~240 K |
 | Dry deposition | MEDIUM | 3-5 days | Size-dependent removal (Stokes settling + diffusion) |
 | Equilibrium partitioning | MEDIUM | 1 week | Implicit solver for semi-volatile organics |
 
@@ -150,6 +154,8 @@ See `docs/AUDIT_JAX_VS_FORTRAN.md` for the consolidated audit (JIT status, compr
 
 ### 3.3 VBS/SOA Work (on `vbs-soa` branch, NOT working)
 
+**Superseded (2026-10):** SOA partitioning, Kelvin term included, now runs through vbs-jax (`physics/soa_partitioning.py`, [aaar/soa_partitioning.md](aaar/soa_partitioning.md)). Kept for the record:
+
 Prototype exists with 50 tests but has fundamental issues — not merged to v0.2.0:
 - `vbs_config.py` — 6-bin VBS (C*=[0.01..1000] ug/m3)
 - `kelvin_effect.py` — Curvature correction
@@ -173,7 +179,7 @@ Prototype exists with 50 tests but has fundamental issues — not merged to v0.2
 |---|---|---|---|
 | GPU benchmarking | HIGH | 2-3 days | `docs/gpu_deployment.md` written but no actual GPU timing |
 | `vmap` ensemble batching | HIGH | 2 days | Run 50+ scenarios in parallel on GPU |
-| Reverse-mode autodiff | HIGH | 1 day | Enable gradient-based parameter fitting |
+| ~~Reverse-mode autodiff~~ | ~~HIGH~~ | ~~1 day~~ | **DONE** — `make_step(ad_mode='reverse')`, bounded loops in `core/bounded_loop.py` (`tests/test_reverse_mode.py`); caps `ppm_max_substeps` = 64, `coag_max_substeps` = 1024, `gas_max_substeps` = 16384. Under `vmap`, `cond` runs both branches |
 | ~~`bhmie.py` to JAX port~~ | ~~LOW~~ | ~~3-5 days~~ | **DONE** — `bhmie_jax`, `bhmie_qsca_jax`, runtime RF JIT'd, vmap precomputation, GL upscatter (84 tests) |
 | `static_argnums` to `static_argnames` | LOW | 1 day | Cleaner but low risk of bugs |
 | Coagulation kernel caching | LOW | 1 day | `kij` recomputed per substep when `recompute_kernel=True` |
@@ -197,6 +203,10 @@ Operator splitting per timestep (canonical order):
 
 Each process is JIT-compiled independently.
 make_step() composes them into a single traced function.
+
+With gas_substep='adaptive' the outer step is split:
+  [SO2 chem (dt/2) -> Nucleation -> SO2 chem (dt/2) -> Condensation] x n_sub, dt from the H2SO4 budget
+  -> Coagulation -> Dilution, once per coagulation interval (closes when nucleation adds 1% of N)
 jax.lax.scan fuses 1440 timesteps into one XLA program.
 
 Grid: 40 mass-doubling bins, 1.7nm-17.5um (configurable)
@@ -233,6 +243,8 @@ loginit.f                  ->  conftest.py (make_lognormal)
 (none)                     ->  bhmie.py, radiative_forcing.py (new: Mie + RF)
 (none)                     ->  diffrax.py                     (new: Tsit5 adaptive ODE)
 (none)                     ->  condensation.py (solver)       (new: make_step + scan)
+(none)                     ->  gas_substep.py                 (new: adaptive H2SO4 sub-steps)
+(none)                     ->  bounded_loop.py                (new: reverse-mode AD loops)
 ```
 
 ---
@@ -244,14 +256,14 @@ loginit.f                  ->  conftest.py (make_lognormal)
 2. Add unit tests for `mnfix_jax.py` (direct coverage)
 
 ### Phase B — Missing Essential Physics (2-3 weeks)
-3. Implement Kelvin effect for sub-10nm growth
+3. ~~Implement Kelvin effect for sub-10nm growth~~ — done for SOA (vbs-jax); not needed for H2SO4 at ≤ 240 K ([missing_physics.md](missing_physics.md) #3)
 4. Add dry deposition (size-dependent)
-5. VBS/SOA organic condensation — rewrite or fix the `vbs-soa` branch (currently broken: TFL bimodal artifacts). Needs fresh approach, possibly PPM-only backend.
+5. ~~VBS/SOA organic condensation~~ — done through vbs-jax with the PPM remap (`physics/soa_partitioning.py`, `physics/ppm_remap.py`); the `vbs-soa` branch is superseded
 
 ### Phase C — GPU & Scalability (1-2 weeks)
 6. GPU benchmarking (actual timing on A100/H100)
 7. `vmap` ensemble runs (50+ scenarios in parallel)
-8. Reverse-mode autodiff validation
+8. ~~Reverse-mode autodiff validation~~ — done (`ad_mode='reverse'`, [gas_substep.md](gas_substep.md))
 
 ### Phase D — Extended Physics (2-4 weeks)
 9. Emissions framework (primary particles + gas sources)
