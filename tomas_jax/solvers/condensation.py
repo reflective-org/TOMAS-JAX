@@ -804,6 +804,27 @@ def run_full_scan(
     return Nk_f, Mk_f, Gc_f, history
 
 
+class GasSubstepCapWarning(RuntimeWarning):
+    """make_step(gas_substep='adaptive'): gas_max_substeps bound."""
+
+
+def _warn_gas_cap(hit_cap, dt_capped, knuc_dt_max, dt, cap):
+    hit_cap = np.asarray(hit_cap)
+    if not np.any(hit_cap):
+        return
+    dt_capped = np.asarray(dt_capped)[hit_cap]
+    knuc = np.asarray(knuc_dt_max)[hit_cap]
+    dt = np.broadcast_to(np.asarray(dt), hit_cap.shape)[hit_cap]
+    warnings.warn(
+        f"gas_max_substeps={int(cap)} bound in {hit_cap.sum()} step(s): the "
+        f"last sub-step covered {dt_capped.max():.4g} s of a "
+        f"{dt.max():.4g} s outer step (k_nuc*dt up to {knuc.max():.3g}; "
+        f"> 1 means the nucleation clamp fired). The result may be NaN or "
+        f"wrong. The sub-steps needed scale with the outer dt: raise "
+        f"gas_max_substeps or shorten dt (docs/gas_substep.md).",
+        GasSubstepCapWarning, stacklevel=2)
+
+
 # =========================================================================
 # Layer 4: make_step() — public composable API
 # =========================================================================
@@ -887,12 +908,18 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
         gas_substep_frac: The criterion's f (default 0.1). k_nuc*dt_sub <= f
             keeps the nucleation gas clamp from firing.
         gas_max_substeps: Sub-step cap per outer step; the last one covers
-            the rest of dt.
+            the rest of dt. The count needed grows with dt (217 K / 100 ppmv:
+            ~4,500 per 60 s, ~41,000 per 600 s). A binding cap gives NaN or a
+            wrong answer and emits GasSubstepCapWarning; raise the cap or
+            shorten dt.
         gas_min_dt: Smallest sub-step [s]; taken when no larger one passes.
         return_substep_info: With gas_substep='adaptive', the step function
-            returns (Nk, Mk, Gc, info), info = dict(n_sub, dt_min, hit_cap,
+            returns (Nk, Mk, Gc, info), info = dict(n_sub, dt_min,
+            hit_cap: the cap forced a longer sub-step than the criterion's,
+            dt_capped: length of that forced sub-step [s] (0 if none),
             n_floor: sub-steps at gas_min_dt that failed the criterion,
-            knuc_dt_max: largest k_nuc*dt_sub, > 1 means the clamp fired).
+            knuc_dt_max: largest k_nuc*dt_sub over the sub-steps taken,
+            including a forced one; > 1 means the clamp fired).
         split_chemistry: gas_substep=None only (the adaptive path always
             splits). False (default): so2_chemistry runs on the whole dt
             before nucleation, which then sees H2SO4 at the top of the step's
@@ -1170,15 +1197,21 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
         eps_t = 1e-12 * dt
 
         def gas_substep_once(Nk_s, Mk_s, Gc_s, t, t_end, n, dN, diag):
-            dt_min, n_floor, knuc_dt_max = diag
+            dt_min, n_floor, knuc_dt_max, dt_capped = diag
+            # The last allowed sub-step covers the rest of the outer step
+            last = n == gas_max_substeps - 1
             dt_sub, floored, knuc_dt = choose_gas_substep(
                 Nk_s, Mk_s, Gc_s, xk, temp, pres, boxvol, rh, alpha, t_end - t,
                 oh_conc, nuc_kwargs, frac=gas_substep_frac,
                 min_dt=gas_min_dt, has_chem='so2_chemistry' in gas_procs,
                 has_nuc='nucleation' in gas_procs,
-                sparse_density=sparse_density, dunne_form=dunne_form)
-            # The last allowed sub-step covers the rest of the outer step
-            dt_sub = jnp.where(n == gas_max_substeps - 1, dt - t, dt_sub)
+                sparse_density=sparse_density, dunne_form=dunne_form,
+                force_dt=dt - t, force=last)
+            # The cap binds only if the forced step is longer than the one
+            # the criterion chose
+            dt_capped = jnp.where(last & (dt - t > dt_sub),
+                                  jax.lax.stop_gradient(dt - t), dt_capped)
+            dt_sub = jnp.where(last, dt - t, dt_sub)
             N_before = jnp.sum(Nk_s)
             for process in gas_procs:
                 dt_p = 0.5 * dt_sub if (split_chem and
@@ -1192,7 +1225,7 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                         boxvol, rh, alpha, 0.5 * dt_sub, kwargs)
             dN = dN + jnp.maximum(jnp.sum(Nk_s) - N_before, 0.0)
             diag = (jnp.minimum(dt_min, dt_sub), n_floor + floored,
-                    jnp.maximum(knuc_dt_max, knuc_dt))
+                    jnp.maximum(knuc_dt_max, knuc_dt), dt_capped)
             return Nk_s, Mk_s, Gc_s, t + dt_sub, n + 1, dN, diag
 
         def end_interval(Nk_s, Mk_s, Gc_s, t_int, target):
@@ -1223,7 +1256,7 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
         def n0(Nk_s):
             return jax.lax.stop_gradient(jnp.sum(Nk_s))
 
-        diag0 = (dt, jnp.int32(0), jnp.float64(0.0))
+        diag0 = (dt, jnp.int32(0), jnp.float64(0.0), jnp.float64(0.0))
         if not bounded:
             # Do-while, like the bounded path: every interval takes at least
             # one sub-step. Testing first would spin forever when the
@@ -1285,9 +1318,14 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
             (Nk, Mk, Gc, _, _, _, _, n_sub, n_coag, _, _,
              diag) = bounded_while(lambda s: dt - s[3] > eps_t, flat_body,
                                    init, gas_max_substeps)
-        dt_min, n_floor, knuc_dt_max = diag
+        dt_min, n_floor, knuc_dt_max, dt_capped = diag
+        hit_cap = dt_capped > 0.0
+        # Always on: a binding cap gives NaN or a wrong answer, and the info
+        # dict is only returned on request. Runs on the host, after the step.
+        jax.debug.callback(_warn_gas_cap, hit_cap, dt_capped, knuc_dt_max, dt,
+                           gas_max_substeps)
         info = dict(n_sub=n_sub, n_coag=n_coag, dt_min=dt_min,
-                    hit_cap=n_sub >= gas_max_substeps, n_floor=n_floor,
+                    hit_cap=hit_cap, dt_capped=dt_capped, n_floor=n_floor,
                     knuc_dt_max=knuc_dt_max)
         return Nk, Mk, Gc, info
 

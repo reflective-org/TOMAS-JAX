@@ -102,13 +102,21 @@ def h2so4_loss_frequency(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dts,
 def choose_gas_substep(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt_rem,
                        oh_conc, nuc_kwargs, *, frac=0.1, min_dt=1e-3,
                        n_levels=24, has_chem=True, has_nuc=True,
-                       sparse_density=None, dunne_form='double_exp'):
+                       sparse_density=None, dunne_form='double_exp',
+                       force_dt=None, force=False):
     """Largest dt_rem / 2^k with lambda*dt <= frac.
 
+    force_dt / force: the sub-step the caller will take instead when
+    force is True (make_step's last allowed sub-step, which covers the
+    rest of the outer step). It is evaluated as one more candidate, so
+    knuc_dt describes the step actually taken.
+
     Returns:
-        dt_sub: chosen sub-step [s]
-        floored: True if no candidate passed (dt_sub is the floor)
-        knuc_dt: k_nuc * dt_sub (> 1 means the nucleation clamp fires)
+        dt_sub: chosen sub-step [s] (the criterion's choice, never force_dt)
+        floored: True if no candidate passed (dt_sub is the floor) and the
+            step is not forced
+        knuc_dt: k_nuc * (the step taken); > 1 means the nucleation clamp
+            fires
     """
     args = jax.lax.stop_gradient(
         (Nk, Mk, Gc, temp, pres, boxvol, rh, alpha, dt_rem, oh_conc))
@@ -117,10 +125,16 @@ def choose_gas_substep(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt_rem,
 
     floor = jnp.minimum(min_dt, dt_rem)
     dts = jnp.maximum(dt_rem * 0.5 ** jnp.arange(n_levels), floor)
+    if force_dt is not None:
+        dts = jnp.append(dts, jax.lax.stop_gradient(force_dt))
     lam, _, k_nuc = h2so4_loss_frequency(
         Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dts, oh_conc,
         nuc_kwargs, has_chem, has_nuc, sparse_density, dunne_form)
-    ok = lam * dts <= frac
+    ok = (lam * dts <= frac)[:n_levels]
     floored = ~jnp.any(ok)
     idx = jnp.where(floored, n_levels - 1, jnp.argmax(ok))
-    return dts[idx], floored, k_nuc[idx] * dts[idx]
+    knuc_dt = k_nuc[idx] * dts[idx]
+    if force_dt is not None:
+        knuc_dt = jnp.where(force, k_nuc[n_levels] * dts[n_levels], knuc_dt)
+        floored = floored & ~force
+    return dts[idx], floored, knuc_dt

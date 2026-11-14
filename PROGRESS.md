@@ -4,6 +4,15 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-11-13 — Adaptive gas sub-steps: a binding `gas_max_substeps` now warns and is reported
+
+- **Bug (report):** when `gas_max_substeps` binds, the last sub-step takes the whole rest of the outer step. The cap counts sub-steps per outer step, so the number needed grows with dt: at 217 K / 18200 Pa / 100 ppmv about 4,500 per 60 s and 41,000 per 600 s, against the default 16,384. Reproduced: one 600 s step at 100 ppmv gives N = NaN (the forced 369 s sub-step fires the nucleation clamp and the burst sends the fixed-Euler coagulation to NaN; without coagulation N = 5.2e9 #/cm³ against 1.25e8 with cap 200,000). At 1 ppmv, cap 64 gives 7.58e6 against 7.83e6. Nothing warned, `info['knuc_dt_max']` was computed before the override (0.0255, "clamp did not fire"), and `hit_cap` was the only signal, and only with `return_substep_info=True`.
+- **Fix:** `choose_gas_substep(force_dt=, force=)` evaluates the forced step as one more candidate, so `knuc_dt_max` covers the steps actually taken (5.2e10 and 4.6 in the two cases above). New `info['dt_capped']` (length of the forced sub-step, 0 if none); `hit_cap` now means the forced step was longer than the criterion's choice (it was `n_sub >= cap`). Every adaptive step runs a `jax.debug.callback` that emits `GasSubstepCapWarning` (a `RuntimeWarning`, exported from `solvers/condensation.py`) when the cap binds, whether or not `return_substep_info` is on. Under `vmap` it counts the batch members that hit the cap. There is no finite fallback on purpose: any answer after the cap binds is wrong, and a finite one would hide it. Values are unchanged (same N in all four cases above).
+- **Tests:** `test_binding_cap_warns_and_reports_the_forced_step[forward|reverse]`, `test_cap_warning_under_vmap` (only the capped member counted; an uncapped batch stays silent). `tests/test_gas_substep.py` + `tests/test_reverse_mode.py`: 24 passed.
+- **Docs:** `docs/gas_substep.md` (the cap scales with the outer dt, what a binding cap does, the warning, the info fields), `make_step` docstring, `CLAUDE.md`.
+- **Next:** a run with a long outer dt at high SO2 should scale `gas_max_substeps` with dt; a per-second cap would be an API change and was not made.
+- **Files:** `tomas_jax/solvers/gas_substep.py`, `tomas_jax/solvers/condensation.py`, `tests/test_gas_substep.py`, `docs/gas_substep.md`, `CLAUDE.md`.
+
 ## 2026-11-13 — Adaptive gas sub-steps: forward loop no longer stalls on a closed interval
 
 - **Bug:** in `make_step(gas_substep='adaptive')` with `ad_mode='forward'`, the gas sub-step `while_loop` tested `interval_open` before its first sub-step. An interval is open while dN < `coag_interval_frac`·N0 and dN starts at 0, so with N0 = 0 (empty box, no `coagulation` in `processes` to put TINY values back) or `coag_interval_frac` <= 0 the test was 0 < 0: no sub-step, t never moved, and the outer `while_loop` spun inside XLA. The bounded (reverse) path already took one sub-step before testing and finished on the same inputs.

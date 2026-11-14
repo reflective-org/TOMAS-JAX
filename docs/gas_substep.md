@@ -44,8 +44,9 @@ Coagulation and dilution run on intervals, not on the outer 60 s step (that was 
 
 ### Caps, diagnostics, usage
 
-- `gas_max_substeps` = 16384 per outer step; the last allowed sub-step takes the rest of dt (`info['hit_cap']`). 190 K / 100 ppmv needs ~5700 at f = 0.1 (H₂SO₄ relaxes in ~0.01 s).
-- `return_substep_info=True` returns `(Nk, Mk, Gc, info)` with `n_sub`, `n_coag`, `dt_min`, `hit_cap`, `n_floor` (sub-steps at `gas_min_dt`), `knuc_dt_max`.
+- `gas_max_substeps` = 16384 per outer step; the last allowed sub-step takes the rest of dt. **The cap counts sub-steps per outer step, so the number needed grows with the outer dt:** the sub-steps are set by the H₂SO₄ relaxation time (~0.01 s at 100 ppmv), not by dt. 190 K / 100 ppmv needs ~5700 per 60 s; 217 K / 18200 Pa / 100 ppmv needs ~4,500 per 60 s and ~41,000 per 600 s. Scale the cap with dt (or keep dt at 60 s) for long outer steps.
+- **A binding cap gives NaN or a wrong answer.** The forced last sub-step is far past the criterion (217 K / 18200 Pa / 100 ppmv, dt = 600 s: 369 s in one sub-step, k_nuc·Δt = 5e10), the nucleation clamp fires, and the burst it makes sends the fixed-Euler coagulation to NaN (without coagulation N was 5.2e9 #/cm³ against 1.25e8 uncapped). At 1 ppmv with cap 64, N was 7.58e6 against 7.83e6. There is no fallback: any finite answer after the cap binds is wrong, so the step warns instead (`GasSubstepCapWarning`, a `RuntimeWarning`, from a `jax.debug.callback` after every adaptive step; under `vmap` it counts the batch members that hit the cap). It fires whether or not `return_substep_info` is on. Silence it with `warnings.filterwarnings('ignore', category=GasSubstepCapWarning)` only if you check `info['hit_cap']` yourself.
+- `return_substep_info=True` returns `(Nk, Mk, Gc, info)` with `n_sub`, `n_coag`, `dt_min`, `hit_cap` (the cap forced a sub-step longer than the criterion's choice), `dt_capped` (that sub-step's length [s], 0 if none), `n_floor` (sub-steps at `gas_min_dt`), `knuc_dt_max` (largest k_nuc·Δt over the sub-steps actually taken, the forced one included; until 2026-11-13 the forced step was missed and a binding cap still reported ≤ 0.1).
 - Under `vmap` the slowest member sets the pace.
 
 ```python
@@ -96,7 +97,7 @@ Snapshots only; reference `dt_for`/4, 0.1 s at 10 ppmv, 0.02 s at 100 ppmv. Run 
 
 ### Tests
 
-`tests/test_gas_substep.py`: argument validation; one sub-step at 10 ppbv; no clamp, no cap and closed sulfur at 100 ppmv (190, 217 K); 1 h at 1 ppmv vs fixed 0.1 s (5%); `jvp` vs FD; `vmap`.
+`tests/test_gas_substep.py`: argument validation; one sub-step at 10 ppbv; no clamp, no cap and closed sulfur at 100 ppmv (190, 217 K); a binding cap warns, sets `hit_cap`/`dt_capped` and reports k_nuc·Δt > 1 (forward, reverse, `vmap`); 1 h at 1 ppmv vs fixed 0.1 s (5%); `jvp` vs FD; `vmap`.
 
 ## Reverse-mode AD (`ad_mode='reverse'`)
 

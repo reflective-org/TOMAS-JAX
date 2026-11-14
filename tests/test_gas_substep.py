@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 from tomas_jax.core.config import SRTSO4, SRTSO2, MW_H2SO4, MW_SO2
-from tomas_jax.solvers.condensation import make_step
+from tomas_jax.solvers.condensation import make_step, GasSubstepCapWarning
 from sensitivities.dunne_nuc import common as c
 
 PROCS = ['so2_chemistry', 'nucleation', 'coagulation', 'condensation']
@@ -72,6 +72,49 @@ def test_empty_box_terminates(xk, ad_mode):
     assert int(info['n_sub']) >= 1 and not bool(info['hit_cap'])
     assert np.all(np.isfinite(np.asarray(Nk1)))
     assert float(jnp.sum(Nk1)) > 0.0
+
+
+@pytest.mark.parametrize('ad_mode', ['forward', 'reverse'])
+def test_binding_cap_warns_and_reports_the_forced_step(xk, ad_mode):
+    """A binding cap forces the rest of dt into one sub-step: hit_cap,
+    dt_capped and a knuc_dt_max that describes that step (the clamp fires),
+    plus a GasSubstepCapWarning without return_substep_info."""
+    state = c.lognormal_state(xk, so2=c.ppbv_to_molec(1e5, 217.0, PRES))
+    args = (xk, 217.0, PRES, c.BOXVOL, RH, ALPHA, 60.0)
+    step = make_step(PROCS, gas_substep='adaptive', gas_max_substeps=64,
+                     ad_mode=ad_mode, return_substep_info=True, **STUDY)
+    with pytest.warns(GasSubstepCapWarning, match='gas_max_substeps=64'):
+        *_, info = step(*state, *args, **KW)
+        jax.block_until_ready(info)
+    assert bool(info['hit_cap'])
+    assert 1.0 < float(info['dt_capped']) < 60.0
+    assert float(info['knuc_dt_max']) > 1.0
+
+    quiet = make_step(PROCS, gas_substep='adaptive', gas_max_substeps=64,
+                      ad_mode=ad_mode, **STUDY)
+    with pytest.warns(GasSubstepCapWarning):
+        jax.block_until_ready(quiet(*state, *args, **KW))
+
+
+def test_cap_warning_under_vmap(xk):
+    """Only the batch member that hits the cap is reported; a batch that
+    does not hit it stays silent."""
+    import warnings
+    step = make_step(PROCS, gas_substep='adaptive', gas_max_substeps=64,
+                     return_substep_info=True, **STUDY)
+    states = [c.lognormal_state(xk, so2=c.ppbv_to_molec(s, 217.0, PRES))
+              for s in (10.0, 1e5)]
+    batch = jax.tree.map(lambda *a: jnp.stack(a), *states)
+    f = jax.vmap(lambda s: step(*s, xk, 217.0, PRES, c.BOXVOL, RH, ALPHA,
+                                60.0, **KW))
+    with pytest.warns(GasSubstepCapWarning, match='in 1 step'):
+        *_, info = f(batch)
+        jax.block_until_ready(info)
+    assert list(np.asarray(info['hit_cap'])) == [False, True]
+    low = jax.tree.map(lambda *a: jnp.stack(a), states[0], states[0])
+    with warnings.catch_warnings():
+        warnings.simplefilter('error', GasSubstepCapWarning)
+        jax.block_until_ready(f(low))
 
 
 def test_split_chemistry_fixed_dt(xk):
