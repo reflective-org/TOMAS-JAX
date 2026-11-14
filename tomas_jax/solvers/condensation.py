@@ -1014,8 +1014,10 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
         if not _GAS_PROCESSES.intersection(processes):
             raise ValueError("gas_substep='adaptive' needs at least one of "
                              f"{sorted(_GAS_PROCESSES)} in processes")
-        if gas_substep_frac <= 0.0 or gas_max_substeps < 1 or gas_min_dt <= 0.0:
-            raise ValueError("gas_substep_frac and gas_min_dt must be > 0 and "
+        if (gas_substep_frac <= 0.0 or gas_max_substeps < 1 or gas_min_dt <= 0.0
+                or not coag_interval_frac > 0.0):
+            raise ValueError("gas_substep_frac, gas_min_dt and "
+                             "coag_interval_frac must be > 0 and "
                              "gas_max_substeps >= 1")
     elif return_substep_info:
         raise ValueError("return_substep_info needs gas_substep='adaptive'")
@@ -1223,24 +1225,27 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
 
         diag0 = (dt, jnp.int32(0), jnp.float64(0.0))
         if not bounded:
+            # Do-while, like the bounded path: every interval takes at least
+            # one sub-step. Testing first would spin forever when the
+            # interval starts closed (N0 == 0: dN < frac*N0 is 0 < 0).
             def gas_cond(state):
-                return interval_open(state[3], state[4], state[5], state[6],
-                                     state[7])
+                return (state[5] == state[8]) | interval_open(
+                    state[3], state[4], state[5], state[6], state[7])
 
             def gas_body(state):
-                Nk_s, Mk_s, Gc_s, t, t_end, n, dN, N0, diag = state
+                Nk_s, Mk_s, Gc_s, t, t_end, n, dN, N0, n_start, diag = state
                 Nk_s, Mk_s, Gc_s, t, n, dN, diag = gas_substep_once(
                     Nk_s, Mk_s, Gc_s, t, t_end, n, dN, diag)
-                return Nk_s, Mk_s, Gc_s, t, t_end, n, dN, N0, diag
+                return Nk_s, Mk_s, Gc_s, t, t_end, n, dN, N0, n_start, diag
 
             def interval_body(state):
                 Nk_s, Mk_s, Gc_s, t, target, n, n_coag, diag = state
                 t_start = t
                 t_end = t + jnp.minimum(target, dt - t)
-                (Nk_s, Mk_s, Gc_s, t, _, n, _, _, diag) = jax.lax.while_loop(
+                (Nk_s, Mk_s, Gc_s, t, _, n, _, _, _, diag) = jax.lax.while_loop(
                     gas_cond, gas_body,
                     (Nk_s, Mk_s, Gc_s, t, t_end, n, jnp.float64(0.0),
-                     n0(Nk_s), diag))
+                     n0(Nk_s), n, diag))
                 Nk_s, Mk_s, Gc_s, target = end_interval(
                     Nk_s, Mk_s, Gc_s, t - t_start, target)
                 return Nk_s, Mk_s, Gc_s, t, target, n, n_coag + 1, diag

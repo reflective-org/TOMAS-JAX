@@ -4,6 +4,13 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-11-13 — Adaptive gas sub-steps: forward loop no longer stalls on a closed interval
+
+- **Bug:** in `make_step(gas_substep='adaptive')` with `ad_mode='forward'`, the gas sub-step `while_loop` tested `interval_open` before its first sub-step. An interval is open while dN < `coag_interval_frac`·N0 and dN starts at 0, so with N0 = 0 (empty box, no `coagulation` in `processes` to put TINY values back) or `coag_interval_frac` <= 0 the test was 0 < 0: no sub-step, t never moved, and the outer `while_loop` spun inside XLA. The bounded (reverse) path already took one sub-step before testing and finished on the same inputs.
+- **Fix:** the forward gas loop is now a do-while: it carries the sub-step count at the start of the interval and always takes that first sub-step, as the bounded path does. `make_step` raises `ValueError` for `coag_interval_frac` <= 0. Runs with N0 > 0 are bit-identical to before (checked at 217 K, 10 ppbv and 100 ppmv, 3 steps of 60 s).
+- **Tests:** `tests/test_gas_substep.py::test_empty_box_terminates[forward|reverse]` (empty box with so2_chemistry, nucleation, condensation; the forward case hung on the previous commit) and a `coag_interval_frac=0.0` case in `test_bad_arguments_rejected`. `tests/test_gas_substep.py` and `tests/test_reverse_mode.py`: 21 passed.
+- **Files:** `tomas_jax/solvers/condensation.py`, `tests/test_gas_substep.py`, `docs/gas_substep.md`, `CLAUDE.md`.
+
 ## 2026-11-13 — MNFIX: differentiable by default, trimmed loop opt-in (PR review)
 
 - **What:** `mnfix_jax(trim=False)` (new default) runs phase 3 as a `fori_loop(0, nbins)`. Each iteration still writes only rows k and kk, and in-range bins are identities. `trim=True` is the previous `while_loop` from the first to the last out-of-range bin. `make_step(mnfix_trim=None)` uses `trim=True` with `ad_mode='forward'` and the full loop with `'reverse'`; `mnfix_trim=True` with `'reverse'` raises. `coag_euler_step`, `euler_step`, `ezcond_tfl_jax` and `_condensation_step_core` take `mnfix_trim` (default False). The `bounded` argument is removed from `mnfix_jax` and `coag_euler_step`, which both gained it on this branch: `bounded=True` had run all nbins iterations anyway. `ezcond_tfl_jax` keeps `bounded` for the shared `ezcond_fn` interface; it does nothing there.

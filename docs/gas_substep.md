@@ -39,6 +39,7 @@ The same split is available at fixed dt: `make_step(..., split_chemistry=True)` 
 Coagulation and dilution run on intervals, not on the outer 60 s step (that was 1.8× off in N(>3 nm) at 217 K / 100 ppmv) or every gas sub-step (too expensive).
 
 - An interval ends at its target length, or when nucleation has added `coag_interval_frac` (0.01)·N. At 0.1 the 1.7 nm bin was ~7% low (60 s of coagulation on seconds-old clusters); at 0.01 it is within 0.6%, at 1.5–2× the cost.
+- Every interval takes at least one gas sub-step before the end test (a do-while, in both modes). An interval can start closed: with N = 0 and no coagulation in `processes` to add TINY values back, dN < `coag_interval_frac`·N is 0 < 0. A loop that tested first then took no sub-step and never advanced t. `coag_interval_frac` must be > 0 (`ValueError`).
 - If coagulation removed a fraction r > `coag_interval_frac` of N, the next target shrinks to t_int·frac/r, rounded down to a power of 2 s; otherwise it may double. Intervals never cross the end of the outer step, and the target resets to the outer dt at the start of every outer step, so the first interval of each step always tries the full dt. Rounding keeps the lengths discrete, so gradients do not see a continuously moving step.
 
 ### Caps, diagnostics, usage

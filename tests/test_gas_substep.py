@@ -51,6 +51,27 @@ def test_bad_arguments_rejected():
         make_step(PROCS, return_substep_info=True)
     with pytest.raises(ValueError, match='split_chemistry'):
         make_step(['so2_chemistry', 'coagulation'], split_chemistry=True)
+    for frac in (0.0, -1.0):
+        with pytest.raises(ValueError, match='coag_interval_frac'):
+            make_step(PROCS, gas_substep='adaptive', coag_interval_frac=frac)
+
+
+@pytest.mark.parametrize('ad_mode', ['forward', 'reverse'])
+def test_empty_box_terminates(xk, ad_mode):
+    """N0 = 0 with no coagulation to add TINY values: the interval starts
+    closed (dN < frac*N0 is 0 < 0). Every interval must still take a
+    sub-step; the forward loop used to spin forever here."""
+    procs = ['so2_chemistry', 'nucleation', 'condensation']
+    step = make_step(procs, gas_substep='adaptive', ad_mode=ad_mode,
+                     return_substep_info=True, **STUDY)
+    Nk, Mk, Gc = c.lognormal_state(
+        xk, so2=c.ppbv_to_molec(10.0, 217.0, PRES))
+    Nk, Mk = jnp.zeros_like(Nk), jnp.zeros_like(Mk)
+    Nk1, Mk1, Gc1, info = step(Nk, Mk, Gc, xk, 217.0, PRES, c.BOXVOL, RH,
+                               ALPHA, 60.0, **KW)
+    assert int(info['n_sub']) >= 1 and not bool(info['hit_cap'])
+    assert np.all(np.isfinite(np.asarray(Nk1)))
+    assert float(jnp.sum(Nk1)) > 0.0
 
 
 def test_split_chemistry_fixed_dt(xk):
