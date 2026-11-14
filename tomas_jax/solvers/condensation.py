@@ -252,7 +252,8 @@ def condensation_step(
 
 def _condensation_step_core(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
                             ezcond_fn, water_scheme=WATER_SCHEME_BISULFATE,
-                            sparse_density=None, bounded=False):
+                            sparse_density=None, bounded=False,
+                            mnfix_trim=False):
     """Core condensation: MNFIX -> CS -> gas depletion -> ezcond_fn -> NH3 -> water -> MNFIX.
 
     This is the single implementation that both PPM and TFL JIT paths share.
@@ -260,10 +261,12 @@ def _condensation_step_core(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
     water_scheme selects the water uptake (see equilibrate_water).
     sparse_density: low-occupancy bin density for the condensation sink
     (see calc_wet_diameters); None = Fortran defaults.
-    bounded: static; bounded MNFIX and ezcond loops (reverse-mode AD).
+    bounded: static; bounded ezcond loops (reverse-mode AD).
+    mnfix_trim: static; mnfix_jax(trim=...) for the MNFIX calls here (TFL's
+    own MNFIX calls take it through ezcond_fn, see make_step).
     """
     # 0. MNFIX input
-    Nk, Mk = mnfix_jax(Nk, Mk, xk, ICOMP_NODIAG, bounded=bounded)
+    Nk, Mk = mnfix_jax(Nk, Mk, xk, ICOMP_NODIAG, trim=mnfix_trim)
 
     # 1. Condensation sink
     CS, sinkfrac = calc_condensation_sink(
@@ -308,7 +311,7 @@ def _condensation_step_core(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
     Mk = equilibrate_water(Mk, rh, temp, water_scheme)
 
     # 5. MNFIX cleanup
-    Nk, Mk = mnfix_jax(Nk, Mk, xk, ICOMP_NODIAG, bounded=bounded)
+    Nk, Mk = mnfix_jax(Nk, Mk, xk, ICOMP_NODIAG, trim=mnfix_trim)
 
     return Nk, Mk, Gc
 
@@ -816,7 +819,7 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
               coag_interval_frac=0.01, return_substep_info=False,
               split_chemistry=False,
               ad_mode='forward', ppm_max_substeps=64, ppm_tangent='exact',
-              jit=True):
+              mnfix_trim=None, jit=True):
     """Build a step function from an ordered list of process names.
 
     The returned function has signature:
@@ -916,6 +919,13 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
             tangent can grow without bound through the reconstruction when few
             particles grow fast in high H2SO4 (docs/prescribed_j.md). It is not
             the exact derivative of the discrete model.
+        mnfix_trim: MNFIX phase 3 over only the out-of-range bins
+            (mnfix_jax(trim=True): 2-7x faster per call when few bins need
+            fixing, same result) or over every bin (False). None (default) =
+            True with ad_mode='forward', False with 'reverse'; True with
+            'reverse' raises. Set False when vmapping the step over many
+            columns: the trimmed while_loop runs until the slowest column is
+            done, ~5x slower than the full loop under vmap.
             Callers no longer need to wrap manually. Double-JIT is a no-op.
 
     Returns:
@@ -944,6 +954,11 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
         raise ValueError(f"Unknown ad_mode '{ad_mode}'. "
                          f"Valid: ['forward', 'reverse']")
     bounded = ad_mode == 'reverse'
+    if mnfix_trim is None:
+        mnfix_trim = not bounded
+    elif mnfix_trim and bounded:
+        raise ValueError("mnfix_trim=True is a while_loop (forward-mode AD "
+                         "only); use mnfix_trim=False with ad_mode='reverse'")
     if coag_max_substeps is None:
         coag_max_substeps = 1024 if bounded else 10000
 
@@ -961,6 +976,8 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
         ppm_opts['ppm_freeze_shape'] = True
     if ppm_opts:
         ezcond_fn = partial(ezcond_ppm_jax, **ppm_opts)
+    if ezcond_fn is ezcond_tfl_jax:
+        ezcond_fn = partial(ezcond_tfl_jax, mnfix_trim=mnfix_trim)
 
     valid = {'so2_chemistry', 'nucleation', 'coagulation', 'condensation', 'dilution'}
     for p in processes:
@@ -1052,7 +1069,7 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                         fn_scale=kwargs.get('fn_scale', 1.0),
                     )
                     Nk_s, Mk_s = mnfix_jax(Nk_s, Mk_s, xk, ICOMP_NODIAG,
-                                           bounded=bounded)
+                                           trim=mnfix_trim)
                     return (Nk_s, Mk_s, Gc_s)
             else:
                 def nuc_body(i, carry):
@@ -1069,7 +1086,7 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                         dunne_form,
                     )
                     Nk_s, Mk_s = mnfix_jax(Nk_s, Mk_s, xk, ICOMP_NODIAG,
-                                           bounded=bounded)
+                                           trim=mnfix_trim)
                     return (Nk_s, Mk_s, Gc_s)
 
             Nk, Mk, Gc = loop_fori(
@@ -1087,6 +1104,7 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                     max_substeps=coag_max_substeps,
                     sparse_density=sparse_density,
                     bounded=bounded,
+                    mnfix_trim=mnfix_trim,
                 )
             else:
                 Nk, Mk = coag_euler_step(
@@ -1095,7 +1113,7 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                     icomp_nodiag=kwargs.get('icomp_nodiag', ICOMP_NODIAG),
                     n_substeps=n_coag_substeps,
                     sparse_density=sparse_density,
-                    bounded=bounded,
+                    mnfix_trim=mnfix_trim,
                 )
             if water_every_process:
                 Mk = equilibrate_water(Mk, rh, temp, water_scheme)
@@ -1104,6 +1122,7 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                 Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
                 ezcond_fn=ezcond_fn, water_scheme=water_scheme,
                 sparse_density=sparse_density, bounded=bounded,
+                mnfix_trim=mnfix_trim,
             )
         elif process == 'dilution':
             kdil = kwargs.get('kdil', 0.0)

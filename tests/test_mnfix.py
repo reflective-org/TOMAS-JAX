@@ -436,28 +436,33 @@ def _random_states(xk, seed, n=25):
         yield jnp.array(Nk), jnp.array(Mk)
 
 
+@pytest.mark.parametrize('trim', [False, True])
 @pytest.mark.parametrize('nbins,ratio', [(40, 2.0), (80, 2.0 ** 0.5), (30, 3.0)])
-def test_bit_identical_to_sequential_reference(nbins, ratio):
+def test_bit_identical_to_sequential_reference(nbins, ratio, trim):
     from tests.reference.mnfix_sequential import mnfix_reference
     from tomas_jax.core.config import XK0
     xk = make_grid(nbins, XK0, ratio)
-    new, ref = jax.jit(mnfix_jax), jax.jit(mnfix_reference)
+    new = jax.jit(lambda N, M, x: mnfix_jax(N, M, x, trim=trim))
+    ref = jax.jit(mnfix_reference)
     for Nk, Mk in _random_states(xk, seed=nbins):
         a, b = new(Nk, Mk, xk), ref(Nk, Mk, xk)
         np.testing.assert_array_equal(np.array(a[0]), np.array(b[0]))
         np.testing.assert_array_equal(np.array(a[1]), np.array(b[1]))
 
 
-def test_forward_mode_matches_reference(xk):
+@pytest.mark.parametrize('trim', [False, True])
+def test_forward_mode_matches_reference(xk, trim):
     from tests.reference.mnfix_sequential import mnfix_reference
     Nk, Mk = next(_random_states(xk, seed=7))
     f = lambda fn: jax.jvp(lambda m: fn(Nk, m, xk)[0], (Mk,), (Mk * 1e-3,))[1]
-    np.testing.assert_array_equal(np.array(f(mnfix_jax)), np.array(f(mnfix_reference)))
+    new = lambda N, M, x: mnfix_jax(N, M, x, trim=trim)
+    np.testing.assert_array_equal(np.array(f(new)), np.array(f(mnfix_reference)))
 
 
 # =========================================================================
-# Phase 3 bin skipping: loop only over [first out-of-range bin, hi], where hi
-# grows with upward-shift targets. Edge cases against the full-loop reference.
+# Phase 3 bin skipping (trim=True): loop only over [first out-of-range bin,
+# hi], where hi grows with upward-shift targets. Edge cases against the
+# full-loop reference, for both trim settings.
 # =========================================================================
 
 def _in_range_state(xk, n=1e6):
@@ -469,10 +474,11 @@ def _in_range_state(xk, n=1e6):
 
 def _assert_same_as_reference(Nk, Mk, xk):
     from tests.reference.mnfix_sequential import mnfix_reference
-    a = jax.jit(mnfix_jax)(Nk, Mk, xk)
     b = jax.jit(mnfix_reference)(Nk, Mk, xk)
-    np.testing.assert_array_equal(np.array(a[0]), np.array(b[0]))
-    np.testing.assert_array_equal(np.array(a[1]), np.array(b[1]))
+    for trim in (False, True):
+        a = jax.jit(lambda N, M: mnfix_jax(N, M, xk, trim=trim))(Nk, Mk)
+        np.testing.assert_array_equal(np.array(a[0]), np.array(b[0]))
+        np.testing.assert_array_equal(np.array(a[1]), np.array(b[1]))
     return a
 
 
@@ -514,7 +520,8 @@ class TestPhase3BinSkipping:
         Mk = Mk.at[12].set(0.0)
         _assert_same_as_reference(Nk, Mk, xk)
 
-    def test_vmap_batch_matches_reference(self, xk):
+    @pytest.mark.parametrize('trim', [False, True])
+    def test_vmap_batch_matches_reference(self, xk, trim):
         """Batched states run the loop to the furthest member's hi.
 
         Not bit-identical: under vmap XLA fuses multiply-adds (FMA) differently
@@ -525,7 +532,7 @@ class TestPhase3BinSkipping:
         states = list(_random_states(xk, seed=3, n=6))
         Nb = jnp.stack([s[0] for s in states])
         Mb = jnp.stack([s[1] for s in states])
-        a = jax.jit(jax.vmap(lambda n, m: mnfix_jax(n, m, xk)))(Nb, Mb)
+        a = jax.jit(jax.vmap(lambda n, m: mnfix_jax(n, m, xk, trim=trim)))(Nb, Mb)
         b = jax.jit(jax.vmap(lambda n, m: mnfix_reference(n, m, xk)))(Nb, Mb)
         np.testing.assert_allclose(np.array(a[0]), np.array(b[0]), rtol=1e-14, atol=0)
         np.testing.assert_allclose(np.array(a[1]), np.array(b[1]), rtol=1e-14, atol=0)

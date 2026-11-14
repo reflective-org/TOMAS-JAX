@@ -12,10 +12,13 @@ Key difference from a naive "move-all" approach:
   - Naive move-all: entire bin dumps to neighbor → oscillation/pulses
 
 Phases 1-2 touch only bin k, so they run on all bins at once. Phase 3 stays a
-``jax.lax.fori_loop`` in the Fortran in-place order (an upward shift feeds bins
-processed later) but each iteration updates only rows k and kk. Results are
-bit-identical to the original one-bin-at-a-time port
-(tests/reference/mnfix_sequential.py, tests/test_mnfix.py).
+sequential loop in the Fortran in-place order (an upward shift feeds bins
+processed later) but each iteration updates only rows k and kk. By default it
+is a ``fori_loop`` over all bins (static trip count, so jax.grad / vjp go
+through it); ``trim=True`` runs a ``while_loop`` over only the out-of-range
+span (faster per call, forward-mode AD only). Both are bit-identical to the
+original one-bin-at-a-time port (tests/reference/mnfix_sequential.py,
+tests/test_mnfix.py).
 
 References:
     - mnfix.f (Peter Adams, September 2000)
@@ -26,7 +29,6 @@ import jax.numpy as jnp
 from typing import Tuple
 
 from .config import ICOMP_NODIAG
-from .bounded_loop import loop_while
 
 
 # Number MNFIX leaves in an empty bin [#/cell] (Fortran mnfix.f: parameter(Neps=1E-5))
@@ -38,7 +40,7 @@ def mnfix_jax(
     Mk: jnp.ndarray,
     xk: jnp.ndarray,
     icomp_nodiag: int = ICOMP_NODIAG,
-    bounded: bool = False,
+    trim: bool = False,
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Correct mass/number drift using Fortran-faithful partial transfer.
 
@@ -51,8 +53,13 @@ def mnfix_jax(
         Mk: Mass concentration [kg/grid cell], shape (ibins, icomp)
         xk: Bin boundaries [kg], shape (ibins+1,)
         icomp_nodiag: Number of non-diagnostic species.
-        bounded: If True (static), phase 3 runs as a bounded loop of nbins
-            iterations (core/bounded_loop.py) so reverse-mode AD works.
+        trim: Static. False (default): phase 3 loops over every bin, a static
+            trip count, so reverse-mode AD (jax.grad, vjp) works. True: it
+            loops only from the first out-of-range bin to the last one (or
+            the highest bin an upward shift has fed). Same result, 2-7x
+            faster per call when few bins are out of range, but a
+            while_loop: forward-mode AD only, and under vmap it runs until
+            the slowest batch member is done (~5x slower than False).
 
     Returns:
         Nk_new: Corrected number concentration
@@ -107,24 +114,14 @@ def mnfix_jax(
     #
     # Similarly for avg < xk[k] (downward shift).
     #
-    # Only bins that are out of range when the loop reaches them change, so
-    # the loop runs from the first out-of-range bin to `hi`: the last one, or
-    # the highest bin an upward shift has fed so far (targets can be several
-    # bins up). Downward shifts land in bins already passed, which the Fortran
-    # order never revisits either. Skipped iterations would change nothing,
-    # so the result is bit-identical to looping over every bin.
+    # Bins in range when the loop reaches them are identities. trim=False
+    # loops over every bin (static trip count, reverse-mode AD). trim=True
+    # runs from the first out-of-range bin to `hi`: the last one, or the
+    # highest bin an upward shift has fed so far (targets can be several bins
+    # up). Downward shifts land in bins already passed, which the Fortran
+    # order never revisits either, so both give the same result.
     # =========================================================================
     log_p = jnp.log(xk[1] / xk[0])  # log of the bin mass ratio
-    idx = jnp.arange(nbins)
-
-    # Out-of-range bins after phases 1-2, with the loop body's own formulas
-    drymass = jnp.sum(Mk[:, :icomp_nodiag], axis=1)
-    avg = drymass / (Nk + EPS)
-    avg = jnp.where((Nk == 0.0) & (drymass <= 0.0), xk_geo, avg)
-    out = (((avg > xk[1:]) & (idx < nbins - 1))
-           | ((avg < xk[:-1]) & (idx > 0)))
-    k_first = jnp.where(jnp.any(out), jnp.argmax(out), nbins)
-    hi_first = jnp.max(jnp.where(out, idx, -1))
 
     def fix_drift(k, state):
         Nk_s, Mk_s = state
@@ -193,14 +190,27 @@ def mnfix_jax(
         Mk_s = Mk_s.at[kk].set(mk_kk)
         return Nk_s, Mk_s, jnp.where(needs_up, kk_up, -1)
 
+    if not trim:
+        return jax.lax.fori_loop(
+            0, nbins, lambda k, s: fix_drift(k, s)[:2], (Nk, Mk))
+
+    # Out-of-range bins after phases 1-2, with the loop body's own formulas
+    idx = jnp.arange(nbins)
+    drymass = jnp.sum(Mk[:, :icomp_nodiag], axis=1)
+    avg = drymass / (Nk + EPS)
+    avg = jnp.where((Nk == 0.0) & (drymass <= 0.0), xk_geo, avg)
+    out = (((avg > xk[1:]) & (idx < nbins - 1))
+           | ((avg < xk[:-1]) & (idx > 0)))
+    k_first = jnp.where(jnp.any(out), jnp.argmax(out), nbins)
+    hi_first = jnp.max(jnp.where(out, idx, -1))
+
     def body(state):
         k, hi, Nk_s, Mk_s = state
         Nk_s, Mk_s, kk_up = fix_drift(k, (Nk_s, Mk_s))
         return k + 1, jnp.maximum(hi, kk_up), Nk_s, Mk_s
 
-    _, _, Nk, Mk = loop_while(
+    _, _, Nk, Mk = jax.lax.while_loop(
         lambda s: (s[0] <= s[1]) & (s[0] < nbins), body,
-        (k_first, hi_first, Nk, Mk), bounded, max_iter=nbins,
-        checkpoint=False)
+        (k_first, hi_first, Nk, Mk))
 
     return Nk, Mk

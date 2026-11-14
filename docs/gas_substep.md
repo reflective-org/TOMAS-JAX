@@ -103,13 +103,12 @@ Snapshots only; reference `dt_for`/4, 0.1 s at 10 ppmv, 0.02 s at 100 ppmv. Run 
 
 | loop | bound |
 |---|---|
-| MNFIX phase 3 | nbins (exact) |
 | nucleation sub-steps | `max_nuc_substeps` (exact) |
 | PPM CFL sub-steps | `ppm_max_substeps` = 64 (binding → Courant > 0.8) |
 | `euler_adaptive` coagulation | `coag_max_substeps` = 1024 (binding → truncated coagulation) |
 | gas sub-steps | `gas_max_substeps`, one flat loop; intervals closed by `lax.cond` (nested bounded loops cost max_outer × max_inner) |
 
-- **Threading:** a static `bounded` flag on `mnfix_jax`, `coag_euler_step`, `euler_step`, `ppm_condensation_step`, `ezcond_ppm_jax`, `ezcond_tfl_jax`, `_condensation_step_core`; `make_step(ad_mode='reverse')` sets them all.
+- **Threading:** a static `bounded` flag on `euler_step`, `ppm_condensation_step`, `ezcond_ppm_jax`, `ezcond_tfl_jax`, `_condensation_step_core`; `make_step(ad_mode='reverse')` sets them all. `ezcond_tfl_jax` accepts it only for the shared `ezcond_fn` interface. MNFIX needs no `bounded` flag: by default phase 3 is a `fori_loop` over every bin (static trip count), so `jax.grad` goes through it in every caller, including `diffrax_step` and `coag_euler_step`. `make_step(mnfix_trim=None)` switches to the faster `mnfix_jax(trim=True)` while_loop only with `ad_mode='forward'`.
 - **Values** match forward mode to ≤ 1e-11 (XLA fuses differently inside `cond`). **Gradients** match `jacfwd` to ≤ 5e-12 (1 ppmv with and without gas sub-steps, 100 ppmv with `euler_adaptive`) and central FD (h = 1e-4) to 1e-3.
 - **Memory:** checkpoint the caller's time loop (`common.make_runner(ad_mode='reverse')` does).
 - **`vmap`:** `cond` runs both branches, so skipped iterations cost full ones.

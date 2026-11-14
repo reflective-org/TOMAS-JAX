@@ -94,6 +94,7 @@ def euler_step(
     return_info: bool = False,
     sparse_density=None,
     bounded: bool = False,
+    mnfix_trim: bool = False,
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Forward Euler integration of coagulation over timestep dt.
 
@@ -122,8 +123,10 @@ def euler_step(
         sparse_density: Density [kg/m3] for low-mass bins in the kernel
             (see calc_particle_properties). None = 1000 (Fortran).
         bounded: If True (static), the sub-step loop is a bounded loop of
-            max_substeps iterations (core/bounded_loop.py) and MNFIX is
-            bounded too, so reverse-mode AD works.
+            max_substeps iterations (core/bounded_loop.py), so reverse-mode
+            AD works.
+        mnfix_trim: Static; mnfix_jax(trim=...). True is faster but
+            forward-mode AD only.
 
     Returns:
         Nk_final: Updated number concentration
@@ -131,10 +134,8 @@ def euler_step(
         n_substeps: (only if return_info=True) Number of substeps used
     """
     # Select MNFIX function
-    if use_fortran_mnfix:
-        mnfix_fn = mnfix_fortran
-    else:
-        mnfix_fn = partial(mnfix_jax, bounded=bounded)
+    mnfix_fn = (mnfix_fortran if use_fortran_mnfix
+                else partial(mnfix_jax, trim=mnfix_trim))
 
     # Initial kernel computation
     Dpk, Dk, ck = calc_particle_properties(Nk, Mk, temp, pres, sparse_density)
