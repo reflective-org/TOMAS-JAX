@@ -69,28 +69,32 @@ Cᵢ*(Dp) = Cᵢ*,flat × exp(4σv / RT Dp)
 ```
 where σ is surface tension and v is molar volume. Growth is proportional to C − C*(Dp), so relative to a nonvolatile vapour (C* = 0) the growth rate is 1 − 1/S, with S = C / C*(Dp). The Kelvin term matters only where it brings S down towards 1.
 
-**Status (2026-11-12):**
+**Status (2026-11-13):**
 
 - **SOA (organic c*-classes): included.** vbs-jax applies the Kelvin factor (`vbs_jax/kelvin.py`, σ = 0.025 N/m) in the partitioning that `physics/soa_partitioning.py` calls.
-- **H2SO4: deliberately not included.** `ezcond` / `ezcond_ppm_jax` / `condensation_tfl_jax` condense H2SO4 with C* = 0, as TOMAS Fortran does (Fortran parity). For the stratospheric and SAI conditions studied here this is justified:
+- **H2SO4: deliberately not included.** `ezcond` / `ezcond_ppm_jax` / `condensation_tfl_jax` condense H2SO4 with C* = 0, as TOMAS Fortran does (Fortran parity). For the SAI plume below ~22 km this is justified; in background air it starts to matter at the top of that range:
   - **Method:** `benchmarks/python/h2so4_kelvin_driving_force.py` computes the equilibrium H2SO4 over sulfate–water droplets the way CARMA/WACCM does:
     - pure acid: Ayers et al. (1980) with the Kulmala & Laaksonen (1990) low-temperature extrapolation;
     - activity: a fit to Giauque et al. (1960) enthalpies;
-    - composition: Tabazadeh et al. (1997);
-    - Kelvin factor: σ = 0.08 N/m, the conservative end. At 1.7 nm it is ≈ 400–600.
+    - composition (wt% H2SO4 in the droplet): Tabazadeh et al. (1997), from the RH;
+    - Kelvin factor: σ = 0.08 N/m, the conservative end. At 1.7 nm (wet) it is ≈ 400–600.
 
-    The script then plots the growth lost, 1/S, against particle size and altitude.
-  - **sai_plume** (Phase 3, 217 K, 5.5 kPa, 0.9 % RH, 72 wt%; hourly-mean H2SO4 6e7–1.1e8 cm⁻³): growth lost ≤ 6e-4 at 1.7 nm, ~2e-5 at 3 nm, ~5e-7 for a flat surface.
-  - **Across 13–22 km** (AFGL tropical, 4 ppmv H2O) at the plume's lowest H2SO4: the worst case is 22 km (214 K, 0.8 % RH) at 1.6e-4 for 1.7 nm. Colder levels (17 km, 195 K) lose ~1e-11.
-  - **The plume's margin is wide.** A factor of 10–100 more in the equilibrium vapour pressure (activity, σ) still leaves 1.7 nm growth within a few percent of the nonvolatile rate.
-  - **Background air is closer to the limit.** At the same 217 K but with background H2SO4 (Phase 3 bg_midlat, median 7e5 cm⁻³), S ≈ 33 at 1.7 nm, so growth is ~3 % slower. At 1e5 cm⁻³ and 22 km it is ~10 % slower. At 3 nm and above it is under 1 % in all these cases. The margin shrinks quickly above ~240 K, where H2SO4 evaporation becomes real.
+    It plots the growth lost, 1/S = C*/C, against particle size, against altitude (AFGL tropical T, p and H2O, 13–22 km) and against H2SO4 at fixed altitudes. H2SO4 is the hourly mean of the Phase 3 runs, hours 2–48 (hour 1 is spin-up). `benchmarks/python/h2so4_mass_rate.py` plots the net condensation/evaporation rate (%/h) against H2SO4 for r_dry = 1–1024 nm.
+  - **sai_plume** (Phase 3, 217 K, 5.5 kPa, 5 ppmv H2O, RH 0.9 %, 72 wt%; H2SO4 6e7–1e8 cm⁻³): growth lost ≤ 6e-4 at 1.7 nm, ~2e-5 at 3 nm, ~5e-7 for a flat surface.
+  - **bg_midlat** (same conditions, 0.02 ppbv SO2; H2SO4 1.1e5–7.5e5 cm⁻³): ~3 % at 1.7 nm at the median, ~20 % at the lowest hour, < 1.3 % at 3 nm.
+  - **Across 13–22 km** (AFGL tropical with its own H2O: 9.9 ppmv at 13 km, 2.6–2.9 ppmv at 17–22 km), at each run's lowest H2SO4:
+    - C* at 1.7 nm is ~250 cm⁻³ at 13 km (RH 5.8 %, 63 wt%), ~1e-3 at the 17 km cold point (195 K, RH 18 %, 52 wt%) and ~3e4 at 22 km (215 K, RH 0.5 %, 74 wt%). Warmer, drier air means more concentrated droplets and a much higher C*.
+    - Plume: ≤ 5e-4 at 1.7 nm anywhere in 13–22 km.
+    - Background: up to 28 % at 1.7 nm and 2 % at 3 nm at 22 km. The margin shrinks quickly above ~20 km.
+  - **Above ~22 km, or above ~240 K:** in background air (1.1e5 cm⁻³) 1.7–3 nm particles stop growing at ~23–27 km and flat-surface evaporation (the top of the Junge layer) sets in at ~28–32 km. Plume 1.7 nm particles keep growing to ~28–33 km. (These come from a 13–40 km version of the altitude panel, 4 ppmv H2O, NRLMSISE-00 above 25 km, which is not kept in the script.) Above ~28 km the RH falls below the Tabazadeh table (it clamps at 80 wt%), so C* there is a lower bound and composition needs a better treatment as well. A model run in that regime needs C* and the Kelvin term.
+  - **250 K, 50 hPa** (Kleinschmitt 2017, Fig. 3.4): that temperature belongs to ~40 km, not 50 hPa. There C* is first order: at r_dry = 1 nm the zero-growth point is ~1.5e8 cm⁻³ and at 1e5 cm⁻³ the particles evaporate at ~1000 %/h. Her figure shows ~10× smaller rates and a 1 nm zero-growth point at ~1e7 cm⁻³. The difference is mainly her α = 0.1 (10× on every rate) and her Kelvin term, which uses the molecular mass of water instead of the H2SO4 molar volume (about 5× too small in the exponent). `h2so4_mass_rate.py --kleinschmitt` reproduces her figure and changes one setting at a time.
   - **Caveat:** the bulk Kelvin formula is rough at 1.7 nm. Cluster survival there is already part of the Dunne 2016 rate, which is defined at 1.7 nm.
 - **Organics or other low-volatility vapours added later: the H2SO4 conclusion does not carry over.** This covers LVOC/ELVOC treated outside the c*-class partitioning, HIO3, NH3/HNO3 co-condensation and similar vapours. Their C* is many orders of magnitude above H2SO4 over sulfate solution, and the Kelvin factor applies to all of them.
   - **Example:** C* = 1e-3 µg m⁻³ (M ≈ 300 g/mol) is ≈ 2e6 molec cm⁻³. With a Kelvin factor of ~100 at 1.7 nm, S < 1 at typical ELVOC levels (1e6–1e7 cm⁻³).
   - **Consequence:** for these vapours the Kelvin term decides whether the smallest particles grow at all. This is the 10–100× effect on 1–5 nm growth seen in NPF studies, and it must be included.
   - **How:** multiply each bin's C* by the Kelvin factor in the condensation driving force. The factor depends only on bin diameter (from xk) and composition.
 
-**Effort (if needed for H2SO4 above ~240 K, or for new low-volatility species):** 2–3 days, as an opt-in flag (default off keeps Fortran parity).
+**Effort (if needed for H2SO4 above ~22 km in background air or above ~240 K, or for new low-volatility species):** 2–3 days, as an opt-in flag (default off keeps Fortran parity).
 
 ---
 

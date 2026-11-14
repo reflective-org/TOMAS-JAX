@@ -114,7 +114,7 @@ See `docs/AUDIT_JAX_VS_FORTRAN.md` for the consolidated audit (JIT status, compr
 | Physics | Priority | Effort | Notes |
 |---|---|---|---|
 | VBS organic condensation | DONE | — | c*-class partitioning via vbs-jax (`physics/soa_partitioning.py`, AAAR); the `vbs-soa` prototype (§3.3) is superseded |
-| Kelvin effect | DONE for SOA / NOT NEEDED for H2SO4 | — | SOA: vbs-jax Kelvin factor (σ = 0.025 N/m). H2SO4 stays nonvolatile (Fortran parity): in the SAI plume the growth lost is ≤ 6e-4 at 1.7 nm, ≤ 1.6e-4 over AFGL 13–22 km; background air ~3–10 % at 1.7 nm, < 1 % at ≥ 3 nm (`benchmarks/python/h2so4_kelvin_driving_force.py`, [missing_physics.md](missing_physics.md) #3). Needed for new low-volatility species (ELVOC, HIO3) and for H2SO4 above ~240 K |
+| Kelvin effect | DONE for SOA / NOT NEEDED for H2SO4 | — | SOA: vbs-jax Kelvin factor (σ = 0.025 N/m). H2SO4 stays nonvolatile (Fortran parity): in the SAI plume the growth lost is ≤ 6e-4 at 1.7 nm, ≤ 5e-4 over AFGL tropical 13–22 km; background air ~3 % at 1.7 nm at 217 K, up to 28 % at 22 km, ≤ 2 % at ≥ 3 nm (`benchmarks/python/h2so4_kelvin_driving_force.py`, `h2so4_mass_rate.py`, [missing_physics.md](missing_physics.md) #3). Needed for new low-volatility species (ELVOC, HIO3) and for H2SO4 above ~22 km in background air or above ~240 K |
 | Dry deposition | MEDIUM | 3-5 days | Size-dependent removal (Stokes settling + diffusion) |
 | Equilibrium partitioning | MEDIUM | 1 week | Implicit solver for semi-volatile organics |
 
