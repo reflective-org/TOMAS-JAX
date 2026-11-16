@@ -4,6 +4,12 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-11-15 20:50 PST — Dunne S1 vs S2 comparison: state the H2SO4 range
+
+- **Doc fix (review):** `docs/nucleation.md` said the two Dunne forms "agree within about a factor of 2" at 208–223 K and gave "47–200×" at 190 K without the H2SO4 they hold at. The H2SO4 exponents differ, so S2/S1 scales as [H2SO4]^−0.33 (neutral) and [H2SO4]^−0.64 (ion); the ratio does not depend on `fion` or pressure. Replaced with a table of S2/S1 at 190/208/223/248 K × H2SO4 1e5–1e9 cm⁻³ (computed with `dunne_nucleation_rate`). The factor-of-2 agreement holds for binary neutral at 1e6–1e7 cm⁻³ only; binary ion agrees within 2 only near 1e7 (223 K) and 1e8 (208 K). The 190 K figures are 47× at 1e7 and 204× at 1e6 cm⁻³.
+
+---
+
 ## 2026-11-15 20:40 PST — Gas sub-step validation scripts and `run_map` brought over from `dlm`
 
 - **Why:** `CLAUDE.md` says to rerun the gas sub-step grid after changing the controller or the coagulation intervals, and `docs/gas_substep.md` defines the test of record by names in those scripts (`reference(so2)`, `FD_CELLS`, `FD_H`, `MERGE`, `INVALID_TANGENT`, `TROPICAL_AFGL`, `run_map.dt_for`), but the scripts were only on `dlm`.
