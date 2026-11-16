@@ -4,6 +4,20 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-11-15 — `make_step` rejects options that would be ignored
+
+- `split_chemistry=True` with `gas_substep='adaptive'` now raises `ValueError` (it was silently ignored; the adaptive path always splits).
+- With `nucl_scheme='zhao2024'`, a non-default `dunne_form` raises at the factory and a non-`None` `nucl_params` raises when the step is called/traced: zhao2024 uses its own default Dunne coefficients and its sub-step count comes from `zhao2024_nucleation_rate` (since 3bea063), so both were ignored.
+- **Tests:** `test_bad_arguments_rejected` (extended), `test_zhao2024_rejects_nucl_params`. `tests/test_gas_substep.py` + `tests/test_nucleation.py`: 84 passed.
+- **Files:** `tomas_jax/solvers/condensation.py`, `tests/test_gas_substep.py`.
+
+## 2026-11-15 — Adaptive gas sub-steps: `gas_min_dt` reachable on long coagulation intervals
+
+- **Bug (review):** `choose_gas_substep`'s candidates were max(Δt_rem/2^k, floor), k = 0…23, so the finest was max(Δt_rem/2^23, `gas_min_dt`). When Δt_rem > 2^23·`gas_min_dt` (≈ 8389 s at the default 1e-3 s, i.e. only very long coagulation intervals) `gas_min_dt` could not be reached and a failing criterion floored at Δt_rem/2^23 instead (≈ 0.012 s at Δt_rem = 1e5 s).
+- **Fix:** the floor min(`gas_min_dt`, Δt_rem) is appended as an explicit last rung (25 candidates; the forced step stays the extra one after it). Outer steps of 60 s are bit-identical (10 steps at 217 K / 100 ppmv, 217 K / 1 ppmv, 190 K / 10 ppmv: Nk, Mk, Gc equal), so the 80-bin grid of record was not rerun.
+- **Tests:** `test_floor_reached_on_long_interval[False|True]` (fails on the old code: dt_sub = Δt_rem/2^23). `tests/test_gas_substep.py` + `tests/test_reverse_mode.py`: 28 passed.
+- **Files:** `tomas_jax/solvers/gas_substep.py`, `tests/test_gas_substep.py`, `docs/gas_substep.md`.
+
 ## 2026-11-13 — `make_step` nucleation sub-steps follow the zhao2024 rate
 
 - **Bug:** `make_step`'s nucleation branch sized `n_nuc` (`compute_nucleation_substeps`) from `ricco_dunne_nucleation_rate` for both schemes; its comment called that "conservative". It is not an upper bound on zhao2024: both contain Dunne, but zhao2024 adds the HNO₃, ULVOC, amine and iodine mechanisms, ignores `org_conc` and uses the default Dunne coefficients whatever `nucl_params` says. With `org_conc = 0` Ricco+Dunne ≤ zhao2024 always.

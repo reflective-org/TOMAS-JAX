@@ -23,8 +23,9 @@ nucleation gas clamp cannot fire. CS alone is not enough: the clamp fires
 where CS is small (clean background) and k_nuc is orders of magnitude larger.
 
 Candidates are dt_rem / 2^k, k = 0..n_levels-1, floored at min(min_dt,
-dt_rem); the largest one that passes is taken. Everything here is under
-stop_gradient: gradients do not see the sub-step choice.
+dt_rem), then the floor itself as a last rung; the largest one that
+passes is taken. Everything here is under stop_gradient: gradients do
+not see the sub-step choice.
 """
 import jax
 # float64 enforced by core/config.py
@@ -155,18 +156,23 @@ def choose_gas_substep(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt_rem,
     nuc_kwargs = jax.lax.stop_gradient(nuc_kwargs)
 
     floor = jnp.minimum(min_dt, dt_rem)
-    dts = jnp.maximum(dt_rem * 0.5 ** jnp.arange(n_levels), floor)
+    # The floor is its own last rung: dt_rem / 2^(n_levels-1) is above
+    # min_dt when dt_rem > 2^(n_levels-1) * min_dt (long coagulation
+    # intervals), and the ladder alone could not reach it.
+    dts = jnp.append(
+        jnp.maximum(dt_rem * 0.5 ** jnp.arange(n_levels), floor), floor)
+    n_cand = n_levels + 1
     if force_dt is not None:
         dts = jnp.append(dts, jax.lax.stop_gradient(force_dt))
     lam, _, k_nuc = h2so4_loss_frequency(
         Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dts, oh_conc,
         nuc_kwargs, has_chem, has_nuc, sparse_density, dunne_form,
         nucl_scheme)
-    ok = (lam * dts <= frac)[:n_levels]
+    ok = (lam * dts <= frac)[:n_cand]
     floored = ~jnp.any(ok)
-    idx = jnp.where(floored, n_levels - 1, jnp.argmax(ok))
+    idx = jnp.where(floored, n_cand - 1, jnp.argmax(ok))
     knuc_dt = k_nuc[idx] * dts[idx]
     if force_dt is not None:
-        knuc_dt = jnp.where(force, k_nuc[n_levels] * dts[n_levels], knuc_dt)
+        knuc_dt = jnp.where(force, k_nuc[n_cand] * dts[n_cand], knuc_dt)
         floored = floored & ~force
     return dts[idx], floored, knuc_dt

@@ -864,7 +864,8 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
         dunne_form: ricco_dunne only. 'double_exp' (Dunne Table S1,
             default) or 'single_exp' (Table S2 cross-check fit; pass
             nucl_params=DUNNE_TABLE_S2_PARAMS with it). Also used for the
-            sub-step rate estimate.
+            sub-step rate estimate. With zhao2024 anything but the default
+            raises, as does passing nucl_params to the step function.
         n_coag_substeps: Number of forward-Euler substeps for coagulation
             (coag_solver='euler_fixed' only)
         coag_solver: 'euler_fixed' (default, coag_euler_step: n_coag_substeps
@@ -922,7 +923,7 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
             knuc_dt_max: largest k_nuc*dt_sub over the sub-steps taken,
             including a forced one; > 1 means the clamp fired).
         split_chemistry: gas_substep=None only (the adaptive path always
-            splits). False (default): so2_chemistry runs on the whole dt
+            splits; True with gas_substep='adaptive' raises). False (default): so2_chemistry runs on the whole dt
             before nucleation, which then sees H2SO4 at the top of the step's
             sawtooth, about C*(1 + CS*dt/2), and J ~ C^n is high by about
             n*CS*dt/2 (first order in dt). True: half of dt's chemistry before
@@ -1034,6 +1035,9 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
     use_zhao = nucl_scheme == 'zhao2024'
     if dunne_form not in DUNNE_FORMS:
         raise ValueError(f"Unknown dunne_form '{dunne_form}'. Valid: {DUNNE_FORMS}")
+    if use_zhao and dunne_form != 'double_exp':
+        raise ValueError("dunne_form is ricco_dunne only; zhao2024 uses its own "
+                         f"Dunne fit (got dunne_form='{dunne_form}')")
 
     if gas_substep not in (None, 'adaptive'):
         raise ValueError(f"Unknown gas_substep '{gas_substep}'. "
@@ -1047,6 +1051,9 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
             raise ValueError("gas_substep_frac, gas_min_dt and "
                              "coag_interval_frac must be > 0 and "
                              "gas_max_substeps >= 1")
+        if split_chemistry:
+            raise ValueError("split_chemistry is for gas_substep=None; the "
+                             "adaptive path always splits the chemistry")
     elif return_substep_info:
         raise ValueError("return_substep_info needs gas_substep='adaptive'")
     if split_chemistry and not ('so2_chemistry' in processes and 'nucleation' in processes
@@ -1361,6 +1368,9 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                 f"Valid kwargs: {sorted(_VALID_MAKE_STEP_KWARGS)}",
                 UserWarning, stacklevel=2,
             )
+        if use_zhao and kwargs.get('nucl_params') is not None:
+            raise ValueError("nucl_params is ricco_dunne only; "
+                             "zhao2024_nucleation_step does not take it")
         if gas_substep is None:
             for process in processes:
                 dt_p = 0.5 * dt if (split_chemistry and

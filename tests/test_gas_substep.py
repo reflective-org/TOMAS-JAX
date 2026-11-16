@@ -51,6 +51,10 @@ def test_bad_arguments_rejected():
         make_step(PROCS, return_substep_info=True)
     with pytest.raises(ValueError, match='split_chemistry'):
         make_step(['so2_chemistry', 'coagulation'], split_chemistry=True)
+    with pytest.raises(ValueError, match='split_chemistry'):
+        make_step(PROCS, gas_substep='adaptive', split_chemistry=True)
+    with pytest.raises(ValueError, match='dunne_form'):
+        make_step(PROCS, nucl_scheme='zhao2024', dunne_form='single_exp')
     for frac in (0.0, -1.0):
         with pytest.raises(ValueError, match='coag_interval_frac'):
             make_step(PROCS, gas_substep='adaptive', coag_interval_frac=frac)
@@ -215,6 +219,13 @@ def test_zhao2024_loss_frequency_is_the_step_removal(xk):
     assert float(k_rd[0]) < 1e-3 * float(k_nuc[0])
 
 
+def test_zhao2024_rejects_nucl_params(xk):
+    step = make_step(['nucleation'], nucl_scheme='zhao2024', jit=False)
+    Nk, Mk, Gc = c.lognormal_state(xk, so2=0.0)
+    with pytest.raises(ValueError, match='nucl_params'):
+        step(Nk, Mk, Gc, xk, 217.0, PRES, c.BOXVOL, RH, ALPHA, 60.0, **KW)
+
+
 def test_zhao2024_iodine_clamp_never_fires(xk):
     """1 ppmv, iodine-dominated zhao2024 nucleation: the sub-steps follow
     the zhao2024 rate (knuc_dt reaches past what Dunne alone gives, 0.026)
@@ -235,3 +246,22 @@ def test_zhao2024_iodine_clamp_never_fires(xk):
     assert max(knuc) <= 0.1 + 1e-12
     assert max(knuc) > 0.05
     assert abs(_sulfur(state[1], state[2]) / s0 - 1.0) < 1e-10
+
+
+@pytest.mark.parametrize('force', [False, True])
+def test_floor_reached_on_long_interval(xk, force):
+    """dt_rem > 2^23 * min_dt: the ladder's bottom rung is above min_dt,
+    so the floor is a rung of its own; a failing criterion lands on min_dt."""
+    from tomas_jax.solvers.gas_substep import choose_gas_substep
+    temp = 217.0
+    Nk, Mk, Gc = c.lognormal_state(xk, so2=0.0)
+    # No chemistry; a large H2SO4 concentration with frac tiny so nothing passes
+    Gc = Gc.at[SRTSO4].set(1e9 * c.BOXVOL * 98e-3 / 6.02214076e23)
+    dt_rem = 1e5
+    assert dt_rem / 2 ** 23 > 1e-3
+    dt_sub, floored, _ = choose_gas_substep(
+        Nk, Mk, Gc, xk, temp, PRES, c.BOXVOL, RH, ALPHA, dt_rem, 0.0, dict(KW),
+        frac=1e-12, min_dt=1e-3, has_chem=False, force_dt=dt_rem,
+        force=jnp.asarray(force))
+    assert float(dt_sub) == 1e-3
+    assert bool(floored) is (not force)
