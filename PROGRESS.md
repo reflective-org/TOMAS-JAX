@@ -4,6 +4,13 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-11-15 21:10 PST — Tests: reverse mode with default arguments, `coag_euler_step` against the sequential MNFIX
+
+- **Why (review):** the first check in `test_default_is_fixed_euler` takes the same path twice, so it only pins the default. Nothing tested `jax.grad` through `coag_euler_step`, the error from the forward-only `trim=True`, or a whole coagulation trajectory against `tests/reference/mnfix_sequential.py`.
+- **Added:** `test_coag_euler_step_grad` (default arguments, `jax.grad` against central FD, rel 1e-6; with the existing `test_mnfix_grad_matches_jacfwd` and `test_diffrax_step_grad` this covers MNFIX, `coag_euler_step` and `diffrax_step`) and `test_mnfix_trim_fails_clearly_in_reverse_mode` (`mnfix_jax(trim=True)` and `coag_euler_step(mnfix_trim=True)` raise JAX's reverse-mode `ValueError`) in `tests/test_reverse_mode.py`. `test_coag_euler_trajectory_matches_sequential_reference` in `tests/test_mnfix.py`: 30 jitted 60 s steps, 1e13 #/cell at 3 nm on a 50 nm mode (without MNFIX, N is up to 15% different), reference MNFIX patched in; tolerance 32 ulp at every step. The difference grows from 1 ulp at step 1 to ~10 ulp at step 30 (~40 ulp by step 60): coagulation's N² feedback amplifies the FMA differences, so the `CLAUDE.md` note "1 ulp, not growing" holds for its milder state, not for this one.
+- **Docstring:** `test_default_is_fixed_euler` says what its first check covers.
+- **Tests:** `test_mnfix.py`, `test_reverse_mode.py`, `test_coag_adaptive.py`: 56 passed.
+
 ## 2026-11-15 20:50 PST — Dunne S1 vs S2 comparison: state the H2SO4 range
 
 - **Doc fix (review):** `docs/nucleation.md` said the two Dunne forms "agree within about a factor of 2" at 208–223 K and gave "47–200×" at 190 K without the H2SO4 they hold at. The H2SO4 exponents differ, so S2/S1 scales as [H2SO4]^−0.33 (neutral) and [H2SO4]^−0.64 (ion); the ratio does not depend on `fion` or pressure. Replaced with a table of S2/S1 at 190/208/223/248 K × H2SO4 1e5–1e9 cm⁻³ (computed with `dunne_nucleation_rate`). The factor-of-2 agreement holds for binary neutral at 1e6–1e7 cm⁻³ only; binary ion agrees within 2 only near 1e7 (223 K) and 1e8 (208 K). The 190 K figures are 47× at 1e7 and 204× at 1e6 cm⁻³.

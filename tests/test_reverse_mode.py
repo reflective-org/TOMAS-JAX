@@ -80,6 +80,49 @@ def test_diffrax_step_grad():
     assert float(jax.grad(f)(1.0)) == pytest.approx(fd, rel=1e-6)
 
 
+def _coag_state():
+    from tomas_jax.core.config import ICOMP
+    xk = make_grid(40, XK0, 2.0)
+    xm = np.sqrt(np.asarray(xk[:-1] * xk[1:]))
+    dp = (6.0 * xm / (1770.0 * np.pi)) ** (1.0 / 3.0)
+    Nk = 1e13 * np.exp(-0.5 * (np.log(dp / 50e-9) / np.log(1.6)) ** 2) + 1e-3
+    Mk = np.zeros((40, ICOMP))
+    Mk[:, 0] = Nk * xm
+    return xk, jnp.asarray(Nk), jnp.asarray(Mk)
+
+
+def test_coag_euler_step_grad():
+    """jax.grad through coag_euler_step with default arguments (MNFIX
+    trim=False, a static trip count). With test_mnfix_grad_matches_jacfwd and
+    test_diffrax_step_grad this covers every default-argument caller of MNFIX
+    in reverse mode."""
+    from tomas_jax.solvers.diffrax import coag_euler_step
+    xk, Nk, Mk = _coag_state()
+
+    def f(scale):
+        Nk_f, _ = coag_euler_step(Nk * scale, Mk * scale, xk, 273.0, 1.0e5,
+                                  1.0e10, 600.0, n_substeps=10)
+        return jnp.sum(Nk_f)
+
+    h = 1e-5
+    fd = (float(f(1.0 + h)) - float(f(1.0 - h))) / (2 * h)
+    assert float(jax.grad(f)(1.0)) == pytest.approx(fd, rel=1e-6)
+
+
+def test_mnfix_trim_fails_clearly_in_reverse_mode():
+    """trim=True is a while_loop: jax.grad must raise JAX's reverse-mode
+    error, not return a wrong gradient."""
+    from tomas_jax.solvers.diffrax import coag_euler_step
+    xk, Nk, Mk = _coag_state()
+    match = 'Reverse-mode differentiation does not work'
+    with pytest.raises(ValueError, match=match):
+        jax.grad(lambda s: jnp.sum(mnfix_jax(Nk * s, Mk, xk, trim=True)[0]))(1.0)
+    with pytest.raises(ValueError, match=match):
+        jax.grad(lambda s: jnp.sum(coag_euler_step(
+            Nk * s, Mk * s, xk, 273.0, 1.0e5, 1.0e10, 600.0,
+            mnfix_trim=True)[0]))(1.0)
+
+
 def test_bad_ad_mode_rejected():
     with pytest.raises(ValueError, match='ad_mode'):
         make_step(PROCS, ad_mode='backward')

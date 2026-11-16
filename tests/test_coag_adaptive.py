@@ -26,8 +26,9 @@ def _dry(Mk):
 
 
 def test_default_is_fixed_euler(xk):
-    """Default = 'euler_fixed' exactly, and equal to coag_euler_step up to
-    XLA round-off (traced vs closed-over temp/pres fold differently)."""
+    """Default = 'euler_fixed' exactly (this first check only pins the
+    default; both calls take the same path), and equal to coag_euler_step up
+    to XLA round-off (traced vs closed-over temp/pres fold differently)."""
     Nk, Mk, Gc = _state(xk, {0: 1e4, 20: 10.0})
     out = make_step(['coagulation'])(Nk, Mk, Gc, xk, *ENV)
     same = make_step(['coagulation'], coag_solver='euler_fixed')(Nk, Mk, Gc, xk, *ENV)
