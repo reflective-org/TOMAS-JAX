@@ -185,3 +185,53 @@ def test_forward_mode_and_vmap(xk):
     batch = jax.tree_util.tree_map(lambda *a: jnp.stack(a), *states)
     out = jax.jit(jax.vmap(lambda s: n_total(1.0, s)))(batch)
     assert np.all(np.isfinite(np.asarray(out)))
+
+
+def test_zhao2024_loss_frequency_is_the_step_removal(xk):
+    """With nucl_scheme='zhao2024' k_nuc is the H2SO4 that
+    zhao2024_nucleation_step removes (amine and iodine mechanisms included)."""
+    from tomas_jax.solvers.gas_substep import h2so4_loss_frequency
+    from tomas_jax.physics.nucleation import zhao2024_nucleation_step
+    temp = 217.0
+    Nk, Mk, Gc = c.lognormal_state(xk, so2=0.0)
+    Gc = Gc.at[SRTSO4].set(1e6 * c.BOXVOL * 98e-3 / 6.02214076e23)
+    zkw = dict(org_conc=0.0, nh3_conc=0.0, fion=c.FION, fn_scale=1.0,
+               hno3=0.0, ulvoc=0.0, dma=1e8, hio3=2e7)
+    dt = 1e-3
+    _, _, k_nuc = h2so4_loss_frequency(
+        Nk, Mk, Gc, xk, temp, PRES, c.BOXVOL, RH, ALPHA, jnp.array([dt]),
+        0.0, zkw, has_chem=False, nucl_scheme='zhao2024')
+    _, _, Gc1 = zhao2024_nucleation_step(
+        Nk, Mk, Gc, xk, temp, PRES, c.BOXVOL, dt, 0.0, 0.0, c.FION,
+        dma=1e8, hio3=2e7)
+    removed = float(Gc[SRTSO4] - Gc1[SRTSO4])
+    assert removed > 0.0
+    np.testing.assert_allclose(float(k_nuc[0]) * dt * float(Gc[SRTSO4]),
+                               removed, rtol=1e-10)
+    # The Ricco+Dunne rate (the old criterion) is far smaller here
+    _, _, k_rd = h2so4_loss_frequency(
+        Nk, Mk, Gc, xk, temp, PRES, c.BOXVOL, RH, ALPHA, jnp.array([dt]),
+        0.0, dict(KW), has_chem=False)
+    assert float(k_rd[0]) < 1e-3 * float(k_nuc[0])
+
+
+def test_zhao2024_iodine_clamp_never_fires(xk):
+    """1 ppmv, iodine-dominated zhao2024 nucleation: the sub-steps follow
+    the zhao2024 rate (knuc_dt reaches past what Dunne alone gives, 0.026)
+    and stay within the criterion."""
+    temp = 217.0
+    step = make_step(PROCS, nucl_scheme='zhao2024', gas_substep='adaptive',
+                     return_substep_info=True, **STUDY)
+    state = c.lognormal_state(xk, so2=c.ppbv_to_molec(1e3, temp, PRES))
+    kw = dict(oh_conc=c.OH_CONC, org_conc=0.0, nh3_conc=0.0, fion=c.FION,
+              hio3=3e7)
+    s0 = _sulfur(state[1], state[2])
+    knuc = []
+    for _ in range(3):
+        *state, info = step(*state, xk, temp, PRES, c.BOXVOL, RH, ALPHA,
+                            60.0, **kw)
+        assert int(info['n_floor']) == 0 and not bool(info['hit_cap'])
+        knuc.append(float(info['knuc_dt_max']))
+    assert max(knuc) <= 0.1 + 1e-12
+    assert max(knuc) > 0.05
+    assert abs(_sulfur(state[1], state[2]) / s0 - 1.0) < 1e-10

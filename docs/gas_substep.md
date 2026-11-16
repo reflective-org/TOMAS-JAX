@@ -19,12 +19,13 @@ At the start of each sub-step, for each candidate Δt:
 |---|---|
 | C_seen(Δt) | C + ΔH₂SO₄ from chemistry over the whole candidate Δt, with no condensation or nucleation loss. Each candidate gets its own C_seen. Nucleation actually sees about C + ΔH₂SO₄(Δt/2) (see Split chemistry), so this is an upper bound |
 | CS | condensation sink [s⁻¹] (`calc_condensation_sink`, with `sparse_density`) |
-| k_nuc | (1 − org_frac)·J(C_seen)·m_nuc·V / C_seen, the loss frequency to nucleation |
+| k_nuc | (1 − org_frac)·J(C_seen)·m_nuc·V / C_seen, the loss frequency to nucleation. J is the rate of the scheme the step applies (`nucl_scheme`): Riccobono + Dunne, or the zhao2024 total over the enabled mechanisms with its inputs (`hno3`, `ulvoc`, `dma`, `hio3`, `enable_masks`); for zhao2024, (1 − org_frac)·m_nuc = 0.9·`_MNUC`, what `zhao2024_nucleation_step` removes |
 | n_eff | d ln J / d ln C at C_seen, clipped to [1, 20], the effective order of J in H₂SO₄ |
 
 Criterion: **(CS + n_eff·k_nuc)·Δt ≤ f**, f = `gas_substep_frac` (0.1). Candidates are Δt_rem/2^k, k = 0…23, where Δt_rem is the time left in the current coagulation interval (never past the end of the outer step). The ladder therefore moves with the position in the step: after a 7.5 s sub-step in a 60 s interval the candidates are 52.5, 26.25, … s. Candidates are floored at `gas_min_dt` (1e-3 s); the largest passing one is taken, re-chosen every sub-step, under `stop_gradient`.
 
 - **The clamp cannot fire:** n_eff ≥ 1, so k_nuc·Δt ≤ f < 1 (`info['knuc_dt_max']`).
+- **zhao2024 mechanisms that do not depend on H₂SO₄** (iodine, pure organic): `zhao2024_nucleation_step` still takes 0.9·J·m_nuc of H₂SO₄ per cluster, so these mechanisms are an H₂SO₄ sink with n_eff = 1. Without enough chemistry to resupply the gas (e.g. hio3 = 1e8 cm⁻³, no SO₂), C goes to zero, k_nuc grows without bound and the sub-steps reach `gas_min_dt` (`n_floor` > 0, `knuc_dt_max` > f): the gas runs out, which is what that step's chemistry implies. Until 2026-11-13 the criterion always used Riccobono + Dunne, so with zhao2024 it ignored those mechanisms and the amine mechanism (one 60 s step at k_nuc·Δt = 680, reported as 5e-6).
 - **CS alone is not enough:** the failure happens where CS is small, before the burst, where f/CS ≥ 60 s.
 - **Low SO₂ costs nothing:** at ≤ 10 ppbv there is one sub-step per outer step.
 
@@ -97,7 +98,7 @@ Snapshots only; reference `dt_for`/4, 0.1 s at 10 ppmv, 0.02 s at 100 ppmv. Run 
 
 ### Tests
 
-`tests/test_gas_substep.py`: argument validation; one sub-step at 10 ppbv; no clamp, no cap and closed sulfur at 100 ppmv (190, 217 K); a binding cap warns, sets `hit_cap`/`dt_capped` and reports k_nuc·Δt > 1 (forward, reverse, `vmap`); 1 h at 1 ppmv vs fixed 0.1 s (5%); `jvp` vs FD; `vmap`.
+`tests/test_gas_substep.py`: argument validation; one sub-step at 10 ppbv; no clamp, no cap and closed sulfur at 100 ppmv (190, 217 K); a binding cap warns, sets `hit_cap`/`dt_capped` and reports k_nuc·Δt > 1 (forward, reverse, `vmap`); 1 h at 1 ppmv vs fixed 0.1 s (5%); `jvp` vs FD; `vmap`; zhao2024: k_nuc equals the H₂SO₄ `zhao2024_nucleation_step` removes (amine + iodine), and an iodine-dominated run at 1 ppmv stays within the criterion.
 
 ## Reverse-mode AD (`ad_mode='reverse'`)
 

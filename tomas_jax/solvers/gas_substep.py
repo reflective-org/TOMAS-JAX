@@ -10,7 +10,11 @@ H2SO4 budget at its start (docs/gas_substep.md):
   chemistry sub-step and before condensation (exact SO2 decay).
 - CS: condensation sink [s^-1] of the current distribution.
 - k_nuc = (1 - org_frac) J m_nuc boxvol / C_seen [s^-1]: the gas loss
-  frequency to nucleation, the same mass nucleation_step removes.
+  frequency to nucleation, the same mass nucleation_step removes. J is the
+  rate of the scheme the step applies (nucl_scheme): ricco_dunne, or the
+  zhao2024 total over the enabled mechanisms. zhao2024_nucleation_step
+  removes 0.9 J m_nuc boxvol of H2SO4 for every mechanism, including those
+  that do not depend on H2SO4 (iodine, pure organic); their n_eff is 1.
 - n_eff = d ln J / d ln C (finite ratio over 10%, floored at 1): J ~ C^n makes
   the nucleation sink n times stiffer than k_nuc.
 
@@ -30,8 +34,11 @@ from ..core.config import SRTSO4, SRTSO2, MW_H2SO4, MW_SO2
 from ..physics.condensation_sink import calc_condensation_sink
 from ..physics.so2_chemistry import calc_k1_so2_oh
 from ..physics.nucleation import (
-    ricco_dunne_nucleation_rate, _cluster_mass, DEFAULT_NUCLEATION_PARAMS,
+    ricco_dunne_nucleation_rate, zhao2024_nucleation_rate, _cluster_mass,
+    _MNUC, DEFAULT_NUCLEATION_PARAMS, ZHAO2024_ALL_ENABLED,
 )
+
+NUCL_SCHEMES = ('ricco_dunne', 'zhao2024')
 
 # Relative perturbation for the effective nucleation order n_eff
 _N_EFF_RATIO = 1.1
@@ -40,16 +47,20 @@ _N_EFF_MAX = 20.0
 
 def h2so4_loss_frequency(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dts,
                          oh_conc, nuc_kwargs, has_chem=True, has_nuc=True,
-                         sparse_density=None, dunne_form='double_exp'):
+                         sparse_density=None, dunne_form='double_exp',
+                         nucl_scheme='ricco_dunne'):
     """Linearised H2SO4 loss frequency lambda [s^-1] for each candidate dt.
 
     Args:
         dts: candidate sub-steps [s], shape (K,)
         oh_conc: OH [molec/cm3] (ignored if has_chem is False)
-        nuc_kwargs: dict with org_conc, nh3_conc, fion, enable_organic,
-            enable_inorganic, fn_scale, nucl_params (make_step kwargs)
+        nuc_kwargs: dict of the make_step nucleation kwargs: org_conc,
+            nh3_conc, fion, fn_scale, and enable_organic, enable_inorganic,
+            nucl_params (ricco_dunne) or hno3, ulvoc, dma, hio3,
+            enable_masks (zhao2024)
         has_chem / has_nuc: whether the gas loop contains SO2 chemistry /
             nucleation (static)
+        nucl_scheme: the scheme the nucleation step applies (static)
 
     Returns:
         lam: shape (K,), CS + n_eff * k_nuc at C_seen(dt)
@@ -70,19 +81,39 @@ def h2so4_loss_frequency(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dts,
     else:
         C_seen = jnp.full_like(dts, C0)
 
-    params = nuc_kwargs.get('nucl_params')
-    p = DEFAULT_NUCLEATION_PARAMS if params is None else params
-    loss_per_J = (1.0 - p.org_frac) * _cluster_mass(p) * boxvol
+    if nucl_scheme == 'ricco_dunne':
+        params = nuc_kwargs.get('nucl_params')
+        p = DEFAULT_NUCLEATION_PARAMS if params is None else params
+        loss_per_J = (1.0 - p.org_frac) * _cluster_mass(p) * boxvol
 
-    def rate(c):
-        return ricco_dunne_nucleation_rate(
-            Gc.at[SRTSO4].set(c), temp, pres, boxvol,
-            nuc_kwargs.get('org_conc', 0.0), nuc_kwargs.get('nh3_conc', 0.0),
-            nuc_kwargs.get('fion', 0.0),
-            nuc_kwargs.get('enable_organic', 1.0),
-            nuc_kwargs.get('enable_inorganic', 1.0),
-            nuc_kwargs.get('fn_scale', 1.0),
-            params, dunne_form)
+        def rate(c):
+            return ricco_dunne_nucleation_rate(
+                Gc.at[SRTSO4].set(c), temp, pres, boxvol,
+                nuc_kwargs.get('org_conc', 0.0), nuc_kwargs.get('nh3_conc', 0.0),
+                nuc_kwargs.get('fion', 0.0),
+                nuc_kwargs.get('enable_organic', 1.0),
+                nuc_kwargs.get('enable_inorganic', 1.0),
+                nuc_kwargs.get('fn_scale', 1.0),
+                params, dunne_form)
+    elif nucl_scheme == 'zhao2024':
+        # zhao2024_nucleation_step: fixed cluster (_MNUC), 90% SO4
+        loss_per_J = 0.9 * _MNUC * boxvol
+
+        def rate(c):
+            return zhao2024_nucleation_rate(
+                Gc.at[SRTSO4].set(c), temp, pres, boxvol,
+                nuc_kwargs.get('org_conc', 0.0), nuc_kwargs.get('nh3_conc', 0.0),
+                nuc_kwargs.get('fion', 0.0),
+                hno3=nuc_kwargs.get('hno3', 0.0),
+                ulvoc=nuc_kwargs.get('ulvoc', 0.0),
+                dma=nuc_kwargs.get('dma', 0.0),
+                hio3=nuc_kwargs.get('hio3', 0.0),
+                enable_masks=nuc_kwargs.get('enable_masks',
+                                            ZHAO2024_ALL_ENABLED),
+                fn_scale=nuc_kwargs.get('fn_scale', 1.0))[0]
+    else:
+        raise ValueError(f"Unknown nucl_scheme '{nucl_scheme}'. "
+                         f"Valid: {NUCL_SCHEMES}")
 
     J = jax.vmap(rate)(C_seen)
     J_up = jax.vmap(rate)(C_seen * _N_EFF_RATIO)
@@ -103,7 +134,7 @@ def choose_gas_substep(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt_rem,
                        oh_conc, nuc_kwargs, *, frac=0.1, min_dt=1e-3,
                        n_levels=24, has_chem=True, has_nuc=True,
                        sparse_density=None, dunne_form='double_exp',
-                       force_dt=None, force=False):
+                       nucl_scheme='ricco_dunne', force_dt=None, force=False):
     """Largest dt_rem / 2^k with lambda*dt <= frac.
 
     force_dt / force: the sub-step the caller will take instead when
@@ -129,7 +160,8 @@ def choose_gas_substep(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt_rem,
         dts = jnp.append(dts, jax.lax.stop_gradient(force_dt))
     lam, _, k_nuc = h2so4_loss_frequency(
         Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dts, oh_conc,
-        nuc_kwargs, has_chem, has_nuc, sparse_density, dunne_form)
+        nuc_kwargs, has_chem, has_nuc, sparse_density, dunne_form,
+        nucl_scheme)
     ok = (lam * dts <= frac)[:n_levels]
     floored = ~jnp.any(ok)
     idx = jnp.where(floored, n_levels - 1, jnp.argmax(ok))

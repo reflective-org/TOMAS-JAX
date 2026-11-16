@@ -351,6 +351,8 @@ Nk, Mk, Gc = step_fn(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
                       enable_masks=ZHAO2024_ALL_ENABLED)
 ```
 
+The nucleation sub-step count and, with `gas_substep='adaptive'`, the gas sub-step length are both computed from the zhao2024 rate with these inputs (since 2026-11-13; before, both used Ricco+Dunne, which is not an upper bound on zhao2024). The iodine and pure-organic mechanisms take 0.9·J·m_nuc of H₂SO₄ per cluster like the others (`docs/gas_substep.md`).
+
 ### CLI
 
 ```bash

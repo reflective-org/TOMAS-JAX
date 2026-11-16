@@ -95,7 +95,9 @@ n_sub = ceil(dN_full / (max_frac * N_total))    # clamped to [1, max_substeps]
 dt_nuc = dt / n_sub
 ```
 
-Then loop `n_sub` times, each calling `nucleation_step(dt_nuc)` + `mnfix_jax()`:
+In `make_step(nucl_scheme='zhao2024')`, `fn` is `zhao2024_nucleation_rate(...)[0]` instead, the rate the loop applies. Ricco+Dunne is not an upper bound on zhao2024: both contain Dunne, but zhao2024 adds the HNO₃, ULVOC, amine and iodine mechanisms, ignores `org_conc` and uses the default Dunne coefficients whatever `nucl_params` says. Until 2026-11-13 zhao2024 was sized from Ricco+Dunne and took too few sub-steps where those mechanisms dominate.
+
+Then loop `n_sub` times, each calling `nucleation_step(dt_nuc)` (or `zhao2024_nucleation_step`) + `mnfix_jax()`:
 - Each substep recalculates fn with updated (depleted) gas
 - When gas is exhausted in substep k, subsequent substeps see zero gas and add nothing
 - MNFIX between substeps redistributes particles to proper bins

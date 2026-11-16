@@ -4,6 +4,21 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-11-13 — `make_step` nucleation sub-steps follow the zhao2024 rate
+
+- **Bug:** `make_step`'s nucleation branch sized `n_nuc` (`compute_nucleation_substeps`) from `ricco_dunne_nucleation_rate` for both schemes; its comment called that "conservative". It is not an upper bound on zhao2024: both contain Dunne, but zhao2024 adds the HNO₃, ULVOC, amine and iodine mechanisms, ignores `org_conc` and uses the default Dunne coefficients whatever `nucl_params` says. With `org_conc = 0` Ricco+Dunne ≤ zhao2024 always.
+- **Fix:** with `nucl_scheme='zhao2024'`, `fn` is `zhao2024_nucleation_rate(...)[0]` with the zhao2024 kwargs. ricco_dunne is bit-identical (forward and reverse, 3 steps at 190 K / 100 ppmv and 217 K / 1 ppmv). zhao2024 fixed-dt results change where the extra mechanisms dominate: one 60 s nucleation+coagulation step (217 K, 1e4 cm⁻³ background, H₂SO₄ 1e7 cm⁻³, hio3 = 2e7) was 14.3% low in N against 600 × 0.1 s, now 8.3% (hio3 = 3e7: 18.9% → 13.6%; the rest is coagulation run once on the step).
+- **Tests:** `test_make_step_zhao2024_substeps_follow_zhao_rate` (`tests/test_nucleation.py`; fails on the old code). `test_nucleation.py`, `test_gas_substep.py`, `test_reverse_mode.py`, `test_nucleation_gradients.py`: 107 passed.
+- **Files:** `tomas_jax/solvers/condensation.py`, `tests/test_nucleation.py`, `docs/nucleation.md`, `docs/zhao2024_nucleation.md`.
+
+## 2026-11-13 — Adaptive gas sub-steps follow the zhao2024 rate
+
+- **Bug (review):** `h2so4_loss_frequency` always used `ricco_dunne_nucleation_rate`, and `_adaptive_gas_step` passed neither `nucl_scheme` nor the zhao2024 inputs (`hno3`, `ulvoc`, `dma`, `hio3`, `enable_masks`). With `nucl_scheme='zhao2024'` the step applied `zhao2024_nucleation_step` but chose its length from a different rate, so the "clamp cannot fire" guarantee did not hold where the amine, HNO₃, organic or iodine mechanisms dominate J. Reproduced: H₂SO₄ 1e6 cm⁻³, hio3 = 1e8 cm⁻³, 217 K: one 60 s step with true k_nuc·Δt = 680, reported as 5e-6.
+- **Fix:** `h2so4_loss_frequency` / `choose_gas_substep` take a static `nucl_scheme`; for zhao2024 J is `zhao2024_nucleation_rate` (total over the enabled mechanisms) and the loss per cluster 0.9·`_MNUC`·V, the H₂SO₄ that step removes. `make_step` passes its `nucl_scheme` and the scheme's kwargs. ricco_dunne results are bit-identical (forward and reverse, 190 K / 100 ppmv and 217 K / 1 ppmv, 3 steps), so the 80-bin grid of record was not rerun.
+- **Known:** zhao2024's iodine and pure-organic clusters are charged to H₂SO₄; with no resupply the gas runs out and the sub-steps floor at `gas_min_dt` (reported in `n_floor`). The per-step nucleation sub-step count also used the Ricco+Dunne rate for zhao2024; fixed in the entry above.
+- **Tests:** `test_zhao2024_loss_frequency_is_the_step_removal`, `test_zhao2024_iodine_clamp_never_fires` (both fail on the old code). `tests/test_gas_substep.py` + `tests/test_reverse_mode.py`: 26 passed.
+- **Files:** `tomas_jax/solvers/gas_substep.py`, `tomas_jax/solvers/condensation.py`, `tests/test_gas_substep.py`, `docs/gas_substep.md`, `CLAUDE.md`.
+
 ## 2026-11-13 — Adaptive gas sub-steps: a binding `gas_max_substeps` now warns and is reported
 
 - **Bug (report):** when `gas_max_substeps` binds, the last sub-step takes the whole rest of the outer step. The cap counts sub-steps per outer step, so the number needed grows with dt: at 217 K / 18200 Pa / 100 ppmv about 4,500 per 60 s and 41,000 per 600 s, against the default 16,384. Reproduced: one 600 s step at 100 ppmv gives N = NaN (the forced 369 s sub-step fires the nucleation clamp and the burst sends the fixed-Euler coagulation to NaN; without coagulation N = 5.2e9 #/cm³ against 1.25e8 with cap 200,000). At 1 ppmv, cap 64 gives 7.58e6 against 7.83e6. Nothing warned, `info['knuc_dt_max']` was computed before the override (0.0255, "clamp did not fire"), and `hit_cap` was the only signal, and only with `return_substep_info=True`.

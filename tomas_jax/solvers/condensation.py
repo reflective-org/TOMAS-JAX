@@ -66,7 +66,8 @@ from ..physics.so2_chemistry import (
 from ..physics.dilution import dilution_step
 from ..physics.nucleation import (
     nucleation_step, ricco_dunne_nucleation_rate, compute_nucleation_substeps,
-    zhao2024_nucleation_step, ZHAO2024_ALL_ENABLED, DUNNE_FORMS,
+    zhao2024_nucleation_step, zhao2024_nucleation_rate, ZHAO2024_ALL_ENABLED,
+    DUNNE_FORMS,
 )
 from ..physics.condensation_sink import calc_condensation_sink
 from ..physics.ezcond import ezcond
@@ -1061,18 +1062,33 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
             Gc = so2_oxidation_step(Gc, temp, pres, boxvol, dt, oh_conc, rh)
 
         elif process == 'nucleation':
-            # Adaptive nucleation sub-stepping
-            # Rate estimate always uses Ricco+Dunne (fast, conservative)
-            fn = ricco_dunne_nucleation_rate(
-                Gc, temp, pres, boxvol,
-                kwargs.get('org_conc', 0.0), kwargs.get('nh3_conc', 0.0),
-                kwargs.get('fion', 0.0),
-                kwargs.get('enable_organic', 1.0),
-                kwargs.get('enable_inorganic', 1.0),
-                kwargs.get('fn_scale', 1.0),
-                kwargs.get('nucl_params'),
-                dunne_form,
-            )
+            # Adaptive nucleation sub-stepping, sized from the rate of the
+            # scheme applied below. Ricco+Dunne is not an upper bound on
+            # zhao2024 (it lacks the amine/HNO3/ULVOC/iodine mechanisms).
+            if use_zhao:
+                fn = zhao2024_nucleation_rate(
+                    Gc, temp, pres, boxvol,
+                    kwargs.get('org_conc', 0.0), kwargs.get('nh3_conc', 0.0),
+                    kwargs.get('fion', 0.0),
+                    hno3=kwargs.get('hno3', 0.0),
+                    ulvoc=kwargs.get('ulvoc', 0.0),
+                    dma=kwargs.get('dma', 0.0),
+                    hio3=kwargs.get('hio3', 0.0),
+                    enable_masks=kwargs.get('enable_masks',
+                                            ZHAO2024_ALL_ENABLED),
+                    fn_scale=kwargs.get('fn_scale', 1.0),
+                )[0]
+            else:
+                fn = ricco_dunne_nucleation_rate(
+                    Gc, temp, pres, boxvol,
+                    kwargs.get('org_conc', 0.0), kwargs.get('nh3_conc', 0.0),
+                    kwargs.get('fion', 0.0),
+                    kwargs.get('enable_organic', 1.0),
+                    kwargs.get('enable_inorganic', 1.0),
+                    kwargs.get('fn_scale', 1.0),
+                    kwargs.get('nucl_params'),
+                    dunne_form,
+                )
             N_total = jnp.sum(Nk)
             n_nuc = compute_nucleation_substeps(
                 fn, boxvol, dt, N_total,
@@ -1188,10 +1204,17 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
         Reverse mode: one bounded loop over gas sub-steps, ending an
         interval with lax.cond; same operations in the same order.
         """
+        # The criterion must see the rate the nucleation step applies
+        if use_zhao:
+            scheme_keys = (('hno3', 0.0), ('ulvoc', 0.0), ('dma', 0.0),
+                           ('hio3', 0.0),
+                           ('enable_masks', ZHAO2024_ALL_ENABLED))
+        else:
+            scheme_keys = (('enable_organic', 1.0), ('enable_inorganic', 1.0),
+                           ('nucl_params', None))
         nuc_kwargs = {k: kwargs.get(k, d) for k, d in (
             ('org_conc', 0.0), ('nh3_conc', 0.0), ('fion', 0.0),
-            ('enable_organic', 1.0), ('enable_inorganic', 1.0),
-            ('fn_scale', 1.0), ('nucl_params', None))}
+            ('fn_scale', 1.0)) + scheme_keys}
         oh_conc = kwargs.get('oh_conc', 0.0)
         dt = jnp.asarray(dt, dtype=jnp.float64)
         eps_t = 1e-12 * dt
@@ -1206,7 +1229,7 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                 min_dt=gas_min_dt, has_chem='so2_chemistry' in gas_procs,
                 has_nuc='nucleation' in gas_procs,
                 sparse_density=sparse_density, dunne_form=dunne_form,
-                force_dt=dt - t, force=last)
+                nucl_scheme=nucl_scheme, force_dt=dt - t, force=last)
             # The cap binds only if the forced step is longer than the one
             # the criterion chose
             dt_capped = jnp.where(last & (dt - t > dt_sub),
