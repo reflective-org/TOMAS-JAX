@@ -184,8 +184,19 @@ Dunne et al. (2016) published two fits to the same CLOUD data:
   `ln k = u − exp(v·(T/1000 − w))`.
 - **`'single_exp'`** (SM Table S2, R² 0.83): `ln k = u − v·T/1000`. Dunne uses
   this cross-check fit as the measure of uncertainty in the temperature
-  dependence, especially ion-induced nucleation at low T. Pair it with
-  `DUNNE_TABLE_S2_PARAMS`.
+  dependence, especially ion-induced nucleation at low T. Its coefficients
+  are `DUNNE_TABLE_S2_PARAMS`.
+
+`params=None` (`nucl_params=None` in `make_step`) means
+`default_nucleation_params(dunne_form)`: Table S1 for `'double_exp'`, Table S2
+for `'single_exp'`. The Table S1 coefficients in the single-exponential formula
+are orders of magnitude off (u_bn = 9.7, v_bn = 12.6 give ln k ≈ 7), so
+`'single_exp'` with params whose Dunne (u, v) pairs match Table S1 raises
+`ValueError` (`check_dunne_params`). The check reads values, so it cannot run on
+traced params (inside a caller's `jit`/`grad`/`vmap`); `make_step`'s own jitted
+step checks `nucl_params` before tracing. To change the cluster fields with
+Table S2, start from `DUNNE_TABLE_S2_PARAMS._replace(...)`, not
+`NucleationParams()`.
 
 `dunne_form` is a static argument of `dunne_nucleation_rate`,
 `ricco_dunne_nucleation_rate` and `nucleation_step`, and a `make_step` factory
@@ -194,7 +205,9 @@ argument:
 ```python
 from tomas_jax.physics.nucleation import DUNNE_TABLE_S2_PARAMS
 step = make_step(['nucleation', 'coagulation', 'condensation'], dunne_form='single_exp')
-Nk, Mk, Gc = step(..., fion=10.0, nucl_params=DUNNE_TABLE_S2_PARAMS)
+Nk, Mk, Gc = step(..., fion=10.0)   # Table S2 coefficients
+Nk, Mk, Gc = step(..., fion=10.0,   # Table S2 with a different cluster
+                  nucl_params=DUNNE_TABLE_S2_PARAMS._replace(rho_nuc=1770.0))
 ```
 
 The two forms agree within about a factor of 2 for binary neutral and ion

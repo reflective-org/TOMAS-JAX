@@ -67,7 +67,7 @@ from ..physics.dilution import dilution_step
 from ..physics.nucleation import (
     nucleation_step, ricco_dunne_nucleation_rate, compute_nucleation_substeps,
     zhao2024_nucleation_step, zhao2024_nucleation_rate, ZHAO2024_ALL_ENABLED,
-    DUNNE_FORMS,
+    DUNNE_FORMS, check_dunne_params,
 )
 from ..physics.condensation_sink import calc_condensation_sink
 from ..physics.ezcond import ezcond
@@ -862,8 +862,9 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
             'zhao2024' (11-mechanism Zhao et al. 2024). For zhao2024,
             pass extra kwargs: hno3, ulvoc, dma, hio3, enable_masks.
         dunne_form: ricco_dunne only. 'double_exp' (Dunne Table S1,
-            default) or 'single_exp' (Table S2 cross-check fit; pass
-            nucl_params=DUNNE_TABLE_S2_PARAMS with it). Also used for the
+            default) or 'single_exp' (Table S2 cross-check fit; with
+            nucl_params=None it uses DUNNE_TABLE_S2_PARAMS, and Table S1
+            (u, v) coefficients in nucl_params raise). Also used for the
             sub-step rate estimate. With zhao2024 anything but the default
             raises, as does passing nucl_params to the step function.
         n_coag_substeps: Number of forward-Euler substeps for coagulation
@@ -1386,4 +1387,14 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
         if return_substep_info:
             return Nk, Mk, Gc, info
         return Nk, Mk, Gc
-    return jax.jit(step_fn) if jit else step_fn
+    if not jit:
+        return step_fn
+    jitted = jax.jit(step_fn)
+    if dunne_form == 'double_exp':
+        return jitted
+
+    # Inside jit nucl_params is traced, so check its values before tracing.
+    def checked_step_fn(*args, **kwargs):
+        check_dunne_params(kwargs.get('nucl_params'), dunne_form)
+        return jitted(*args, **kwargs)
+    return checked_step_fn

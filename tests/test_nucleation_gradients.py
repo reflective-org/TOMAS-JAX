@@ -173,6 +173,39 @@ class TestDunneTableS2:
                                         dunne_form='single_exp')[1]
             assert abs(np.log10(float(alt) / float(base))) < 2.0
 
+    def test_single_exp_none_uses_table_s2(self):
+        """params=None with 'single_exp' means Table S2, not the S1 defaults."""
+        from tomas_jax.physics.nucleation import DUNNE_TABLE_S2_PARAMS as S2
+        a = dunne_nucleation_rate(T_STRAT, 10.0, 5e6, 1e8, MAIR,
+                                  dunne_form='single_exp')
+        b = dunne_nucleation_rate(T_STRAT, 10.0, 5e6, 1e8, MAIR, S2,
+                                  dunne_form='single_exp')
+        for x, y in zip(a, b):
+            assert float(x) == float(y)
+
+    def test_single_exp_rejects_table_s1(self, xk):
+        from tomas_jax.physics.nucleation import (
+            DUNNE_TABLE_S2_PARAMS as S2, nucleation_step)
+        s1 = NucleationParams(rho_nuc=1770.0)
+        with pytest.raises(ValueError, match='Table S1'):
+            dunne_nucleation_rate(T_STRAT, 10.0, 5e6, 0.0, MAIR, s1,
+                                  dunne_form='single_exp')
+        Nk = jnp.ones(NBINS) * 1e4
+        Mk = jnp.zeros((NBINS, ICOMP)).at[:, SRTSO4].set(
+            Nk * jnp.sqrt(xk[:-1] * xk[1:]))
+        args = (Nk, Mk, _gc(1e7), xk, T_STRAT, P_STRAT, BOXVOL, 0.02, 1.0, 60.0)
+        with pytest.raises(ValueError, match='Table S1'):
+            nucleation_step(Nk, Mk, _gc(1e7), xk, T_STRAT, P_STRAT, BOXVOL,
+                            60.0, 0.0, 0.0, 10.0, params=s1,
+                            dunne_form='single_exp')
+        with pytest.raises(ValueError, match='Table S1'):
+            make_step(['nucleation'], dunne_form='single_exp')(
+                *args, fion=10.0, nucl_params=s1)
+        # S2 with changed cluster fields is fine; S1 with double_exp too
+        make_step(['nucleation'], dunne_form='single_exp')(
+            *args, fion=10.0, nucl_params=S2._replace(rho_nuc=1770.0))
+        dunne_nucleation_rate(T_STRAT, 10.0, 5e6, 0.0, MAIR, s1)
+
     def test_make_step_rejects_unknown_form(self):
         with pytest.raises(ValueError, match='dunne_form'):
             make_step(['nucleation'], dunne_form='triple_exp')

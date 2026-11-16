@@ -4,6 +4,14 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-11-15 19:25 PST — `dunne_form='single_exp'` no longer runs on Table S1 coefficients
+
+- **Bug (review):** `params=None` always meant `DEFAULT_NUCLEATION_PARAMS` (Table S1), so `dunne_form='single_exp'` without `DUNNE_TABLE_S2_PARAMS` put the double-exponential coefficients into the single-exponential formula (u_bn = 9.7, v_bn = 12.6 → ln k ≈ 7), giving rates orders of magnitude off with no warning. The `make_step` example in `docs/nucleation.md` did exactly that if `nucl_params` was left out.
+- **Fix:** `params=None` now means `default_nucleation_params(dunne_form)` (Table S2 for `'single_exp'`) in `dunne_nucleation_rate`, `nucleation_step` and the gas sub-step loss frequency. `check_dunne_params` raises `ValueError` when `'single_exp'` gets params whose Dunne (u, v) pairs match Table S1 (e.g. `NucleationParams()._replace(rho_nuc=...)`). It reads values, so it is skipped for traced params; `make_step(dunne_form='single_exp')` wraps its jitted step to check `nucl_params` before tracing. `'double_exp'` and its `make_step` return value are unchanged.
+- **Tests:** `test_single_exp_none_uses_table_s2`, `test_single_exp_rejects_table_s1` (`tests/test_nucleation_gradients.py`). `test_nucleation_gradients.py`, `test_nucleation.py`, `test_gas_substep.py`, `test_reverse_mode.py`: 112 passed.
+- **Known limitation:** Table S1 params passed as traced values (inside a caller's own `jit`/`grad`/`vmap`) are not caught.
+- **Files:** `tomas_jax/physics/nucleation.py`, `tomas_jax/solvers/condensation.py`, `tomas_jax/solvers/gas_substep.py`, `tests/test_nucleation_gradients.py`, `docs/nucleation.md`, `CLAUDE.md`.
+
 ## 2026-11-15 — `make_step` rejects options that would be ignored
 
 - `split_chemistry=True` with `gas_substep='adaptive'` now raises `ValueError` (it was silently ignored; the adaptive path always splits).

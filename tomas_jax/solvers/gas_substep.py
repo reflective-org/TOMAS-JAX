@@ -36,7 +36,7 @@ from ..physics.condensation_sink import calc_condensation_sink
 from ..physics.so2_chemistry import calc_k1_so2_oh
 from ..physics.nucleation import (
     ricco_dunne_nucleation_rate, zhao2024_nucleation_rate, _cluster_mass,
-    _MNUC, DEFAULT_NUCLEATION_PARAMS, ZHAO2024_ALL_ENABLED,
+    _MNUC, default_nucleation_params, ZHAO2024_ALL_ENABLED,
 )
 
 NUCL_SCHEMES = ('ricco_dunne', 'zhao2024')
@@ -84,7 +84,7 @@ def h2so4_loss_frequency(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dts,
 
     if nucl_scheme == 'ricco_dunne':
         params = nuc_kwargs.get('nucl_params')
-        p = DEFAULT_NUCLEATION_PARAMS if params is None else params
+        p = default_nucleation_params(dunne_form) if params is None else params
         loss_per_J = (1.0 - p.org_frac) * _cluster_mass(p) * boxvol
 
         def rate(c):
