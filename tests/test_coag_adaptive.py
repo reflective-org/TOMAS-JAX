@@ -88,3 +88,26 @@ def test_forward_mode_through_adaptive(xk):
           - f(jax.tree.map(jnp.float64, P._replace(u_bi=P.u_bi - h)))) / (2 * h)
     assert np.isfinite(float(g.u_bi))
     np.testing.assert_allclose(float(g.u_bi), float(fd), rtol=1e-4)
+
+
+def test_cap_warns(xk):
+    """A binding coag_max_substeps drops the rest of dt: CoagSubstepCapWarning
+    (forward, reverse, vmap counts only capped members); none when it does
+    not bind (the dense state needs 972 sub-steps, the dilute one 57)."""
+    import warnings
+    from tomas_jax.solvers.condensation import CoagSubstepCapWarning
+    Nk, Mk, Gc = _state(xk, {0: 3.3e9, 20: 10.0})
+    for mode in ('forward', 'reverse'):
+        step = make_step(['coagulation'], coag_solver='euler_adaptive',
+                         ad_mode=mode, coag_max_substeps=100)
+        with pytest.warns(CoagSubstepCapWarning, match='coag_max_substeps=100'):
+            jax.block_until_ready(step(Nk, Mk, Gc, xk, *ENV))
+    Nq, Mq, _ = _state(xk, {6: 1e2})
+    step = make_step(['coagulation'], coag_solver='euler_adaptive',
+                     coag_max_substeps=100)
+    batched = jax.vmap(lambda n, m: step(n, m, Gc, xk, *ENV))
+    with pytest.warns(CoagSubstepCapWarning, match=r'in 1 step\(s\)'):
+        jax.block_until_ready(batched(jnp.stack([Nk, Nq]), jnp.stack([Mk, Mq])))
+    with warnings.catch_warnings():
+        warnings.simplefilter('error', CoagSubstepCapWarning)
+        jax.block_until_ready(batched(jnp.stack([Nq, Nq]), jnp.stack([Mq, Mq])))

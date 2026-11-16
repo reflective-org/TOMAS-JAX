@@ -1,5 +1,7 @@
 # Nucleation Coefficient Sensitivity (forward-mode AD)
 
+> **Branches:** `sensitivities/dunne_nuc/common.py`, `run_map.py` and `sabre_bins.py` are in this branch; the other phase scripts (`phase0_warmup.py`, `phase1_sabre_check.py`, `phase3_scenarios.py`, `phase4_linearity.py`, `prescribed_j.py`, `profile_step.py`, `scenarios.py`) are on the `dlm` branch only.
+
 Sensitivity of stratospheric aerosol, as SABRE would measure it, to the 25 `ricco_dunne` fit coefficients. It uses JAX forward-mode differentiation through the full model instead of a large perturbed-parameter ensemble.
 
 Code: `sensitivities/dunne_nuc/`. Results (git-ignored): `sensitivities/dunne_nuc/results/`.
@@ -430,7 +432,7 @@ The 1770 reruns took 2.1 h (Phase 3), 44 min (Phase 4) and 56 min (Phase 2 resol
 **MNFIX speed-up.** Before it, MNFIX was 85% of a 40-bin step: it is called about 13 times per step (10 times inside coagulation), and it looped over every bin three times. Now (`core/mnfix_jax.py`):
 - **Vectorised.** Phases 1–2 run on all bins at once.
 - **Bin-skipping.** Phase 3 stays sequential in Fortran order, because an upward shift feeds later bins. It now runs only from the first out-of-range bin to `hi`, the last out-of-range bin extended by each upward target, and writes only rows k and kk.
-- **Bit-identical unbatched.** `tests/test_mnfix.py` checks against the original port in `tests/reference/mnfix_sequential.py`, including edge cases (no-op, 12-bin jumps, cascades, grid ends).
+- **Bit-identical standalone.** `tests/test_mnfix.py` checks MNFIX compiled on its own against the original port in `tests/reference/mnfix_sequential.py`, including edge cases (no-op, 12-bin jumps, cascades, grid ends). Fused into a larger jit or under `vmap` it may differ by ulps: a jitted `coag_euler_step` on 40 bins is 1 ulp off `dev` from step 20 on (max rel 2.6e-16, not growing).
 - **Not bit-identical under `vmap`.** Batched results agree to 1e-14; the original was not batch-invariant either.
 - **Up and down shift arithmetic is kept as separate expressions.** XLA's FMA contraction changes merged expressions by ulps, and cancellation amplifies that.
 - **Cost per call:** 70 → 1.6 µs (all bins in range) and 70 → 24 µs (worst case) on 40 bins.

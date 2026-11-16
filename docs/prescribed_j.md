@@ -1,5 +1,7 @@
 # Prescribed nucleation rate: response of the size distribution to J
 
+> **Branches:** `sensitivities/dunne_nuc/common.py` (`make_prescribed_j_runner`) and `run_map.py` are in this branch; `prescribed_j.py` and `benchmarks/python/ppm_tangent_stability.py` are on the `dlm` branch only.
+
 How much does the particle number SABRE would measure change when the nucleation rate J changes, whatever scheme produced it? This analysis bypasses the nucleation scheme, prescribes J directly, and differentiates the size distribution with respect to J. It complements the coefficient sensitivity in [nucleation_sensitivity.md](nucleation_sensitivity.md), which asks how N responds to the Dunne 2016 fit coefficients.
 
 Code: `sensitivities/dunne_nuc/common.py` (`make_prescribed_j_runner`) and `sensitivities/dunne_nuc/prescribed_j.py`. Results (git-ignored): `sensitivities/dunne_nuc/results/prescribed_j/`.

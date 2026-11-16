@@ -826,6 +826,26 @@ def _warn_gas_cap(hit_cap, dt_capped, knuc_dt_max, dt, cap):
         GasSubstepCapWarning, stacklevel=2)
 
 
+class CoagSubstepCapWarning(RuntimeWarning):
+    """make_step(coag_solver='euler_adaptive'): coag_max_substeps bound."""
+
+
+def _warn_coag_cap(coag_dt_left, dt, cap, ad_mode):
+    left = np.asarray(coag_dt_left)
+    hit = left > 0.0
+    if not np.any(hit):
+        return
+    dt = np.broadcast_to(np.asarray(dt), left.shape)[hit]
+    warnings.warn(
+        f"coag_max_substeps={int(cap)} bound in {hit.sum()} step(s) "
+        f"(ad_mode='{ad_mode}'): euler_adaptive coagulation stopped "
+        f"{left[hit].max():.4g} s short of a {dt.max():.4g} s step and "
+        f"dropped the rest, so coagulation is truncated and N is too high. "
+        f"Raise coag_max_substeps (default 1024 in reverse mode, 10000 in "
+        f"forward) or shorten dt (docs/gas_substep.md).",
+        CoagSubstepCapWarning, stacklevel=2)
+
+
 # =========================================================================
 # Layer 4: make_step() — public composable API
 # =========================================================================
@@ -894,11 +914,12 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
             coagulation kernel and the condensation sink. None (default)
             keeps the Fortran values: 1000 for bins with < 1e-15 kg/cell
             (aerodens.f) and 1500 for bins with <= 1e10 #/cell
-            (getCondSink.f). Both thresholds are per grid cell, so in small
-            boxes (stratosphere, SAI plumes) real sulfate bins hit them.
-            For those cases pass a sulfate density, e.g.
-            ``radiative_forcing.DENSITY_H2SO4_SOLUTION`` (1700, ~75 wt%
-            H2SO4 at 220 K). See docs/nucleation_sensitivity.md.
+            (getCondSink.f). Both thresholds are per grid cell, so they
+            depend on box size: at boxvol = 1e6 cm3 the second is 1e4 cm-3
+            per bin and covers nearly every bin, tropospheric or
+            stratospheric. To replace the fallbacks, pass the grid density,
+            1770 (sensitivities/dunne_nuc/common.SPARSE_DENSITY). See
+            docs/stratosphere_setup.md.
         gas_substep: None (default, every process on dt) or 'adaptive':
             so2_chemistry, nucleation and condensation are sub-stepped in a
             while_loop until dt is covered, and the other processes
@@ -1065,6 +1086,8 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
 
     def apply(process, Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
               kwargs):
+        # Time [s] euler_adaptive left uncoagulated (coag_max_substeps bound)
+        coag_left = jnp.float64(0.0)
         if process == 'so2_chemistry':
             oh_conc = kwargs.get('oh_conc', 0.0)
             Gc = so2_oxidation_step(Gc, temp, pres, boxvol, dt, oh_conc, rh)
@@ -1150,7 +1173,7 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
 
         elif process == 'coagulation':
             if coag_solver == 'euler_adaptive':
-                Nk, Mk = euler_step(
+                Nk, Mk, coag_left = euler_step(
                     Nk, Mk, xk, temp, pres, boxvol, dt,
                     icomp_nodiag=kwargs.get('icomp_nodiag', ICOMP_NODIAG),
                     recompute_kernel=True,
@@ -1158,6 +1181,7 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                     sparse_density=sparse_density,
                     bounded=bounded,
                     mnfix_trim=mnfix_trim,
+                    return_dt_left=True,
                 )
             else:
                 Nk, Mk = coag_euler_step(
@@ -1187,7 +1211,13 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
             )
             if water_every_process:
                 Mk = equilibrate_water(Mk, rh, temp, water_scheme)
-        return Nk, Mk, Gc
+        return Nk, Mk, Gc, coag_left
+
+    def warn_coag_cap(coag_dt_left, dt):
+        # Always on, like the gas cap: the dropped time gets no coagulation
+        if coag_solver == 'euler_adaptive' and 'coagulation' in processes:
+            jax.debug.callback(_warn_coag_cap, coag_dt_left, dt,
+                               coag_max_substeps, ad_mode)
 
     gas_procs = [p for p in processes if p in _GAS_PROCESSES]
     other_procs = [p for p in processes if p not in _GAS_PROCESSES]
@@ -1228,7 +1258,7 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
         eps_t = 1e-12 * dt
 
         def gas_substep_once(Nk_s, Mk_s, Gc_s, t, t_end, n, dN, diag):
-            dt_min, n_floor, knuc_dt_max, dt_capped = diag
+            dt_min, n_floor, knuc_dt_max, dt_capped, coag_left = diag
             # The last allowed sub-step covers the rest of the outer step
             last = n == gas_max_substeps - 1
             dt_sub, floored, knuc_dt = choose_gas_substep(
@@ -1247,25 +1277,27 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
             for process in gas_procs:
                 dt_p = 0.5 * dt_sub if (split_chem and
                                         process == 'so2_chemistry') else dt_sub
-                Nk_s, Mk_s, Gc_s = apply(process, Nk_s, Mk_s, Gc_s, xk, temp,
-                                         pres, boxvol, rh, alpha, dt_p,
-                                         kwargs)
+                Nk_s, Mk_s, Gc_s, _ = apply(process, Nk_s, Mk_s, Gc_s, xk,
+                                            temp, pres, boxvol, rh, alpha,
+                                            dt_p, kwargs)
                 if split_chem and process == 'nucleation':
-                    Nk_s, Mk_s, Gc_s = apply(
+                    Nk_s, Mk_s, Gc_s, _ = apply(
                         'so2_chemistry', Nk_s, Mk_s, Gc_s, xk, temp, pres,
                         boxvol, rh, alpha, 0.5 * dt_sub, kwargs)
             dN = dN + jnp.maximum(jnp.sum(Nk_s) - N_before, 0.0)
             diag = (jnp.minimum(dt_min, dt_sub), n_floor + floored,
-                    jnp.maximum(knuc_dt_max, knuc_dt), dt_capped)
+                    jnp.maximum(knuc_dt_max, knuc_dt), dt_capped, coag_left)
             return Nk_s, Mk_s, Gc_s, t + dt_sub, n + 1, dN, diag
 
         def end_interval(Nk_s, Mk_s, Gc_s, t_int, target):
             r_coag = jnp.float64(0.0)
+            coag_left = jnp.float64(0.0)
             for process in other_procs:
                 N_before = jnp.sum(Nk_s)
-                Nk_s, Mk_s, Gc_s = apply(process, Nk_s, Mk_s, Gc_s, xk, temp,
-                                         pres, boxvol, rh, alpha, t_int,
-                                         kwargs)
+                Nk_s, Mk_s, Gc_s, left = apply(process, Nk_s, Mk_s, Gc_s, xk,
+                                               temp, pres, boxvol, rh, alpha,
+                                               t_int, kwargs)
+                coag_left = jnp.maximum(coag_left, left)
                 if process == 'coagulation':
                     r_coag = jax.lax.stop_gradient(
                         (N_before - jnp.sum(Nk_s)) / jnp.maximum(N_before, 1e-30))
@@ -1278,7 +1310,10 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
             target = jnp.minimum(
                 2.0 * target,
                 jnp.where(r_coag > coag_interval_frac, shrunk, 2.0 * target))
-            return Nk_s, Mk_s, Gc_s, target
+            return Nk_s, Mk_s, Gc_s, target, coag_left
+
+        def with_coag_left(diag, left):
+            return diag[:4] + (jnp.maximum(diag[4], left),)
 
         def interval_open(t, t_end, n, dN, N0):
             return ((t_end - t > eps_t) & (n < gas_max_substeps)
@@ -1287,7 +1322,8 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
         def n0(Nk_s):
             return jax.lax.stop_gradient(jnp.sum(Nk_s))
 
-        diag0 = (dt, jnp.int32(0), jnp.float64(0.0), jnp.float64(0.0))
+        diag0 = (dt, jnp.int32(0), jnp.float64(0.0), jnp.float64(0.0),
+                 jnp.float64(0.0))
         if not bounded:
             # Do-while, like the bounded path: every interval takes at least
             # one sub-step. Testing first would spin forever when the
@@ -1310,9 +1346,10 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                     gas_cond, gas_body,
                     (Nk_s, Mk_s, Gc_s, t, t_end, n, jnp.float64(0.0),
                      n0(Nk_s), n, diag))
-                Nk_s, Mk_s, Gc_s, target = end_interval(
+                Nk_s, Mk_s, Gc_s, target, left = end_interval(
                     Nk_s, Mk_s, Gc_s, t - t_start, target)
-                return Nk_s, Mk_s, Gc_s, t, target, n, n_coag + 1, diag
+                return (Nk_s, Mk_s, Gc_s, t, target, n, n_coag + 1,
+                        with_coag_left(diag, left))
 
             init = (Nk, Mk, Gc, jnp.float64(0.0), dt, jnp.int32(0),
                     jnp.int32(0), diag0)
@@ -1326,20 +1363,21 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                     Nk_s, Mk_s, Gc_s, t, t_end, n, dN, diag)
 
                 def close(c):
-                    Nk_c, Mk_c, Gc_c, target_c = end_interval(
+                    Nk_c, Mk_c, Gc_c, target_c, left = end_interval(
                         c[0], c[1], c[2], t - t_start, c[3])
                     t_end_c = t + jnp.minimum(target_c, dt - t)
                     return (Nk_c, Mk_c, Gc_c, target_c, t, t_end_c,
-                            n_coag + 1, jnp.float64(0.0), n0(Nk_c))
+                            n_coag + 1, jnp.float64(0.0), n0(Nk_c),
+                            with_coag_left(c[4], left))
 
                 def keep(c):
                     return (c[0], c[1], c[2], c[3], t_start, t_end, n_coag,
-                            dN, N0)
+                            dN, N0, c[4])
 
                 (Nk_s, Mk_s, Gc_s, target, t_start, t_end, n_coag, dN,
-                 N0) = jax.lax.cond(
+                 N0, diag) = jax.lax.cond(
                     interval_open(t, t_end, n, dN, N0), keep, close,
-                    (Nk_s, Mk_s, Gc_s, target))
+                    (Nk_s, Mk_s, Gc_s, target, diag))
                 return (Nk_s, Mk_s, Gc_s, t, t_start, t_end, target, n,
                         n_coag, dN, N0, diag)
 
@@ -1349,15 +1387,16 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
             (Nk, Mk, Gc, _, _, _, _, n_sub, n_coag, _, _,
              diag) = bounded_while(lambda s: dt - s[3] > eps_t, flat_body,
                                    init, gas_max_substeps)
-        dt_min, n_floor, knuc_dt_max, dt_capped = diag
+        dt_min, n_floor, knuc_dt_max, dt_capped, coag_dt_left = diag
         hit_cap = dt_capped > 0.0
         # Always on: a binding cap gives NaN or a wrong answer, and the info
         # dict is only returned on request. Runs on the host, after the step.
         jax.debug.callback(_warn_gas_cap, hit_cap, dt_capped, knuc_dt_max, dt,
                            gas_max_substeps)
+        warn_coag_cap(coag_dt_left, dt)
         info = dict(n_sub=n_sub, n_coag=n_coag, dt_min=dt_min,
                     hit_cap=hit_cap, dt_capped=dt_capped, n_floor=n_floor,
-                    knuc_dt_max=knuc_dt_max)
+                    knuc_dt_max=knuc_dt_max, coag_dt_left=coag_dt_left)
         return Nk, Mk, Gc, info
 
     def step_fn(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt, **kwargs):
@@ -1376,11 +1415,15 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
             for process in processes:
                 dt_p = 0.5 * dt if (split_chemistry and
                                     process == 'so2_chemistry') else dt
-                Nk, Mk, Gc = apply(process, Nk, Mk, Gc, xk, temp, pres, boxvol,
-                                   rh, alpha, dt_p, kwargs)
+                Nk, Mk, Gc, coag_left = apply(process, Nk, Mk, Gc, xk, temp,
+                                              pres, boxvol, rh, alpha, dt_p,
+                                              kwargs)
+                if process == 'coagulation':
+                    warn_coag_cap(coag_left, dt)
                 if split_chemistry and process == 'nucleation':
-                    Nk, Mk, Gc = apply('so2_chemistry', Nk, Mk, Gc, xk, temp,
-                                       pres, boxvol, rh, alpha, 0.5 * dt, kwargs)
+                    Nk, Mk, Gc, _ = apply('so2_chemistry', Nk, Mk, Gc, xk,
+                                          temp, pres, boxvol, rh, alpha,
+                                          0.5 * dt, kwargs)
             return Nk, Mk, Gc
         Nk, Mk, Gc, info = _adaptive_gas_step(
             Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt, kwargs)

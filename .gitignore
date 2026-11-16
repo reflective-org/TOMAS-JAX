@@ -19,6 +19,9 @@ logs/
 # Benchmark output data (large, regeneratable)
 benchmarks/fortran/output/
 benchmarks/results/
+
+# Sensitivity study outputs (NPZ, figures, logs; regenerate with the scripts)
+sensitivities/*/results/
 tomas_fortran/output/
 /output/
 

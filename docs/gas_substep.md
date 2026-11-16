@@ -1,5 +1,7 @@
 # Adaptive gas sub-steps and reverse-mode AD
 
+> **Branches:** `gas_substep_psd80.py`, `gas_substep_convergence.py`, `sensitivities/dunne_nuc/run_map.py` and `sabre_bins.py` are in this branch. The figure scripts (`plot_gas_substep_*.py`) are on the `dlm` branch only. `benchmarks/results/gas_substep/run_grid_parts.sh` is a local, git-ignored file.
+
 Two opt-in `make_step` options (2026-11-05). With both at their defaults, `make_step` is bit-identical to before (Fortran parity).
 
 - `gas_substep='adaptive'`: sub-steps SO₂ chemistry, nucleation and condensation, sized from the H₂SO₄ budget. One setting covers 10 pptv–100 ppmv SO₂ at 190–240 K.
@@ -108,13 +110,14 @@ Snapshots only; reference `dt_for`/4, 0.1 s at 10 ppmv, 0.02 s at 100 ppmv. Run 
 |---|---|
 | nucleation sub-steps | `max_nuc_substeps` (exact) |
 | PPM CFL sub-steps | `ppm_max_substeps` = 64 (binding → Courant > 0.8) |
-| `euler_adaptive` coagulation | `coag_max_substeps` = 1024 (binding → truncated coagulation) |
+| `euler_adaptive` coagulation | `coag_max_substeps` = 1024, forward 10000 (binding → the rest of dt gets no coagulation; `CoagSubstepCapWarning`) |
 | gas sub-steps | `gas_max_substeps`, one flat loop; intervals closed by `lax.cond` (nested bounded loops cost max_outer × max_inner) |
 
 - **Threading:** a static `bounded` flag on `euler_step`, `ppm_condensation_step`, `ezcond_ppm_jax`, `ezcond_tfl_jax`, `_condensation_step_core`; `make_step(ad_mode='reverse')` sets them all. `ezcond_tfl_jax` accepts it only for the shared `ezcond_fn` interface. MNFIX needs no `bounded` flag: by default phase 3 is a `fori_loop` over every bin (static trip count), so `jax.grad` goes through it in every caller, including `diffrax_step` and `coag_euler_step`. `make_step(mnfix_trim=None)` switches to the faster `mnfix_jax(trim=True)` while_loop only with `ad_mode='forward'`.
 - **Values** match forward mode to ≤ 1e-11 (XLA fuses differently inside `cond`). **Gradients** match `jacfwd` to ≤ 5e-12 (1 ppmv with and without gas sub-steps, 100 ppmv with `euler_adaptive`) and central FD (h = 1e-4) to 1e-3.
 - **Memory:** checkpoint the caller's time loop (`common.make_runner(ad_mode='reverse')` does).
-- **`vmap`:** `cond` runs both branches, so skipped iterations cost full ones.
+- **`coag_max_substeps` binds sooner in reverse mode** (1024 against 10000). `euler_step` stops at the cap and drops the rest of dt, so N comes out too high: 3e10 cm⁻³ in bin 0 at 280 K, dt = 60 s gave N = 2.58e7 in reverse mode against 1.76e7 in forward mode. `make_step` warns (`CoagSubstepCapWarning`, a `RuntimeWarning`, from a `jax.debug.callback` after the step, in both modes; under `vmap` it counts the batch members that hit the cap); with gas sub-steps `info['coag_dt_left']` is the longest time dropped in any coagulation interval. Raise `coag_max_substeps` or shorten dt.
+- **`vmap`:** `cond` runs both branches, so every iteration up to the cap costs a full one, whether it is needed or not. With `gas_substep='adaptive'` that is `gas_max_substeps` (16384) gas sub-steps plus a coagulation interval each: about 61 s per step against 9 ms in forward mode. Do not combine `ad_mode='reverse'`, `gas_substep='adaptive'` and `vmap`; loop over the members, or use forward mode (`jacfwd`) for batched sensitivities.
 - **When worth it:** few outputs, many more inputs than the 25 `NucleationParams` (e.g. initial-state sensitivities). For 25 inputs `jacfwd` is ~7× cheaper: d ln N(>3 nm) at 24 h, 217 K, 1 ppmv, 40 bins took 34 s / 0.67 GB with `jacfwd` and 238 s / 1.26 GB with `grad` (`benchmarks/python/reverse_mode_cost.py`), agreeing to 2.4e-12.
 
 ## Gradient blind spots

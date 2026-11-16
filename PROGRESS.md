@@ -4,6 +4,22 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-11-15 20:40 PST — Gas sub-step validation scripts and `run_map` brought over from `dlm`
+
+- **Why:** `CLAUDE.md` says to rerun the gas sub-step grid after changing the controller or the coagulation intervals, and `docs/gas_substep.md` defines the test of record by names in those scripts (`reference(so2)`, `FD_CELLS`, `FD_H`, `MERGE`, `INVALID_TANGENT`, `TROPICAL_AFGL`, `run_map.dt_for`), but the scripts were only on `dlm`.
+- **Added (unchanged copies from `dlm`):** `benchmarks/python/gas_substep_psd80.py`, `benchmarks/python/gas_substep_convergence.py`, `sensitivities/dunne_nuc/run_map.py`, `sensitivities/dunne_nuc/sabre_bins.py`; `TROPICAL_AFGL` in `sensitivities/dunne_nuc/common.py` (the only difference from `dlm`'s copy). `.gitignore`: `sensitivities/*/results/`.
+- **Checked on this branch's library:** `gas_substep_convergence --smoke` PASS; `gas_substep_psd80.run_one` at 20 km / 1 ppbv, 1 h, kinds f0.1 and ref_split, runs; `gas_substep_psd80 --check` PASS on the existing results (computed with `dlm`'s library, so this checks the loading and judging code, not this branch's numbers); `run_map --smoke` runs. The full 80-bin grid has not been rerun on this branch.
+- **Docs:** `CLAUDE.md` (file layout, gas sub-step rule, testing item 9; MNFIX: bit-identical standalone, may differ by ulps fused into a larger jit or under `vmap`), branch notes in `docs/gas_substep.md`, `docs/prescribed_j.md`, `docs/nucleation_sensitivity.md`.
+- **Still on `dlm` only:** `plot_gas_substep_*.py`, `ppm_tangent_stability.py`, `prescribed_j.py` and the other phase scripts.
+
+## 2026-11-15 20:10 PST — `euler_adaptive`: warn when `coag_max_substeps` binds
+
+- **Issue (review):** `ad_mode='reverse'` lowers the `coag_max_substeps` default from 10000 to 1024, and `euler_step` drops the rest of dt when the cap binds, without saying so. 3e10 cm⁻³ in bin 0, 280 K, dt = 60 s: N = 2.58e7 in reverse mode against 1.76e7 in forward mode (47% high).
+- **Fix:** `euler_step(return_dt_left=True)` returns the time it left uncovered. `make_step` emits `CoagSubstepCapWarning` (a `RuntimeWarning`, from a `jax.debug.callback` after the coagulation process or after the adaptive gas step, outside any `cond`, so skipped branches under `vmap` cannot trigger it; it counts the batch members that hit the cap) in both AD modes. With `gas_substep='adaptive'`, `info['coag_dt_left']` is the longest time dropped in any coagulation interval. Values are unchanged.
+- **Docs:** `docs/gas_substep.md` (cap row, the reverse/forward difference, and the cost of reverse + `gas_substep='adaptive'` + `vmap`: every iteration up to `gas_max_substeps` runs, ~61 s per step against 9 ms forward), `CLAUDE.md`.
+- **Tests:** `test_cap_warns` (`tests/test_coag_adaptive.py`): forward, reverse, `vmap` with one capped member, and no warning when the cap does not bind. `test_coag_adaptive.py`, `test_coagulation_bin_ratio.py`, `test_gas_substep.py`, `test_reverse_mode.py`, `test_smoke.py`, `test_24h_scenarios.py`: 148 passed, 650 skipped.
+- **Files:** `tomas_jax/solvers/euler.py`, `tomas_jax/solvers/condensation.py`, `tests/test_coag_adaptive.py`, `docs/gas_substep.md`, `CLAUDE.md`.
+
 ## 2026-11-15 19:25 PST — `dunne_form='single_exp'` no longer runs on Table S1 coefficients
 
 - **Bug (review):** `params=None` always meant `DEFAULT_NUCLEATION_PARAMS` (Table S1), so `dunne_form='single_exp'` without `DUNNE_TABLE_S2_PARAMS` put the double-exponential coefficients into the single-exponential formula (u_bn = 9.7, v_bn = 12.6 → ln k ≈ 7), giving rates orders of magnitude off with no warning. The `make_step` example in `docs/nucleation.md` did exactly that if `nucl_params` was left out.
