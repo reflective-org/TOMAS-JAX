@@ -1,6 +1,7 @@
 """The urban air and indoor air presets (series of 2026-10-19; ASSUMPTIONS A19, A20).
 
-Fast tests run 2 h of each; the full presets (6 h urban, 4 h indoor) are slow tests.
+Fast tests run 2 h of each; the full presets (24 h urban, 4 h indoor) are slow tests.
+The urban preset is a whole day from 00:00 local with traffic NO emissions (A26).
 The indoor preset holds O3 at 30 ppb (Shantanu: "O3 = 30 ppbv"); the free-O3 variant,
 in which O3 relaxes to the balance of outdoor supply and surface loss, is tested too.
 """
@@ -18,18 +19,22 @@ def _pss_ratio(r, scenario):
     m = air_environment(env.temp_k, env.pres_pa, env.rh)["M"]
     k = 1.4e-12 * np.exp(-1310.0 / env.temp_k)              # MCM <7> NO + O3
     o3, no, no2 = (np.array(r.gases_ppb[x]) * 1e-9 * m for x in ("O3", "NO", "NO2"))
-    return k * o3 * no / (np.array(r.photolysis["J_NO2"]) * no2)
+    with np.errstate(divide="ignore", invalid="ignore"):          # J = 0 at night
+        return k * o3 * no / (np.array(r.photolysis["J_NO2"]) * no2)
 
 
-def _check_urban(r, s):
+def _check_urban(r, s, daytime_from=0.0):
     assert r.diagnostics["warnings"] == []
     assert r.diagnostics["processes"] == ["coagulation"]
-    # gases: photostationary state holds at every daytime output after the first interval
+    assert s.losses.any is False                                # no dilution, no O3 deposition
+    # gases: photostationary state holds at every sunlit output after the first interval
     ratio = _pss_ratio(r, s)
-    np.testing.assert_allclose(ratio[1:], 1.0, atol=0.05)
-    assert np.all(np.array(r.photolysis["J_NO2"]) > 5e-3)   # sunlit throughout
-    assert r.gases_ppb["HNO3"][-1] > 1.0                      # NO2 + OH takes NOx out
-    np.testing.assert_allclose(r.losses["emitted_ppb"]["NO"], 1.0 * np.array(r.time_h), rtol=1e-9)
+    j = np.array(r.photolysis["J_NO2"])
+    lit = (j > 5e-3) & (np.array(r.time_h) >= daytime_from)
+    np.testing.assert_allclose(ratio[lit][1:], 1.0, atol=0.05)
+    # emitted NO follows the traffic profile and sums to the daily mean x time
+    em = np.array(r.losses["emitted_ppb"]["NO"])
+    assert np.all(np.diff(em) >= 0)
     # particles: coagulation only. N falls; dry mass and volume stay (coagulation adds volumes)
     n, dry, v = (np.array(r.totals[k]) for k in ("N_cm3", "dry_ugm3", "V_um3cm3"))
     assert n[0] == pytest.approx(20003.0, rel=1e-3) and np.all(np.diff(n) < 0)
@@ -43,22 +48,49 @@ def _check_urban(r, s):
     assert all(v == 0.0 for k, v in r.losses.items() if k.endswith("_ugm3") or k.endswith("_N_cm3") for v in [v[-1]])
 
 
-def test_urban_two_hours():
+def test_urban_preset_is_a_full_day_from_local_midnight():
+    s = load_preset("level1_urban")
+    assert s.duration_h == 24.0
+    assert s.start_utc.isoformat() == "2026-07-01T04:00:00+00:00"       # 00:00 EDT
+    assert s.emission_profile is not None and s.emission_profile.utc_offset_h == -4.0
+    assert s.gases_ppb["O3"] == 30.0 and s.gases_ppb["NO"] == 0.5
+    assert s.losses.any is False and s.hold_constant == ()
+    assert s.emissions_ppb_per_h == {"NO": 0.5}
+
+
+def test_urban_two_hours_of_the_night():
     s = load_preset("level1_urban").replace(duration_h=2.0)
-    _check_urban(run(s), s)
+    r = run(s)
+    _check_urban(r, s)
+    assert np.all(np.array(r.photolysis["J_NO2"]) == 0.0)       # dark: 00:00-02:00 local
+    assert r.gases_ppb["NO"][-1] < 0.05                         # NO titrated by O3 to NO2
+    assert r.gases_ppb["O3"][-1] < r.gases_ppb["O3"][0]         # O3 lost by reaction only
+    w = np.array(s.emission_profile.hourly_weights)
+    w = w / w.mean()
+    np.testing.assert_allclose(r.losses["emitted_ppb"]["NO"][-1], 0.5 * (w[0] + w[1]), rtol=1e-9)
 
 
 @pytest.mark.slow
-def test_urban_full_preset():
+def test_urban_full_day():
     s = load_preset("level1_urban")
     r = run(s)
-    _check_urban(r, s)
+    _check_urban(r, s, daytime_from=7.0)
+    t = np.array(r.time_h)
+    o3, no, no2 = (np.array(r.gases_ppb[x]) for x in ("O3", "NO", "NO2"))
+    # 24 h of the profile emits exactly the daily mean x 24 h
+    assert r.losses["emitted_ppb"]["NO"][-1] == pytest.approx(0.5 * 24.0, rel=1e-9)
+    # night: NO is converted to NO2 at once (NO < 0.1 ppb before dawn), O3 falls
+    assert no[(t > 0) & (t <= 4.0)].max() < 0.1 and o3[t == 4.0][0] < o3[0]
+    # morning: sunrise photolysis rebuilds O3 and NO; evening: titration lowers O3 again
+    assert o3[t == 10.0][0] > o3[t == 5.0][0] + 3.0
+    assert o3[t == 21.0][0] < o3[t == 12.0][0] - 8.0
+    assert no[t == 12.0][0] > 3.0 and no[-1] < 0.1
+    # J(NO2) peaks near 13:00 EDT (solar noon at 75 W), 13 h in
+    t_peak = t[int(np.argmax(r.photolysis["J_NO2"]))]
+    assert 12.0 <= t_peak <= 14.0
+    # a day of coagulation: 2e4 -> about 0.4e4 cm-3 (24 h)
     n = np.array(r.totals["N_cm3"])
-    assert 0.5 < n[-1] / n[0] < 0.7                           # about 2e4 -> 1.2e4 cm-3 in 6 h
-    # J(NO2) peaks near 13:00 EDT (solar noon at 75 W), 3 h in
-    t_peak = r.time_h[int(np.argmax(r.photolysis["J_NO2"]))]
-    assert 2.5 <= t_peak <= 3.5
-    assert 35.0 < r.gases_ppb["O3"][-1] < 40.0
+    assert 0.1 < n[-1] / n[0] < 0.5
 
 
 def _check_indoor(r, s):

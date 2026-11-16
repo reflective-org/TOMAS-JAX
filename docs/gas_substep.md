@@ -1,5 +1,7 @@
 # Adaptive gas sub-steps and reverse-mode AD
 
+> `benchmarks/results/gas_substep/run_grid_parts.sh` is a local, git-ignored file.
+
 Two opt-in `make_step` options (2026-11-05). With both at their defaults, `make_step` is bit-identical to before (Fortran parity).
 
 - `gas_substep='adaptive'`: sub-steps SO₂ chemistry, nucleation and condensation, sized from the H₂SO₄ budget. One setting covers 10 pptv–100 ppmv SO₂ at 190–240 K.
@@ -19,12 +21,13 @@ At the start of each sub-step, for each candidate Δt:
 |---|---|
 | C_seen(Δt) | C + ΔH₂SO₄ from chemistry over the whole candidate Δt, with no condensation or nucleation loss. Each candidate gets its own C_seen. Nucleation actually sees about C + ΔH₂SO₄(Δt/2) (see Split chemistry), so this is an upper bound |
 | CS | condensation sink [s⁻¹] (`calc_condensation_sink`, with `sparse_density`) |
-| k_nuc | (1 − org_frac)·J(C_seen)·m_nuc·V / C_seen, the loss frequency to nucleation |
+| k_nuc | (1 − org_frac)·J(C_seen)·m_nuc·V / C_seen, the loss frequency to nucleation. J is the rate of the scheme the step applies (`nucl_scheme`): Riccobono + Dunne, or the zhao2024 total over the enabled mechanisms with its inputs (`hno3`, `ulvoc`, `dma`, `hio3`, `enable_masks`); for zhao2024, (1 − org_frac)·m_nuc = 0.9·`_MNUC`, what `zhao2024_nucleation_step` removes |
 | n_eff | d ln J / d ln C at C_seen, clipped to [1, 20], the effective order of J in H₂SO₄ |
 
-Criterion: **(CS + n_eff·k_nuc)·Δt ≤ f**, f = `gas_substep_frac` (0.1). Candidates are Δt_rem/2^k, k = 0…23, where Δt_rem is the time left in the current coagulation interval (never past the end of the outer step). The ladder therefore moves with the position in the step: after a 7.5 s sub-step in a 60 s interval the candidates are 52.5, 26.25, … s. Candidates are floored at `gas_min_dt` (1e-3 s); the largest passing one is taken, re-chosen every sub-step, under `stop_gradient`.
+Criterion: **(CS + n_eff·k_nuc)·Δt ≤ f**, f = `gas_substep_frac` (0.1). Candidates are Δt_rem/2^k, k = 0…23, where Δt_rem is the time left in the current coagulation interval (never past the end of the outer step). The ladder therefore moves with the position in the step: after a 7.5 s sub-step in a 60 s interval the candidates are 52.5, 26.25, … s. Candidates are floored at `gas_min_dt` (1e-3 s), and `gas_min_dt` itself is a 25th rung, so it is reachable even when Δt_rem/2^23 is larger (coagulation intervals longer than 2^23·`gas_min_dt` ≈ 8389 s; until 2026-11-15 such intervals floored at Δt_rem/2^23 instead); the largest passing one is taken, re-chosen every sub-step, under `stop_gradient`.
 
 - **The clamp cannot fire:** n_eff ≥ 1, so k_nuc·Δt ≤ f < 1 (`info['knuc_dt_max']`).
+- **zhao2024 mechanisms that do not depend on H₂SO₄** (iodine, pure organic): `zhao2024_nucleation_step` still takes 0.9·J·m_nuc of H₂SO₄ per cluster, so these mechanisms are an H₂SO₄ sink with n_eff = 1. Without enough chemistry to resupply the gas (e.g. hio3 = 1e8 cm⁻³, no SO₂), C goes to zero, k_nuc grows without bound and the sub-steps reach `gas_min_dt` (`n_floor` > 0, `knuc_dt_max` > f): the gas runs out, which is what that step's chemistry implies. Until 2026-11-13 the criterion always used Riccobono + Dunne, so with zhao2024 it ignored those mechanisms and the amine mechanism (one 60 s step at k_nuc·Δt = 680, reported as 5e-6).
 - **CS alone is not enough:** the failure happens where CS is small, before the burst, where f/CS ≥ 60 s.
 - **Low SO₂ costs nothing:** at ≤ 10 ppbv there is one sub-step per outer step.
 
@@ -39,12 +42,14 @@ The same split is available at fixed dt: `make_step(..., split_chemistry=True)` 
 Coagulation and dilution run on intervals, not on the outer 60 s step (that was 1.8× off in N(>3 nm) at 217 K / 100 ppmv) or every gas sub-step (too expensive).
 
 - An interval ends at its target length, or when nucleation has added `coag_interval_frac` (0.01)·N. At 0.1 the 1.7 nm bin was ~7% low (60 s of coagulation on seconds-old clusters); at 0.01 it is within 0.6%, at 1.5–2× the cost.
+- Every interval takes at least one gas sub-step before the end test (a do-while, in both modes). An interval can start closed: with N = 0 and no coagulation in `processes` to add TINY values back, dN < `coag_interval_frac`·N is 0 < 0. A loop that tested first then took no sub-step and never advanced t. `coag_interval_frac` must be > 0 (`ValueError`).
 - If coagulation removed a fraction r > `coag_interval_frac` of N, the next target shrinks to t_int·frac/r, rounded down to a power of 2 s; otherwise it may double. Intervals never cross the end of the outer step, and the target resets to the outer dt at the start of every outer step, so the first interval of each step always tries the full dt. Rounding keeps the lengths discrete, so gradients do not see a continuously moving step.
 
 ### Caps, diagnostics, usage
 
-- `gas_max_substeps` = 16384 per outer step; the last allowed sub-step takes the rest of dt (`info['hit_cap']`). 190 K / 100 ppmv needs ~5700 at f = 0.1 (H₂SO₄ relaxes in ~0.01 s).
-- `return_substep_info=True` returns `(Nk, Mk, Gc, info)` with `n_sub`, `n_coag`, `dt_min`, `hit_cap`, `n_floor` (sub-steps at `gas_min_dt`), `knuc_dt_max`.
+- `gas_max_substeps` = 16384 per outer step; the last allowed sub-step takes the rest of dt. **The cap counts sub-steps per outer step, so the number needed grows with the outer dt:** the sub-steps are set by the H₂SO₄ relaxation time (~0.01 s at 100 ppmv), not by dt. 190 K / 100 ppmv needs ~5700 per 60 s; 217 K / 18200 Pa / 100 ppmv needs ~4,500 per 60 s and ~41,000 per 600 s. Scale the cap with dt (or keep dt at 60 s) for long outer steps.
+- **A binding cap gives NaN or a wrong answer.** The forced last sub-step is far past the criterion (217 K / 18200 Pa / 100 ppmv, dt = 600 s: 369 s in one sub-step, k_nuc·Δt = 5e10), the nucleation clamp fires, and the burst it makes sends the fixed-Euler coagulation to NaN (without coagulation N was 5.2e9 #/cm³ against 1.25e8 uncapped). At 1 ppmv with cap 64, N was 7.58e6 against 7.83e6. There is no fallback: any finite answer after the cap binds is wrong, so the step warns instead (`GasSubstepCapWarning`, a `RuntimeWarning`, from a `jax.debug.callback` after every adaptive step; under `vmap` it counts the batch members that hit the cap). It fires whether or not `return_substep_info` is on. Silence it with `warnings.filterwarnings('ignore', category=GasSubstepCapWarning)` only if you check `info['hit_cap']` yourself.
+- `return_substep_info=True` returns `(Nk, Mk, Gc, info)` with `n_sub`, `n_coag`, `dt_min`, `hit_cap` (the cap forced a sub-step longer than the criterion's choice), `dt_capped` (that sub-step's length [s], 0 if none), `n_floor` (sub-steps at `gas_min_dt`), `knuc_dt_max` (largest k_nuc·Δt over the sub-steps actually taken, the forced one included; until 2026-11-13 the forced step was missed and a binding cap still reported ≤ 0.1).
 - Under `vmap` the slowest member sets the pace.
 
 ```python
@@ -95,7 +100,7 @@ Snapshots only; reference `dt_for`/4, 0.1 s at 10 ppmv, 0.02 s at 100 ppmv. Run 
 
 ### Tests
 
-`tests/test_gas_substep.py`: argument validation; one sub-step at 10 ppbv; no clamp, no cap and closed sulfur at 100 ppmv (190, 217 K); 1 h at 1 ppmv vs fixed 0.1 s (5%); `jvp` vs FD; `vmap`.
+`tests/test_gas_substep.py`: argument validation; one sub-step at 10 ppbv; no clamp, no cap and closed sulfur at 100 ppmv (190, 217 K); a binding cap warns, sets `hit_cap`/`dt_capped` and reports k_nuc·Δt > 1 (forward, reverse, `vmap`); 1 h at 1 ppmv vs fixed 0.1 s (5%); `jvp` vs FD; `vmap`; zhao2024: k_nuc equals the H₂SO₄ `zhao2024_nucleation_step` removes (amine + iodine), and an iodine-dominated run at 1 ppmv stays within the criterion.
 
 ## Reverse-mode AD (`ad_mode='reverse'`)
 
@@ -103,16 +108,16 @@ Snapshots only; reference `dt_for`/4, 0.1 s at 10 ppmv, 0.02 s at 100 ppmv. Run 
 
 | loop | bound |
 |---|---|
-| MNFIX phase 3 | nbins (exact) |
 | nucleation sub-steps | `max_nuc_substeps` (exact) |
 | PPM CFL sub-steps | `ppm_max_substeps` = 64 (binding → Courant > 0.8) |
-| `euler_adaptive` coagulation | `coag_max_substeps` = 1024 (binding → truncated coagulation) |
+| `euler_adaptive` coagulation | `coag_max_substeps` = 1024, forward 10000 (binding → the rest of dt gets no coagulation; `CoagSubstepCapWarning`) |
 | gas sub-steps | `gas_max_substeps`, one flat loop; intervals closed by `lax.cond` (nested bounded loops cost max_outer × max_inner) |
 
-- **Threading:** a static `bounded` flag on `mnfix_jax`, `coag_euler_step`, `euler_step`, `ppm_condensation_step`, `ezcond_ppm_jax`, `ezcond_tfl_jax`, `_condensation_step_core`; `make_step(ad_mode='reverse')` sets them all.
+- **Threading:** a static `bounded` flag on `euler_step`, `ppm_condensation_step`, `ezcond_ppm_jax`, `ezcond_tfl_jax`, `_condensation_step_core`; `make_step(ad_mode='reverse')` sets them all. `ezcond_tfl_jax` accepts it only for the shared `ezcond_fn` interface. MNFIX needs no `bounded` flag: by default phase 3 is a `fori_loop` over every bin (static trip count), so `jax.grad` goes through it in every caller, including `diffrax_step` and `coag_euler_step`. `make_step(mnfix_trim=None)` switches to the faster `mnfix_jax(trim=True)` while_loop only with `ad_mode='forward'`.
 - **Values** match forward mode to ≤ 1e-11 (XLA fuses differently inside `cond`). **Gradients** match `jacfwd` to ≤ 5e-12 (1 ppmv with and without gas sub-steps, 100 ppmv with `euler_adaptive`) and central FD (h = 1e-4) to 1e-3.
 - **Memory:** checkpoint the caller's time loop (`common.make_runner(ad_mode='reverse')` does).
-- **`vmap`:** `cond` runs both branches, so skipped iterations cost full ones.
+- **`coag_max_substeps` binds sooner in reverse mode** (1024 against 10000). `euler_step` stops at the cap and drops the rest of dt, so N comes out too high: 3e10 cm⁻³ in bin 0 at 280 K, dt = 60 s gave N = 2.58e7 in reverse mode against 1.76e7 in forward mode. `make_step` warns (`CoagSubstepCapWarning`, a `RuntimeWarning`, from a `jax.debug.callback` after the step, in both modes; under `vmap` it counts the batch members that hit the cap); with gas sub-steps `info['coag_dt_left']` is the longest time dropped in any coagulation interval. Raise `coag_max_substeps` or shorten dt.
+- **`vmap`:** `cond` runs both branches, so every iteration up to the cap costs a full one, whether it is needed or not. With `gas_substep='adaptive'` that is `gas_max_substeps` (16384) gas sub-steps plus a coagulation interval each: about 61 s per step against 9 ms in forward mode. Do not combine `ad_mode='reverse'`, `gas_substep='adaptive'` and `vmap`; loop over the members, or use forward mode (`jacfwd`) for batched sensitivities.
 - **When worth it:** few outputs, many more inputs than the 25 `NucleationParams` (e.g. initial-state sensitivities). For 25 inputs `jacfwd` is ~7× cheaper: d ln N(>3 nm) at 24 h, 217 K, 1 ppmv, 40 bins took 34 s / 0.67 GB with `jacfwd` and 238 s / 1.26 GB with `grad` (`benchmarks/python/reverse_mode_cost.py`), agreeing to 2.4e-12.
 
 ## Gradient blind spots

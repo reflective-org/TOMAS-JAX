@@ -806,3 +806,30 @@ class TestZhao2024NucleationRate:
         )
         assert float(total) > 0.0
         assert per_mech.shape == (11,)
+
+
+def test_make_step_zhao2024_substeps_follow_zhao_rate(xk):
+    """make_step sizes the nucleation sub-steps from the zhao2024 rate when
+    nucl_scheme='zhao2024' (Ricco+Dunne is not an upper bound on it).
+    Iodine-dominated, 1e4 cm^-3 background, 217 K: one 60 s step against
+    600 steps of 0.1 s. Sized from Ricco+Dunne the 60 s step was 14.3% low;
+    sized from zhao2024 it is 8.3% low (the rest is coagulation run once
+    on the whole step)."""
+    from tomas_jax.solvers.condensation import make_step
+    from sensitivities.dunne_nuc import common as c
+    temp, pres = 217.0, c.STRAT['pres']
+    Nk, Mk, Gc = c.lognormal_state(xk, so2=0.0)
+    state = (Nk * 1e3, Mk * 1e3,
+             Gc.at[SRTSO4].set(1e7 * c.BOXVOL * 98e-3 / AVOGADRO))
+    step = make_step(['nucleation', 'coagulation'], nucl_scheme='zhao2024',
+                     jit=False)
+    kw = dict(org_conc=0.0, nh3_conc=0.0, fion=c.FION, hio3=2e7)
+
+    def run(dt, n):
+        def body(s, _):
+            return step(*s, xk, temp, pres, c.BOXVOL, c.STRAT['rh'],
+                        c.STRAT['alpha'], dt, **kw), None
+        s, _ = jax.jit(lambda s: jax.lax.scan(body, s, None, length=n))(state)
+        return float(jnp.sum(s[0]))
+
+    assert abs(run(60.0, 1) / run(0.1, 600) - 1.0) < 0.1

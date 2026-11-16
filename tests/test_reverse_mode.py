@@ -43,22 +43,94 @@ def test_bounded_loops_match_and_differentiate():
 
 
 @pytest.mark.parametrize('nbins,ratio', [(40, 2.0), (80, 2.0 ** 0.5), (30, 3.0)])
-def test_bounded_mnfix_matches_reference(nbins, ratio):
-    """Round-off only: XLA fuses the loop body differently inside lax.cond."""
-    from tests.reference.mnfix_sequential import mnfix_reference
+def test_mnfix_grad_matches_jacfwd(nbins, ratio):
+    """MNFIX's static-trip-count loop supports reverse mode with no flag."""
     xk = make_grid(nbins, XK0, ratio)
-    new = jax.jit(lambda N, M: mnfix_jax(N, M, xk, bounded=True))
-    ref = jax.jit(mnfix_reference)
+    f = lambda N, M: jnp.sum(jnp.log(mnfix_jax(N, M, xk)[0] + 1.0))
+    grad = jax.jit(jax.grad(f, argnums=(0, 1)))
+    jac = jax.jit(jax.jacfwd(f, argnums=(0, 1)))
     for Nk, Mk in _random_states(xk, seed=nbins):
-        a, b = new(Nk, Mk), ref(Nk, Mk, xk)
-        np.testing.assert_allclose(np.array(a[0]), np.array(b[0]), rtol=1e-12)
-        np.testing.assert_allclose(np.array(a[1]), np.array(b[1]), rtol=1e-12,
-                                   atol=1e-300)
+        g, j = grad(Nk, Mk), jac(Nk, Mk)
+        for a, b in zip(g, j):
+            # relative to the array's scale: some entries cancel to ~0
+            a, b = np.array(a), np.array(b)
+            np.testing.assert_allclose(a, b, rtol=1e-10,
+                                       atol=1e-10 * np.max(np.abs(b)))
+
+
+def test_diffrax_step_grad():
+    """jax.grad through Tsit5 coagulation (diffrax_step calls MNFIX). diffrax's
+    adjoint is a custom_vjp, so reverse mode is the only AD mode here."""
+    from tomas_jax.core.config import ICOMP
+    from tomas_jax.solvers.diffrax import diffrax_step
+    xk = make_grid(40, XK0, 2.0)
+    xm = np.sqrt(np.asarray(xk[:-1] * xk[1:]))
+    dp = (6.0 * xm / (1770.0 * np.pi)) ** (1.0 / 3.0)
+    Nk = 1e13 * np.exp(-0.5 * (np.log(dp / 50e-9) / np.log(1.6)) ** 2) + 1e-3
+    Mk = np.zeros((40, ICOMP))
+    Mk[:, 0] = Nk * xm
+
+    def f(scale):
+        Nk_f, _ = diffrax_step(jnp.asarray(Nk) * scale, jnp.asarray(Mk) * scale,
+                               xk, 273.0, 1.0e5, 1.0e10, 600.0, n_substeps=2)
+        return jnp.sum(Nk_f)
+
+    h = 1e-5
+    fd = (float(f(1.0 + h)) - float(f(1.0 - h))) / (2 * h)
+    assert float(jax.grad(f)(1.0)) == pytest.approx(fd, rel=1e-6)
+
+
+def _coag_state():
+    from tomas_jax.core.config import ICOMP
+    xk = make_grid(40, XK0, 2.0)
+    xm = np.sqrt(np.asarray(xk[:-1] * xk[1:]))
+    dp = (6.0 * xm / (1770.0 * np.pi)) ** (1.0 / 3.0)
+    Nk = 1e13 * np.exp(-0.5 * (np.log(dp / 50e-9) / np.log(1.6)) ** 2) + 1e-3
+    Mk = np.zeros((40, ICOMP))
+    Mk[:, 0] = Nk * xm
+    return xk, jnp.asarray(Nk), jnp.asarray(Mk)
+
+
+def test_coag_euler_step_grad():
+    """jax.grad through coag_euler_step with default arguments (MNFIX
+    trim=False, a static trip count). With test_mnfix_grad_matches_jacfwd and
+    test_diffrax_step_grad this covers every default-argument caller of MNFIX
+    in reverse mode."""
+    from tomas_jax.solvers.diffrax import coag_euler_step
+    xk, Nk, Mk = _coag_state()
+
+    def f(scale):
+        Nk_f, _ = coag_euler_step(Nk * scale, Mk * scale, xk, 273.0, 1.0e5,
+                                  1.0e10, 600.0, n_substeps=10)
+        return jnp.sum(Nk_f)
+
+    h = 1e-5
+    fd = (float(f(1.0 + h)) - float(f(1.0 - h))) / (2 * h)
+    assert float(jax.grad(f)(1.0)) == pytest.approx(fd, rel=1e-6)
+
+
+def test_mnfix_trim_fails_clearly_in_reverse_mode():
+    """trim=True is a while_loop: jax.grad must raise JAX's reverse-mode
+    error, not return a wrong gradient."""
+    from tomas_jax.solvers.diffrax import coag_euler_step
+    xk, Nk, Mk = _coag_state()
+    match = 'Reverse-mode differentiation does not work'
+    with pytest.raises(ValueError, match=match):
+        jax.grad(lambda s: jnp.sum(mnfix_jax(Nk * s, Mk, xk, trim=True)[0]))(1.0)
+    with pytest.raises(ValueError, match=match):
+        jax.grad(lambda s: jnp.sum(coag_euler_step(
+            Nk * s, Mk * s, xk, 273.0, 1.0e5, 1.0e10, 600.0,
+            mnfix_trim=True)[0]))(1.0)
 
 
 def test_bad_ad_mode_rejected():
     with pytest.raises(ValueError, match='ad_mode'):
         make_step(PROCS, ad_mode='backward')
+
+
+def test_mnfix_trim_rejected_in_reverse_mode():
+    with pytest.raises(ValueError, match='mnfix_trim'):
+        make_step(PROCS, ad_mode='reverse', mnfix_trim=True)
 
 
 def _model(xk, so2_ppbv, nsteps, mode, **step_kw):

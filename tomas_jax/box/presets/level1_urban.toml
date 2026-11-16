@@ -1,27 +1,40 @@
-# Level 1 (series) — Urban air: O3, NO and NO2 cycling in midday sunlight, and a
-# three-mode particle population that only coagulates. The two run side by side and
-# neither affects the other (no condensation, no SOA, no nucleation; ASSUMPTIONS A19).
-# Midlatitude summer: 40 N, 75 W, 1 July, 10:00 to 16:00 local (EDT = UTC-4).
-# Try: cloud fraction; initial O3, NO, NO2; temperature; NO emissions; the particle
-# number, mode sizes and inorganic:organic share.
+# Level 1 (series) — Urban air: a whole day (00:00 to 24:00 local) of O3, NO and NO2
+# cycling with traffic NO emissions, and a three-mode particle population that only
+# coagulates. The two run side by side and neither affects the other (no condensation, no
+# SOA, no nucleation; ASSUMPTIONS A19, A26). Midlatitude summer: 40 N, 75 W, 1 July
+# (EDT = UTC-4). The boundary layer keeps one height: no dilution, no entrainment, and no
+# ozone dry deposition (O3 is removed only by reaction, titration by NO).
+# Try: the VOC selector, benzene / toluene / m-xylene (A27); cloud fraction; NO emission strength; initial
+# O3, NO, NO2; temperature; the particle number, mode sizes and inorganic:organic share.
 name = "Level 1 - Urban air"
 level = 1
-duration_h = 6.0
-start_utc = "2026-07-01T14:00:00+00:00"   # 10:00 EDT
+duration_h = 24.0
+start_utc = "2026-07-01T04:00:00+00:00"   # 00:00 local (EDT), 1 July (A26)
 hold_constant = []
 cstar_table = "mcm_limonene_cstar_298K.csv"
 
 [gases_ppb]
-O3 = 40.0
-NO = 5.0
+O3 = 30.0
+NO = 0.5
 NO2 = 15.0
 CO = 200.0
 CH4 = 1900.0
 H2 = 500.0
+# VOC selector (A27): the preset has no aromatic VOC, so the limonene mechanism alone is
+# integrated (bit-identical to the preset before the selector existed). The web app's choices
+# set BENZENE, TOLUENE or MXYL to scenario.URBAN_VOC_PPB_ON (5 ppb) and the run integrates that
+# MCM v3.3.1 subset merged in.
 
-# constant NO source E [ppb/h]: an urban mixed layer receives about 1-2 ppb/h (A19)
+# NO source: 24 h mean E [ppb/h], shaped over the day by the on-road traffic profile below.
+# 0.5 ppb/h = 12 ppb of NO per day: nothing dilutes the layer, so it is half the 1 ppb/h of
+# A19 (A26)
 [emissions_ppb_per_h]
-NO = 1.0
+NO = 0.5
+
+# E(t) = E_mean w(h) / mean(w), hourly weights w of road transport (default weights),
+# local time = UTC - 4 h
+[emission_profile]
+utc_offset_h = -4.0
 
 [environment]
 temp_k = 298.15
@@ -67,5 +80,5 @@ organic_log10_cstar_max = -0.5
 
 [numerics]
 coupling_dt_s = 300.0
-output_dt_s = 600.0
+output_dt_s = 1800.0
 nbins = 40

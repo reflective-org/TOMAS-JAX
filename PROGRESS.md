@@ -4,6 +4,104 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-11-16 (Mon) 10:57 PST — Merge `adaptive-substep` into `dlm`
+
+- **Library and tests:** the `adaptive-substep` versions replace `dlm`'s for every conflicted file in `tomas_jax/` and `tests/`; they are the reviewed port of `dlm`'s adaptive gas sub-step / reverse-mode work (MNFIX `bounded=` → `trim=`, `dunne_form='single_exp'` rejects Table S1 coefficients, `make_step` rejects ignored options, `CoagSubstepCapWarning`/`GasSubstepCapWarning`, zhao2024 sub-step sizing).
+- **Docs:** CLAUDE.md, `docs/nucleation.md`, `nucleation_sensitivity.md`, `prescribed_j.md`, `stratosphere_setup.md`, `gas_substep.md` take the `adaptive-substep` text, keeping `dlm`'s full `sensitivities/dunne_nuc` file layout; the "on the `dlm` branch only" notes are removed. PROGRESS entries from both branches interleaved by date.
+- **Checked:** every `sensitivities/dunne_nuc` and gas-sub-step benchmark script imports; the `single_exp` callers pass `NUC_PARAMS_S2`.
+- **Tests:** all pass except `tests/test_aaar_presets_unchanged.py` (14), whose fingerprints differ at ~1e-15 relative; `adaptive-substep` alone gives the same values, so it is not from the merge. AAAR tests need `--extra photolysis` and `TUVX_JAX_ROOT` set to a tuvx-jax checkout.
+
+## 2026-11-15 21:10 PST — Tests: reverse mode with default arguments, `coag_euler_step` against the sequential MNFIX
+
+- **Why (review):** the first check in `test_default_is_fixed_euler` takes the same path twice, so it only pins the default. Nothing tested `jax.grad` through `coag_euler_step`, the error from the forward-only `trim=True`, or a whole coagulation trajectory against `tests/reference/mnfix_sequential.py`.
+- **Added:** `test_coag_euler_step_grad` (default arguments, `jax.grad` against central FD, rel 1e-6; with the existing `test_mnfix_grad_matches_jacfwd` and `test_diffrax_step_grad` this covers MNFIX, `coag_euler_step` and `diffrax_step`) and `test_mnfix_trim_fails_clearly_in_reverse_mode` (`mnfix_jax(trim=True)` and `coag_euler_step(mnfix_trim=True)` raise JAX's reverse-mode `ValueError`) in `tests/test_reverse_mode.py`. `test_coag_euler_trajectory_matches_sequential_reference` in `tests/test_mnfix.py`: 30 jitted 60 s steps, 1e13 #/cell at 3 nm on a 50 nm mode (without MNFIX, N is up to 15% different), reference MNFIX patched in; tolerance 32 ulp at every step. The difference grows from 1 ulp at step 1 to ~10 ulp at step 30 (~40 ulp by step 60): coagulation's N² feedback amplifies the FMA differences, so the `CLAUDE.md` note "1 ulp, not growing" holds for its milder state, not for this one.
+- **Docstring:** `test_default_is_fixed_euler` says what its first check covers.
+- **Tests:** `test_mnfix.py`, `test_reverse_mode.py`, `test_coag_adaptive.py`: 56 passed.
+
+## 2026-11-15 20:50 PST — Dunne S1 vs S2 comparison: state the H2SO4 range
+
+- **Doc fix (review):** `docs/nucleation.md` said the two Dunne forms "agree within about a factor of 2" at 208–223 K and gave "47–200×" at 190 K without the H2SO4 they hold at. The H2SO4 exponents differ, so S2/S1 scales as [H2SO4]^−0.33 (neutral) and [H2SO4]^−0.64 (ion); the ratio does not depend on `fion` or pressure. Replaced with a table of S2/S1 at 190/208/223/248 K × H2SO4 1e5–1e9 cm⁻³ (computed with `dunne_nucleation_rate`). The factor-of-2 agreement holds for binary neutral at 1e6–1e7 cm⁻³ only; binary ion agrees within 2 only near 1e7 (223 K) and 1e8 (208 K). The 190 K figures are 47× at 1e7 and 204× at 1e6 cm⁻³.
+
+---
+
+## 2026-11-15 20:40 PST — Gas sub-step validation scripts and `run_map` brought over from `dlm`
+
+- **Why:** `CLAUDE.md` says to rerun the gas sub-step grid after changing the controller or the coagulation intervals, and `docs/gas_substep.md` defines the test of record by names in those scripts (`reference(so2)`, `FD_CELLS`, `FD_H`, `MERGE`, `INVALID_TANGENT`, `TROPICAL_AFGL`, `run_map.dt_for`), but the scripts were only on `dlm`.
+- **Added (unchanged copies from `dlm`):** `benchmarks/python/gas_substep_psd80.py`, `benchmarks/python/gas_substep_convergence.py`, `sensitivities/dunne_nuc/run_map.py`, `sensitivities/dunne_nuc/sabre_bins.py`; `TROPICAL_AFGL` in `sensitivities/dunne_nuc/common.py` (the only difference from `dlm`'s copy). `.gitignore`: `sensitivities/*/results/`.
+- **Checked on this branch's library:** `gas_substep_convergence --smoke` PASS; `gas_substep_psd80.run_one` at 20 km / 1 ppbv, 1 h, kinds f0.1 and ref_split, runs; `gas_substep_psd80 --check` PASS on the existing results (computed with `dlm`'s library, so this checks the loading and judging code, not this branch's numbers); `run_map --smoke` runs. The full 80-bin grid has not been rerun on this branch.
+- **Docs:** `CLAUDE.md` (file layout, gas sub-step rule, testing item 9; MNFIX: bit-identical standalone, may differ by ulps fused into a larger jit or under `vmap`), branch notes in `docs/gas_substep.md`, `docs/prescribed_j.md`, `docs/nucleation_sensitivity.md`.
+- **Still on `dlm` only:** `plot_gas_substep_*.py`, `ppm_tangent_stability.py`, `prescribed_j.py` and the other phase scripts.
+
+## 2026-11-15 20:10 PST — `euler_adaptive`: warn when `coag_max_substeps` binds
+
+- **Issue (review):** `ad_mode='reverse'` lowers the `coag_max_substeps` default from 10000 to 1024, and `euler_step` drops the rest of dt when the cap binds, without saying so. 3e10 cm⁻³ in bin 0, 280 K, dt = 60 s: N = 2.58e7 in reverse mode against 1.76e7 in forward mode (47% high).
+- **Fix:** `euler_step(return_dt_left=True)` returns the time it left uncovered. `make_step` emits `CoagSubstepCapWarning` (a `RuntimeWarning`, from a `jax.debug.callback` after the coagulation process or after the adaptive gas step, outside any `cond`, so skipped branches under `vmap` cannot trigger it; it counts the batch members that hit the cap) in both AD modes. With `gas_substep='adaptive'`, `info['coag_dt_left']` is the longest time dropped in any coagulation interval. Values are unchanged.
+- **Docs:** `docs/gas_substep.md` (cap row, the reverse/forward difference, and the cost of reverse + `gas_substep='adaptive'` + `vmap`: every iteration up to `gas_max_substeps` runs, ~61 s per step against 9 ms forward), `CLAUDE.md`.
+- **Tests:** `test_cap_warns` (`tests/test_coag_adaptive.py`): forward, reverse, `vmap` with one capped member, and no warning when the cap does not bind. `test_coag_adaptive.py`, `test_coagulation_bin_ratio.py`, `test_gas_substep.py`, `test_reverse_mode.py`, `test_smoke.py`, `test_24h_scenarios.py`: 148 passed, 650 skipped.
+- **Files:** `tomas_jax/solvers/euler.py`, `tomas_jax/solvers/condensation.py`, `tests/test_coag_adaptive.py`, `docs/gas_substep.md`, `CLAUDE.md`.
+
+## 2026-11-15 19:25 PST — `dunne_form='single_exp'` no longer runs on Table S1 coefficients
+
+- **Bug (review):** `params=None` always meant `DEFAULT_NUCLEATION_PARAMS` (Table S1), so `dunne_form='single_exp'` without `DUNNE_TABLE_S2_PARAMS` put the double-exponential coefficients into the single-exponential formula (u_bn = 9.7, v_bn = 12.6 → ln k ≈ 7), giving rates orders of magnitude off with no warning. The `make_step` example in `docs/nucleation.md` did exactly that if `nucl_params` was left out.
+- **Fix:** `params=None` now means `default_nucleation_params(dunne_form)` (Table S2 for `'single_exp'`) in `dunne_nucleation_rate`, `nucleation_step` and the gas sub-step loss frequency. `check_dunne_params` raises `ValueError` when `'single_exp'` gets params whose Dunne (u, v) pairs match Table S1 (e.g. `NucleationParams()._replace(rho_nuc=...)`). It reads values, so it is skipped for traced params; `make_step(dunne_form='single_exp')` wraps its jitted step to check `nucl_params` before tracing. `'double_exp'` and its `make_step` return value are unchanged.
+- **Tests:** `test_single_exp_none_uses_table_s2`, `test_single_exp_rejects_table_s1` (`tests/test_nucleation_gradients.py`). `test_nucleation_gradients.py`, `test_nucleation.py`, `test_gas_substep.py`, `test_reverse_mode.py`: 112 passed.
+- **Known limitation:** Table S1 params passed as traced values (inside a caller's own `jit`/`grad`/`vmap`) are not caught.
+- **Files:** `tomas_jax/physics/nucleation.py`, `tomas_jax/solvers/condensation.py`, `tomas_jax/solvers/gas_substep.py`, `tests/test_nucleation_gradients.py`, `docs/nucleation.md`, `CLAUDE.md`.
+
+## 2026-11-15 — `make_step` rejects options that would be ignored
+
+- `split_chemistry=True` with `gas_substep='adaptive'` now raises `ValueError` (it was silently ignored; the adaptive path always splits).
+- With `nucl_scheme='zhao2024'`, a non-default `dunne_form` raises at the factory and a non-`None` `nucl_params` raises when the step is called/traced: zhao2024 uses its own default Dunne coefficients and its sub-step count comes from `zhao2024_nucleation_rate` (since 3bea063), so both were ignored.
+- **Tests:** `test_bad_arguments_rejected` (extended), `test_zhao2024_rejects_nucl_params`. `tests/test_gas_substep.py` + `tests/test_nucleation.py`: 84 passed.
+- **Files:** `tomas_jax/solvers/condensation.py`, `tests/test_gas_substep.py`.
+
+## 2026-11-15 — Adaptive gas sub-steps: `gas_min_dt` reachable on long coagulation intervals
+
+- **Bug (review):** `choose_gas_substep`'s candidates were max(Δt_rem/2^k, floor), k = 0…23, so the finest was max(Δt_rem/2^23, `gas_min_dt`). When Δt_rem > 2^23·`gas_min_dt` (≈ 8389 s at the default 1e-3 s, i.e. only very long coagulation intervals) `gas_min_dt` could not be reached and a failing criterion floored at Δt_rem/2^23 instead (≈ 0.012 s at Δt_rem = 1e5 s).
+- **Fix:** the floor min(`gas_min_dt`, Δt_rem) is appended as an explicit last rung (25 candidates; the forced step stays the extra one after it). Outer steps of 60 s are bit-identical (10 steps at 217 K / 100 ppmv, 217 K / 1 ppmv, 190 K / 10 ppmv: Nk, Mk, Gc equal), so the 80-bin grid of record was not rerun.
+- **Tests:** `test_floor_reached_on_long_interval[False|True]` (fails on the old code: dt_sub = Δt_rem/2^23). `tests/test_gas_substep.py` + `tests/test_reverse_mode.py`: 28 passed.
+- **Files:** `tomas_jax/solvers/gas_substep.py`, `tests/test_gas_substep.py`, `docs/gas_substep.md`.
+
+## 2026-11-13 — `make_step` nucleation sub-steps follow the zhao2024 rate
+
+- **Bug:** `make_step`'s nucleation branch sized `n_nuc` (`compute_nucleation_substeps`) from `ricco_dunne_nucleation_rate` for both schemes; its comment called that "conservative". It is not an upper bound on zhao2024: both contain Dunne, but zhao2024 adds the HNO₃, ULVOC, amine and iodine mechanisms, ignores `org_conc` and uses the default Dunne coefficients whatever `nucl_params` says. With `org_conc = 0` Ricco+Dunne ≤ zhao2024 always.
+- **Fix:** with `nucl_scheme='zhao2024'`, `fn` is `zhao2024_nucleation_rate(...)[0]` with the zhao2024 kwargs. ricco_dunne is bit-identical (forward and reverse, 3 steps at 190 K / 100 ppmv and 217 K / 1 ppmv). zhao2024 fixed-dt results change where the extra mechanisms dominate: one 60 s nucleation+coagulation step (217 K, 1e4 cm⁻³ background, H₂SO₄ 1e7 cm⁻³, hio3 = 2e7) was 14.3% low in N against 600 × 0.1 s, now 8.3% (hio3 = 3e7: 18.9% → 13.6%; the rest is coagulation run once on the step).
+- **Tests:** `test_make_step_zhao2024_substeps_follow_zhao_rate` (`tests/test_nucleation.py`; fails on the old code). `test_nucleation.py`, `test_gas_substep.py`, `test_reverse_mode.py`, `test_nucleation_gradients.py`: 107 passed.
+- **Files:** `tomas_jax/solvers/condensation.py`, `tests/test_nucleation.py`, `docs/nucleation.md`, `docs/zhao2024_nucleation.md`.
+
+## 2026-11-13 — Adaptive gas sub-steps follow the zhao2024 rate
+
+- **Bug (review):** `h2so4_loss_frequency` always used `ricco_dunne_nucleation_rate`, and `_adaptive_gas_step` passed neither `nucl_scheme` nor the zhao2024 inputs (`hno3`, `ulvoc`, `dma`, `hio3`, `enable_masks`). With `nucl_scheme='zhao2024'` the step applied `zhao2024_nucleation_step` but chose its length from a different rate, so the "clamp cannot fire" guarantee did not hold where the amine, HNO₃, organic or iodine mechanisms dominate J. Reproduced: H₂SO₄ 1e6 cm⁻³, hio3 = 1e8 cm⁻³, 217 K: one 60 s step with true k_nuc·Δt = 680, reported as 5e-6.
+- **Fix:** `h2so4_loss_frequency` / `choose_gas_substep` take a static `nucl_scheme`; for zhao2024 J is `zhao2024_nucleation_rate` (total over the enabled mechanisms) and the loss per cluster 0.9·`_MNUC`·V, the H₂SO₄ that step removes. `make_step` passes its `nucl_scheme` and the scheme's kwargs. ricco_dunne results are bit-identical (forward and reverse, 190 K / 100 ppmv and 217 K / 1 ppmv, 3 steps), so the 80-bin grid of record was not rerun.
+- **Known:** zhao2024's iodine and pure-organic clusters are charged to H₂SO₄; with no resupply the gas runs out and the sub-steps floor at `gas_min_dt` (reported in `n_floor`). The per-step nucleation sub-step count also used the Ricco+Dunne rate for zhao2024; fixed in the entry above.
+- **Tests:** `test_zhao2024_loss_frequency_is_the_step_removal`, `test_zhao2024_iodine_clamp_never_fires` (both fail on the old code). `tests/test_gas_substep.py` + `tests/test_reverse_mode.py`: 26 passed.
+- **Files:** `tomas_jax/solvers/gas_substep.py`, `tomas_jax/solvers/condensation.py`, `tests/test_gas_substep.py`, `docs/gas_substep.md`, `CLAUDE.md`.
+
+## 2026-11-13 — Adaptive gas sub-steps: a binding `gas_max_substeps` now warns and is reported
+
+- **Bug (report):** when `gas_max_substeps` binds, the last sub-step takes the whole rest of the outer step. The cap counts sub-steps per outer step, so the number needed grows with dt: at 217 K / 18200 Pa / 100 ppmv about 4,500 per 60 s and 41,000 per 600 s, against the default 16,384. Reproduced: one 600 s step at 100 ppmv gives N = NaN (the forced 369 s sub-step fires the nucleation clamp and the burst sends the fixed-Euler coagulation to NaN; without coagulation N = 5.2e9 #/cm³ against 1.25e8 with cap 200,000). At 1 ppmv, cap 64 gives 7.58e6 against 7.83e6. Nothing warned, `info['knuc_dt_max']` was computed before the override (0.0255, "clamp did not fire"), and `hit_cap` was the only signal, and only with `return_substep_info=True`.
+- **Fix:** `choose_gas_substep(force_dt=, force=)` evaluates the forced step as one more candidate, so `knuc_dt_max` covers the steps actually taken (5.2e10 and 4.6 in the two cases above). New `info['dt_capped']` (length of the forced sub-step, 0 if none); `hit_cap` now means the forced step was longer than the criterion's choice (it was `n_sub >= cap`). Every adaptive step runs a `jax.debug.callback` that emits `GasSubstepCapWarning` (a `RuntimeWarning`, exported from `solvers/condensation.py`) when the cap binds, whether or not `return_substep_info` is on. Under `vmap` it counts the batch members that hit the cap. There is no finite fallback on purpose: any answer after the cap binds is wrong, and a finite one would hide it. Values are unchanged (same N in all four cases above).
+- **Tests:** `test_binding_cap_warns_and_reports_the_forced_step[forward|reverse]`, `test_cap_warning_under_vmap` (only the capped member counted; an uncapped batch stays silent). `tests/test_gas_substep.py` + `tests/test_reverse_mode.py`: 24 passed.
+- **Docs:** `docs/gas_substep.md` (the cap scales with the outer dt, what a binding cap does, the warning, the info fields), `make_step` docstring, `CLAUDE.md`.
+- **Next:** a run with a long outer dt at high SO2 should scale `gas_max_substeps` with dt; a per-second cap would be an API change and was not made.
+- **Files:** `tomas_jax/solvers/gas_substep.py`, `tomas_jax/solvers/condensation.py`, `tests/test_gas_substep.py`, `docs/gas_substep.md`, `CLAUDE.md`.
+
+## 2026-11-13 — Adaptive gas sub-steps: forward loop no longer stalls on a closed interval
+
+- **Bug:** in `make_step(gas_substep='adaptive')` with `ad_mode='forward'`, the gas sub-step `while_loop` tested `interval_open` before its first sub-step. An interval is open while dN < `coag_interval_frac`·N0 and dN starts at 0, so with N0 = 0 (empty box, no `coagulation` in `processes` to put TINY values back) or `coag_interval_frac` <= 0 the test was 0 < 0: no sub-step, t never moved, and the outer `while_loop` spun inside XLA. The bounded (reverse) path already took one sub-step before testing and finished on the same inputs.
+- **Fix:** the forward gas loop is now a do-while: it carries the sub-step count at the start of the interval and always takes that first sub-step, as the bounded path does. `make_step` raises `ValueError` for `coag_interval_frac` <= 0. Runs with N0 > 0 are bit-identical to before (checked at 217 K, 10 ppbv and 100 ppmv, 3 steps of 60 s).
+- **Tests:** `tests/test_gas_substep.py::test_empty_box_terminates[forward|reverse]` (empty box with so2_chemistry, nucleation, condensation; the forward case hung on the previous commit) and a `coag_interval_frac=0.0` case in `test_bad_arguments_rejected`. `tests/test_gas_substep.py` and `tests/test_reverse_mode.py`: 21 passed.
+- **Files:** `tomas_jax/solvers/condensation.py`, `tests/test_gas_substep.py`, `docs/gas_substep.md`, `CLAUDE.md`.
+
+## 2026-11-13 — MNFIX: differentiable by default, trimmed loop opt-in (PR review)
+
+- **What:** `mnfix_jax(trim=False)` (new default) runs phase 3 as a `fori_loop(0, nbins)`. Each iteration still writes only rows k and kk, and in-range bins are identities. `trim=True` is the previous `while_loop` from the first to the last out-of-range bin. `make_step(mnfix_trim=None)` uses `trim=True` with `ad_mode='forward'` and the full loop with `'reverse'`; `mnfix_trim=True` with `'reverse'` raises. `coag_euler_step`, `euler_step`, `ezcond_tfl_jax` and `_condensation_step_core` take `mnfix_trim` (default False). The `bounded` argument is removed from `mnfix_jax` and `coag_euler_step`, which both gained it on this branch: `bounded=True` had run all nbins iterations anyway. `ezcond_tfl_jax` keeps `bounded` for the shared `ezcond_fn` interface; it does nothing there.
+- **Why (review comment):** with the trimmed while_loop as the default, every caller that did not pass `bounded=True` lost reverse-mode AD that it had on `main`. That included `diffrax_step`, whose only AD mode is reverse (diffrax's adjoint is a `custom_vjp`), so gradients through Tsit5 coagulation were impossible. `coagulation_jax`, `soa_partitioning`, `box/aerosol_step` and the legacy scan-fused loops in `solvers/condensation.py` were affected the same way. They all use the differentiable default now. `make_step` keeps the fast path.
+- **Results:** both settings are bit-identical to `tests/reference/mnfix_sequential.py`. `make_step` defaults are bit-identical to the previous commit (PPM, TFL, `euler_adaptive` and `gas_substep='adaptive'` at 40 and 80 bins, 20 steps). Jitted single call on a lognormal state with 0 / 1 / 3 / 10 bins out of range: 40 bins, trim 15 / 15 / 27 / 34 µs vs full 50 µs; 80 bins, trim 16 / 20 / 49 / 56 µs vs full 104–109 µs. With many bins out of range (random states), trim 94 / 119 µs vs full 102 / 158 µs at 40 / 80 bins; the original port on `main` took 140 / 287 µs. Under vmap over 64 states the full loop is ~5× faster (0.33 / 0.85 ms vs 1.7 / 4.2 ms), so vmapped ensembles should pass `make_step(mnfix_trim=False)`.
+- **Tests:** `tests/test_mnfix.py` runs the reference, jvp, bin-skipping and vmap tests for both `trim` settings. `tests/test_reverse_mode.py` adds `test_mnfix_grad_matches_jacfwd`, `test_diffrax_step_grad` (grad vs central FD, 1e-6; it fails on the previous commit with the while_loop reverse-mode error) and `test_mnfix_trim_rejected_in_reverse_mode`.
+- **Known issues (not from this change):** `jax.grad` through `diffrax_step` is NaN on the extreme random MNFIX test states (empty bins, mass above the grid), and it is NaN with `main`'s MNFIX too; the test uses a lognormal state. The `level1_volatility` fingerprint tests fail in the last digits on the previous commit as well. AAAR driver tests need `tuvx_photolysis` (`TUVX_JAX_ROOT`).
+- **Files:** `tomas_jax/core/mnfix_jax.py`, `solvers/diffrax.py`, `solvers/euler.py`, `solvers/condensation.py`, `physics/condensation_tfl_jax.py`, `tests/test_mnfix.py`, `tests/test_reverse_mode.py`, `docs/gas_substep.md`, `CLAUDE.md`.
+
 ## 2026-11-12 (Thu) 13:44 PST — 80-bin gas sub-step check over altitude, split-chemistry reference, sensitivity no longer tested
 
 - **What:** the 80-bin check (`gas_substep_psd80`) now runs over the AFGL tropical atmosphere (13, 15, 17, 20, 23, 25 km, T and P together) instead of T at 5500 Pa. Its reference is fixed dt with the SO2 chemistry split around nucleation, the scheme the adaptive sub-steps already use; the L1 sensitivity is printed but no longer part of pass/fail.
@@ -14,6 +112,13 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 - **Known issues:** the f = 0.1 tangent blows up at 13 km / 10 ppmv by 24 h (3.6), and every run's at 13 km / 100 ppmv; constant dt = 60 s goes NaN at 100 ppmv at 13–17 km (fixed-step coagulation).
 - **Next:** if per-bin sensitivities at 2–4 nm matter for the nucleation study, they need a different tangent treatment of MNFIX bin selection (or finite differences at a checked step).
 
+## 2026-11-12 — `make_step(split_chemistry=True)` (library only)
+
+- **What:** at fixed dt, run the SO2 chemistry dt/2 before and dt/2 after nucleation, as the adaptive path already does. With all the chemistry first, nucleation sees H2SO4 at the top of the step's rise, so J ~ C^n is high by about n*CS*dt/2 (first order in dt); split, the bias is O((CS*dt)^2). Default `False` is bit-identical; needs `so2_chemistry` before `nucleation` in `processes` (else `ValueError`); fixed dt only.
+- **Why:** the 80-bin fixed-dt reference was first order in dt: at 13 km / 1 ppmv it nucleated 2.3% more than a split run and put adaptive f = 0.1 at L1 number 0.050 (against the split reference it is 0.002-0.003). Split 0.5 s is 0.0014 off split 0.125 s there; unsplit 0.5 s is 0.022 off.
+- **Files:** `tomas_jax/solvers/condensation.py`; `tests/test_gas_substep.py` (`test_split_chemistry_fixed_dt`, bad-argument case); `docs/gas_substep.md` (split chemistry at fixed dt, the 80-bin check over altitude, sensitivity no longer tested); `CLAUDE.md`.
+- **Not in this PR:** the 80-bin benchmark and its plots stay on `dlm` (`benchmarks/python/gas_substep_psd80.py`, now altitude x SO2 on the AFGL tropical atmosphere against a split-chemistry reference; it tests L1 number and dry mass only, because every tangent, the references included, is 0.16-0.28 off a finite difference in the ~2-4 nm bins at 15 km / 100 ppbv).
+
 ## 2026-11-10 (Tue) 12:08 PST — 80-bin gas sub-step check: finite-difference sensitivity where the jvp blows up
 
 - **What:** at 223 K and 240 K / 100 ppmv (80 bins) the linear sub-bin coagulation tangent blows up after ~12 h in every run, the reference included (Σ|δN|/ΣN 3e6–3e45 at 24 h), so the sensitivity comparison was meaningless there. These two cells now use a central finite difference, α = ±0.05 along the H₂SO₄-calibration direction, for every run kind.
@@ -21,6 +126,34 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 - **Checked:** coarser outputs do not avoid the blow-up (2–80 bins merged, total N and N(>3 nm) are as far off as the per-bin tangent). Over the first 2 h at 240 K, FD is within 0.4% of the jvp (sensitivity ~0.5–0.7).
 - **Also this session:** constant dt = 60 s and 0.25 s run kinds replace `dt_for` in the 80-bin grid figure; hourly hour-mean series saved for the plotted kinds; `benchmarks/python/lognormal_fit.py` (1–3 lognormal mode fits, BIC) kept for later use.
 - **Next:** run the 28 FD runs (`gas_substep_psd80 --all`, roughly 25 CPU-h, 4–7 h wall, set by the four 0.02 s reference sides), then `--check` and the 80-bin figures.
+
+## 2026-11-10 — Adaptive gas sub-steps and reverse-mode AD into dev (library only)
+
+**Branch**: `adaptive-substep` (from `origin/dev`), PR into `dev`. Library, tests and docs of
+commit a064445 from `dlm`, plus the library changes it builds on (differentiable
+`NucleationParams`/`dunne_form`, `sparse_density`, vectorised MNFIX with the reference test).
+The sensitivity studies (`sensitivities/dunne_nuc/phase*.py`, `run_map.py`, ...) and the
+`benchmarks/python/gas_substep_*`, `plot_gas_substep_*`, `lognormal_fit`, `ppm_tangent_stability`
+and `reverse_mode_cost` scripts stay on `dlm`.
+
+- `solvers/gas_substep.py`, `make_step(gas_substep='adaptive')`: SO2 chemistry -> nucleation ->
+  condensation sub-stepped by the H2SO4 budget (CS + nucleation loss), coagulation and dilution on
+  coagulation intervals. Off (`None`) is bit-identical. `docs/gas_substep.md`.
+- `core/bounded_loop.py`, `make_step(ad_mode='reverse')`: traced-trip-count loops become bounded
+  scans, so `jax.grad`/`vjp` work; matches forward mode to <= 1e-11.
+- `ppm_tangent='frozen_shape'` (opt-in, PPM only; values bit-identical).
+- Tests: `test_gas_substep`, `test_reverse_mode`, `test_ppm_tangent`, `test_mnfix`,
+  `test_coag_adaptive`, `test_sparse_density`, `test_nucleation_gradients`;
+  `sensitivities/dunne_nuc/common.py` is the runner they use.
+- Docs: CLAUDE.md, `docs/{gas_substep,nucleation,nucleation_sensitivity,prescribed_j,stratosphere_setup}.md`.
+
+**Known issues**: the validation of record (`gas_substep_psd80.py --check`, ~70 CPU-h) lives on
+`dlm`, so docs that name it point at a script not on `dev`. f = 0.1 passes every cell except the
+two PPM invalid-tangent cells.
+
+**Next steps**: bring the benchmark and plotting scripts and the Phase 2-4 studies over from `dlm`.
+
+---
 
 ## 2026-11-09 (Mon) 18:10 PST — 80-bin tangent blow-up traced to linear sub-bin coagulation; occupancy cut removed
 
@@ -391,6 +524,55 @@ stratospheric aerosol, using JAX derivatives instead of an ensemble. Plan:
   T × SO₂ map.
 
 ---
+
+## 2026-10-23 (Fri) — Urban air: VOC selector benzene / toluene / m-xylene (MCM v3.3.1), stacked on the full-day Urban (B1)
+
+**Branch**: `urban-toluene` (from `urban-full-day`, PR #30); PR #31. Shantanu (2026-10-22, verbatim):
+"Another idea here would be to add a toggle for a VOC like naphthalene that can react to convert
+NO to NO2 and boost O3. This would demonstrate concepts around O3-NOx cycle, VOC effect on O3
+production, and aerosol coagulation (separately)." Naphthalene is not in MCM v3.3.1; Ali: "OK,
+let's do toluene if naphthalene does not exist". Then Shantanu: "May be use one for m-xylene? I
+don't want to use benzene or toluene since they react too slowly. 0.5 ppb/h is good enough."
+(the 0.5 ppb/h confirms the A26 NO emission); Ali: "yes. let's do it" — a four-way selector.
+
+- `gaschem/mechanisms/{benzene,toluene,mxyl}_mcm.eqn`: the MCM website's BENZENE, TOLUENE and
+  MXYL exports in KPP format (inorganic + generic rates), byte-identical, each with a
+  `.provenance.md` (URL, 2026-10-23, sha256, MCM citation); `config.AROMATIC_EQN`. `kpp_parser`
+  skips the exports' section markers.
+- `gaschem/merge.py`: `merge_mechanisms(base, extra, label_prefix)` keeps a reaction once when
+  reactants, products and rate expression agree, raises on a conflicting duplicate or atom
+  conflict (none in any subset), adds the others with the prefix, RO2 = union. Against
+  limonene: benzene 105 shared / 331 new reactions (121 new species), toluene 326 / 505 (181),
+  m-xylene 326 / 534 (191); all three chained 1097 species, 3173 reactions, 225 RO2.
+- `gaschem/photolysis.py`: J_CH3CHO (TUV-x acetaldehyde) and J_MVK_CO (TUV-x MVK total with the
+  MCM branching); every J of every merge has a source (a missing one raises).
+- `box/coupling.py`: `aromatic_merge`, `aromatic_species`, `all_aromatic_species`,
+  `aromatics_used`, `merged_mechanism`, `tutorial_mechanism(aromatics)`; `box/driver.py` picks
+  the subsets per run (a run with one VOC pays for its subset alone). Levels 1–3, Indoor and
+  the Urban preset are bit-identical (fingerprints kept; merging everywhere was measured:
+  1e-7–1e-5 on gases, 1e-3 on Level 2 SOA, class MW +52 %). The VOC is reported when present;
+  the c* fallback warning only where SOA partitioning or nucleation is on; `warmup()` compiles
+  the three variants of the urban preset.
+- `level1_urban` preset: no aromatic; `scenario.URBAN_VOC_SPECIES`, `URBAN_VOC_PPB_ON` = 5 ppb
+  for all three (the same level isolates k_OH: 1.2e-12 / 5.6e-12 / 2.3e-11 cm³ s⁻¹ at 298 K;
+  A27). Full day: O3 maximum none 30.9 ppb at 10:00, benzene 31.0, toluene 41.8 at 17:30,
+  m-xylene 94.5 at 19:00 (the VOC used up by 16:00); tables in `docs/aaar/coupling.md` and A27.
+- PyCHAM checks, cases T1 (toluene), T2 (benzene), T3 (m-xylene) (`benchmarks/pycham/cases/T1`,
+  `pycham_inputs.write_merged_eqn(aromatics)`): same RO2 pools; max relative difference over 6 h
+  of sunlight at 300 s coupling: toluene 3.8e-4 / O3 2.4e-4 / NO 7.1e-4 / NO2 4.4e-4 / OH 5.3e-4
+  / HO2 1.0e-3; benzene 4.2e-5 / 7.2e-5 / 2.1e-4 / 1.5e-4 / 5.1e-4 / 6.8e-4; m-xylene O3 1.3e-4
+  / NO 9.1e-4 / NO2 7.5e-4 / OH 5.1e-4 / HO2 9.4e-4 (the VOC 1.7e-2 on its 0.007 ppb remainder);
+  131 / 54 / 175 species all within 10 %.
+- Cost: 10.0 → 14.0 / 15.7 / 16.0 ms per solver step (benzene / toluene / m-xylene), the Urban
+  day 27 → 38 / 44 / 48 s (1.4 / 1.6 / 1.75×); zero when no VOC is chosen.
+- Tests: `tests/test_aaar_aromatics.py` (21), fingerprints `level1_urban+benzene/+toluene/
+  +mxylene@1h/@24h` added (nothing regenerated), `test_gaschem` adjusted for the two extra J
+  sources.
+- Docs: `docs/aaar/gaschem.md`, `coupling.md`, `pycham_comparison.md` (T1–T3), ASSUMPTIONS A27
+  and question 12, CLAUDE.md.
+- Open: a Nannoolal c* table for the aromatic products (they fall back to Li et al. 2016); the
+  5 ppb level for all three (m-xylene gives O3 above 90 ppb in the undiluted layer) and the
+  night-time HO2 with a VOC on, for Shantanu.
 
 ## 2026-10-20 (Tue) — Nucleation inputs: ions, NH3, organic vapour; Level 1 H2SO4 reaches the particles
 

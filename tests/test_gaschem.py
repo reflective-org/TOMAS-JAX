@@ -190,7 +190,10 @@ def j_names(parsed):
 
 
 def test_every_mechanism_j_has_a_source(j_names):
-    assert set(j_names) == set(SOURCES)
+    # the limonene subset uses 28 J; J_CH3CHO and J_MVK_CO are for the toluene subset
+    # (tests/test_aaar_toluene.py checks that the merged mechanism uses every source)
+    assert len(j_names) == 28
+    assert set(SOURCES) - set(j_names) == {"J_CH3CHO", "J_MVK_CO"}
     assert set(MCM_ONLY) == {"J_C3H7CHO_HCO", "J_IPRCHO", "J_C5HPALD1"}
 
 
@@ -217,11 +220,12 @@ def test_photolysis_tuvx_matches_direct_tuvx(j_names):
     from tomas_jax.gaschem.config import TUVX_CONFIG
     root = tuvx_root()
     calc = PhotolysisCalculator.from_tuvx_json(root / TUVX_CONFIG, data_root=root)
-    jp = JProvider(j_names, BUFFALO_JULY)
+    names = sorted(SOURCES)                             # the 28 limonene J + the 2 toluene J
+    jp = JProvider(names, BUFFALO_JULY)
     for local_hour in (7.0, 12.0, 17.5):                # Buffalo local = UTC - 5 h
         assert jp.sza_deg(local_hour * 3600) < 80
         ref = calc.rate_constants(42.9, -78.9, 2026, 7, 1, 5 + local_hour, altitude_km=0.0)
-        got = dict(zip(j_names, jp.at(local_hour * 3600)))
+        got = dict(zip(names, jp.at(local_hour * 3600)))
         for name, key in TUVX_DIRECT.items():
             assert got[name] == pytest.approx(ref[key], rel=1e-2), name
     assert not jp.at(-4 * 3600.0).any()                 # 01 local: night

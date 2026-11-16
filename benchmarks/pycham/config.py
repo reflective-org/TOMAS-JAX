@@ -47,12 +47,15 @@ OURS_TIMEOUT_S = 1800.0       # one TOMAS-JAX run (enforced through driver.run(c
 COPY_TIMEOUT_S = 600.0        # cp -R of the PyCHAM checkout
 XLSX_TIMEOUT_S = 120.0        # writing J.xlsx in the PyCHAM venv
 # run_all.py: cases in order and the wall-clock limit of each step (whole process group)
-RUN_ALL_CASES = ("g2", "G3", "S1", "S2")
+RUN_ALL_CASES = ("g2", "G3", "S1", "S2", "T1", "T2", "T3")
 RUN_ALL_TIMEOUTS_S = {
     "g2": {"run": 1800.0, "analyse": 600.0},
     "G3": {"run": 5400.0, "analyse": 900.0},
     "S1": {"run": 3600.0, "analyse": 600.0},
     "S2": {"run": 5400.0, "analyse": 900.0},
+    "T1": {"run": 2400.0, "analyse": 600.0},
+    "T2": {"run": 2400.0, "analyse": 600.0},
+    "T3": {"run": 2400.0, "analyse": 600.0},
 }
 RESULT_SIZE_LIMIT_MB = 2.5    # per case results/ (guideline ~2 MB); run_all warns above
 
@@ -155,6 +158,36 @@ G2 = {
     "n_pan_species": 4,                   # PAN + the most abundant other PAN-type species
     "n_particle_relevant": 6,             # top particle-phase contributors, full Level 2 run
 }
+
+# --- Cases T1-T3: gas-only, an aromatic VOC + NOx + O3 in sunlight (2026-10-23) -------------
+def _aromatic_case(name: str, voc: str, label: str) -> dict:
+    return {
+        "name": name,
+        "voc": voc,
+        "preset": "level1_urban",
+        "description": f"Gas-phase only, Urban air gases with 5 ppb {label}, 6 h of daylight from "
+                       "10:00 EDT (TUV-x J prescribed), no emissions; the limonene mechanism with "
+                       f"the MCM {voc} subset merged in, in both models",
+        "processes": {"coagulation": False, "h2so4_condensation": False,
+                      "soa_partitioning": False, "n2o5_uptake": False, "nucleation": False},
+        "start_utc": "2026-07-01T14:00:00+00:00",       # 10:00 EDT, 1 July
+        "duration_h": 6.0,
+        "voc_ppb": 5.0,                                  # box.scenario.URBAN_VOC_PPB_ON
+        "coupling_dt_s": 300.0,
+        "coupling_dt_sensitivity_s": 60.0,               # = PyCHAM update_step
+        "eqn_rate_overrides": {"34": "0.0"},
+        "key_species": (voc, "O3", "NO", "NO2", "OH", "HO2", "NO3", "HNO3", "HCHO", "PAN",
+                        "GLYOX", "MGLYOX", "H2O2", "CO"),
+    }
+
+
+T1 = _aromatic_case("T1", "TOLUENE", "toluene")
+T1["key_species"] = T1["key_species"][:10] + ("CRESOL", "BENZAL") + T1["key_species"][10:]
+T2 = _aromatic_case("T2", "BENZENE", "benzene")
+T2["key_species"] = T2["key_species"][:10] + ("PHENOL",) + T2["key_species"][10:]
+T3 = _aromatic_case("T3", "MXYL", "m-xylene")
+T3["key_species"] = T3["key_species"][:10] + ("MXYLOL",) + T3["key_species"][10:]
+AROMATIC_CASES = {"T1": T1, "T2": T2, "T3": T3}
 
 # --- Case G3: gas-only, Level 3 day/night ---------------------------------------------
 G3 = {

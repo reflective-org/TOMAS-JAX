@@ -313,6 +313,179 @@ H2SO4 in cm⁻³, J in cm⁻³ s⁻¹, "< 10 nm" the number below 10 nm):
   as well 10.6 (2.3e4); BioOxOrg peaks at 5.1e6 cm⁻³.
 - Wall time is unchanged by the inputs (about 28–33 s for 4–6 h, 118 s for 24 h).
 
+### Diurnal emission profile (Urban air, 2026-10-22, ASSUMPTIONS A26)
+
+`Scenario.emission_profile` (TOML `[emission_profile]`; `utc_offset_h`, `hourly_weights`)
+gives the emissions a daily shape: the rate at local hour h is
+
+  E(h) = E_mean · w(h) / mean(w),
+
+so the 24 h mean is the input rate `emissions_ppb_per_h` whatever the scale of the weights.
+Local time = UTC + `utc_offset_h`; w is constant within each local hour; ŵ of step 1 is the
+exact average of w(h)/mean(w) over the coupling interval. The default weights are the
+road-transport hourly factors of Denier van der Gon et al. (2011, TNO report for EU FP7 MACC
+D_D-EMIS_1.3, Appendix 1, category 07;
+https://atmosphere.copernicus.eu/sites/default/files/2019-07/MACC_TNO_del_1_3_v2.pdf).
+Without the field (every preset but Urban air) the code path is the one before, so those runs
+stay bit-identical. The emission and the profile apply to every emitted species, so a profile
+with several emissions would shape them all the same way.
+
+Level 1 Urban air, 24 h from 00:00 EDT, default E_mean = 0.5 ppb/h of NO, O3 30 / NO 0.5 /
+NO2 15 ppb at the start, one layer height (no dilution), no ozone deposition (2026-10-22,
+32 s, 2729 solver steps; ppb):
+
+| local | E(h) ppb/h | O3 | NO | NO2 | O3+NO2 | HNO3 | N2O5 | J(NO2) 1e-3 s⁻¹ | OH 1e6 cm⁻³ |
+|---|---|---|---|---|---|---|---|---|---|
+| 00:00 | – | 30.00 | 0.50 | 15.00 | 45.00 | 0.00 | 0.00 | 0.00 | 0.00 |
+| 01:00 | 0.10 | 28.19 | 0.00 | 13.46 | 41.65 | 0.00 | 1.01 | 0.00 | 0.00 |
+| 02:00 | 0.04 | 27.08 | 0.00 | 11.96 | 39.04 | 0.00 | 1.73 | 0.00 | 0.00 |
+| 03:00 | 0.03 | 26.12 | 0.00 | 10.91 | 37.02 | 0.00 | 2.23 | 0.00 | 0.00 |
+| 04:00 | 0.03 | 25.26 | 0.00 | 10.17 | 35.43 | 0.00 | 2.57 | 0.00 | 0.00 |
+| 05:00 | 0.05 | 24.47 | 0.00 | 9.72 | 34.20 | 0.00 | 2.79 | 0.00 | 0.00 |
+| 06:00 | 0.11 | 27.32 | 0.63 | 15.21 | 42.53 | 0.00 | 0.01 | 0.57 | 0.00 |
+| 07:00 | 0.43 | 29.40 | 3.16 | 13.10 | 42.50 | 0.01 | 0.00 | 3.17 | 0.05 |
+| 08:00 | 0.92 | 30.47 | 5.18 | 11.94 | 42.41 | 0.07 | 0.00 | 5.74 | 0.26 |
+| 09:00 | 0.93 | 30.84 | 6.47 | 11.36 | 42.20 | 0.26 | 0.00 | 7.56 | 0.68 |
+| 10:00 | 0.71 | 30.94 | 7.23 | 10.90 | 41.84 | 0.64 | 0.00 | 8.82 | 1.26 |
+| 11:00 | 0.62 | 30.86 | 7.64 | 10.48 | 41.34 | 1.22 | 0.00 | 9.64 | 1.88 |
+| 12:00 | 0.60 | 30.63 | 7.81 | 10.11 | 40.74 | 1.96 | 0.00 | 10.12 | 2.38 |
+| 13:00 | 0.66 | 30.26 | 7.83 | 9.84 | 40.11 | 2.80 | 0.00 | 10.29 | 2.65 |
+| 14:00 | 0.72 | 29.79 | 7.77 | 9.72 | 39.51 | 3.64 | 0.00 | 10.16 | 2.59 |
+| 15:00 | 0.72 | 29.21 | 7.63 | 9.77 | 38.99 | 4.37 | 0.00 | 9.72 | 2.21 |
+| 16:00 | 0.79 | 28.47 | 7.46 | 10.10 | 38.57 | 4.93 | 0.00 | 8.95 | 1.61 |
+| 17:00 | 1.02 | 27.39 | 7.27 | 10.88 | 38.27 | 5.27 | 0.00 | 7.76 | 0.93 |
+| 18:00 | 1.04 | 25.87 | 6.75 | 12.22 | 38.09 | 5.40 | 0.00 | 6.02 | 0.40 |
+| 19:00 | 0.75 | 23.58 | 5.23 | 14.41 | 37.99 | 5.39 | 0.00 | 3.54 | 0.11 |
+| 20:00 | 0.53 | 19.69 | 1.90 | 18.25 | 37.95 | 5.29 | 0.00 | 0.80 | 0.01 |
+| 21:00 | 0.37 | 16.95 | 0.00 | 19.66 | 36.61 | 5.18 | 0.42 | 0.00 | 0.00 |
+| 22:00 | 0.31 | 15.90 | 0.00 | 18.78 | 34.68 | 5.07 | 0.99 | 0.00 | 0.00 |
+| 23:00 | 0.31 | 14.96 | 0.00 | 18.27 | 33.23 | 4.97 | 1.38 | 0.00 | 0.00 |
+| 24:00 | 0.22 | 14.11 | 0.00 | 17.81 | 31.92 | 4.86 | 1.70 | 0.00 | 0.00 |
+
+(E(h) is the emission over the hour before, from the model's emitted-NO budget; sum 12.0 ppb.)
+What it shows: titration by NO only at the evening rush (the night NO emission is 0.03-0.1 ppb/h);
+the night O3 loss is NO2 + O3 → NO3 → N2O5, a reservoir that returns NOx and O3 at sunrise
+(Ox 34.2 → 42.5 ppb); no morning rush-hour dip because sunrise photolysis is faster than
+the titration; a daytime maximum of 30.9 ppb at 10:00; no net afternoon O3 production without
+VOCs (Ox falls 42.5 → 38.1 ppb from 06:00 to 18:00 as NO2 + OH makes HNO3).
+
+### VOC selector: benzene, toluene or m-xylene (Urban air, 2026-10-23, ASSUMPTIONS A27)
+
+The Urban preset carries no aromatic VOC. The web app's selector sets BENZENE, TOLUENE or MXYL to
+`box.scenario.URBAN_VOC_PPB_ON` = 5 ppb at 00:00 (the same level for all three, so the choices
+differ only in k_OH; not emitted, see A27) and the run integrates the limonene mechanism with
+that VOC's MCM v3.3.1 subset merged in (`docs/aaar/gaschem.md`, "The aromatic subsets and the
+merge"): VOC + OH → RO2, RO2 + NO → NO2 + RO, NO2 + hν → NO + O(³P) → O3, so NO is turned into
+NO2 without using O3 and the photostationary balance shifts to more O3. The lifetime
+τ = 1/(k_OH [OH]) with k_OH(298 K) = 1.2e-12 (benzene), 5.6e-12 (toluene), 2.3e-11 cm³ s⁻¹
+(m-xylene) in the MCM (the rate expressions of the exports; IUPAC evaluation, Atkinson et al.
+2006, https://doi.org/10.5194/acp-6-3625-2006) is about 4 days, 17 h and 4 h at an OH of
+3e6 cm⁻³. "None" is bit-identical to the preset before the selector existed (the limonene
+mechanism alone is integrated). Full day, default preset otherwise (ppb; OH and HO2 in
+1e6 cm⁻³; 2026-10-23; laptop wall time none 27 s, benzene 38 s, toluene 44 s, m-xylene 48 s):
+
+| VOC (5 ppb at 00:00) | O3 maximum (ppb, local) | O3 15:00 | O3 18:00 | O3 24:00 | Ox 06:00 → 18:00 | OH 13:00 (1e6 cm⁻³) | HO2 13:00 (1e6) | HNO3 24:00 | VOC left at 24:00 |
+|---|---|---|---|---|---|---|---|---|---|
+| none | 30.9 at 10.0 h | 29.2 | 25.9 | 14.1 | 42.5 → 38.1 | 2.6 | 2.8 | 4.9 | 0.00 |
+| benzene | 31.0 at 10.5 h | 30.1 | 27.2 | 15.7 | 42.5 → 39.2 | 2.8 | 3.7 | 5.5 | 4.61 |
+| toluene | 41.8 at 17.5 h | 38.6 | 41.8 | 32.7 | 42.5 → 52.2 | 4.3 | 11.6 | 9.4 | 2.61 |
+| m-xylene | 94.5 at 19.0 h | 81.3 | 94.0 | 88.6 | 41.4 → 97.8 | 12.7 | 108.3 | 16.4 | 0.00 |
+
+| local | O3 none | O3 benzene | O3 toluene | O3 m-xylene | NO none | NO benzene | NO toluene | NO m-xylene |
+|---|---|---|---|---|---|---|---|---|
+| 00:00 | 30.00 | 30.00 | 30.00 | 30.00 | 0.50 | 0.50 | 0.50 | 0.50 |
+| 01:00 | 28.19 | 28.19 | 28.19 | 28.19 | 0.00 | 0.00 | 0.00 | 0.00 |
+| 02:00 | 27.08 | 27.08 | 27.08 | 27.07 | 0.00 | 0.00 | 0.00 | 0.00 |
+| 03:00 | 26.12 | 26.12 | 26.12 | 26.08 | 0.00 | 0.00 | 0.00 | 0.00 |
+| 04:00 | 25.26 | 25.26 | 25.26 | 25.19 | 0.00 | 0.00 | 0.00 | 0.00 |
+| 05:00 | 24.47 | 24.47 | 24.47 | 24.37 | 0.00 | 0.00 | 0.00 | 0.00 |
+| 06:00 | 27.32 | 27.32 | 27.32 | 26.69 | 0.63 | 0.63 | 0.63 | 0.62 |
+| 07:00 | 29.40 | 29.40 | 29.40 | 28.92 | 3.16 | 3.16 | 3.16 | 3.08 |
+| 08:00 | 30.47 | 30.48 | 30.51 | 30.53 | 5.18 | 5.17 | 5.17 | 4.93 |
+| 09:00 | 30.84 | 30.86 | 31.01 | 32.36 | 6.47 | 6.46 | 6.43 | 5.84 |
+| 10:00 | 30.94 | 31.01 | 31.46 | 36.03 | 7.23 | 7.21 | 7.09 | 5.75 |
+| 11:00 | 30.86 | 31.01 | 32.10 | 42.72 | 7.64 | 7.60 | 7.30 | 4.86 |
+| 12:00 | 30.63 | 30.91 | 33.11 | 52.23 | 7.81 | 7.72 | 7.13 | 3.62 |
+| 13:00 | 30.26 | 30.73 | 34.61 | 62.86 | 7.83 | 7.69 | 6.68 | 2.47 |
+| 14:00 | 29.79 | 30.46 | 36.53 | 72.86 | 7.77 | 7.55 | 6.05 | 1.61 |
+| 15:00 | 29.21 | 30.11 | 38.64 | 81.35 | 7.63 | 7.34 | 5.35 | 1.06 |
+| 16:00 | 28.47 | 29.56 | 40.52 | 87.86 | 7.46 | 7.11 | 4.69 | 0.75 |
+| 17:00 | 27.39 | 28.63 | 41.63 | 92.03 | 7.27 | 6.86 | 4.15 | 0.62 |
+| 18:00 | 25.87 | 27.21 | 41.76 | 94.03 | 6.75 | 6.32 | 3.54 | 0.55 |
+| 19:00 | 23.58 | 25.02 | 40.85 | 94.49 | 5.23 | 4.84 | 2.47 | 0.38 |
+| 20:00 | 19.69 | 21.34 | 38.85 | 93.95 | 1.90 | 1.70 | 0.72 | 0.10 |
+| 21:00 | 16.95 | 18.74 | 36.89 | 92.39 | 0.00 | 0.00 | 0.00 | 0.00 |
+| 22:00 | 15.90 | 17.60 | 35.30 | 90.81 | 0.00 | 0.00 | 0.00 | 0.00 |
+| 23:00 | 14.96 | 16.60 | 33.94 | 89.67 | 0.00 | 0.00 | 0.00 | 0.00 |
+| 24:00 | 14.11 | 15.70 | 32.75 | 88.63 | 0.00 | 0.00 | 0.00 | 0.00 |
+
+| local | NO2 none | NO2 benzene | NO2 toluene | NO2 m-xylene | OH none | OH benzene | OH toluene | OH m-xylene |
+|---|---|---|---|---|---|---|---|---|
+| 00:00 | 15.00 | 15.00 | 15.00 | 15.00 | 0.00 | 0.00 | 0.00 | 0.00 |
+| 01:00 | 13.46 | 13.46 | 13.46 | 13.48 | 0.00 | 0.00 | 0.00 | 0.02 |
+| 02:00 | 11.96 | 11.96 | 11.96 | 12.08 | 0.00 | 0.00 | 0.00 | 0.05 |
+| 03:00 | 10.91 | 10.91 | 10.91 | 11.17 | 0.00 | 0.00 | 0.00 | 0.07 |
+| 04:00 | 10.17 | 10.17 | 10.17 | 10.59 | 0.00 | 0.00 | 0.00 | 0.09 |
+| 05:00 | 9.72 | 9.72 | 9.72 | 10.28 | 0.00 | 0.00 | 0.00 | 0.10 |
+| 06:00 | 15.21 | 15.21 | 15.21 | 14.69 | 0.00 | 0.00 | 0.00 | 0.03 |
+| 07:00 | 13.10 | 13.10 | 13.10 | 12.61 | 0.05 | 0.05 | 0.06 | 0.21 |
+| 08:00 | 11.94 | 11.94 | 11.94 | 11.45 | 0.26 | 0.26 | 0.28 | 0.71 |
+| 09:00 | 11.36 | 11.36 | 11.36 | 10.84 | 0.68 | 0.70 | 0.80 | 1.88 |
+| 10:00 | 10.90 | 10.89 | 10.88 | 10.26 | 1.26 | 1.31 | 1.58 | 3.86 |
+| 11:00 | 10.48 | 10.47 | 10.44 | 9.50 | 1.88 | 1.96 | 2.53 | 6.39 |
+| 12:00 | 10.11 | 10.10 | 10.02 | 8.32 | 2.38 | 2.52 | 3.50 | 9.35 |
+| 13:00 | 9.84 | 9.82 | 9.66 | 6.79 | 2.65 | 2.83 | 4.33 | 12.65 |
+| 14:00 | 9.72 | 9.68 | 9.37 | 5.26 | 2.59 | 2.82 | 4.81 | 15.81 |
+| 15:00 | 9.77 | 9.70 | 9.15 | 4.06 | 2.21 | 2.47 | 4.78 | 17.45 |
+| 16:00 | 10.10 | 10.00 | 9.13 | 3.38 | 1.61 | 1.84 | 4.11 | 15.74 |
+| 17:00 | 10.88 | 10.74 | 9.53 | 3.33 | 0.93 | 1.11 | 2.91 | 10.86 |
+| 18:00 | 12.22 | 12.04 | 10.43 | 3.73 | 0.40 | 0.50 | 1.62 | 5.49 |
+| 19:00 | 14.41 | 14.15 | 11.87 | 4.33 | 0.11 | 0.15 | 0.65 | 1.88 |
+| 20:00 | 18.25 | 17.77 | 13.99 | 5.01 | 0.01 | 0.02 | 0.13 | 0.30 |
+| 21:00 | 19.66 | 19.00 | 13.86 | 4.56 | 0.00 | 0.00 | 0.02 | 0.02 |
+| 22:00 | 18.78 | 18.08 | 12.41 | 3.90 | 0.00 | 0.02 | 0.07 | 0.19 |
+| 23:00 | 18.27 | 17.48 | 11.47 | 3.57 | 0.00 | 0.01 | 0.09 | 0.33 |
+| 24:00 | 17.81 | 16.93 | 10.73 | 3.37 | 0.00 | 0.01 | 0.11 | 0.42 |
+
+| local | HO2 none | HO2 benzene | HO2 toluene | HO2 m-xylene | benzene | toluene | m-xylene |
+|---|---|---|---|---|---|---|---|
+| 00:00 | 0.0 | 0.0 | 0.0 | 0.0 | 5.00 | 5.00 | 5.00 |
+| 01:00 | 0.0 | 0.0 | 0.0 | 11.6 | 5.00 | 5.00 | 4.99 |
+| 02:00 | 0.0 | 0.0 | 0.0 | 16.7 | 5.00 | 5.00 | 4.96 |
+| 03:00 | 0.0 | 0.0 | 0.0 | 18.3 | 5.00 | 5.00 | 4.91 |
+| 04:00 | 0.0 | 0.0 | 0.0 | 19.2 | 5.00 | 5.00 | 4.84 |
+| 05:00 | 0.0 | 0.0 | 0.0 | 19.7 | 5.00 | 5.00 | 4.77 |
+| 06:00 | 0.1 | 0.1 | 0.1 | 1.8 | 5.00 | 5.00 | 4.71 |
+| 07:00 | 0.1 | 0.1 | 0.2 | 2.3 | 5.00 | 5.00 | 4.66 |
+| 08:00 | 0.4 | 0.4 | 0.7 | 4.5 | 5.00 | 4.98 | 4.50 |
+| 09:00 | 0.8 | 0.9 | 1.7 | 10.2 | 4.99 | 4.93 | 4.05 |
+| 10:00 | 1.4 | 1.6 | 3.2 | 21.8 | 4.96 | 4.81 | 3.20 |
+| 11:00 | 1.9 | 2.4 | 5.4 | 40.9 | 4.93 | 4.62 | 2.09 |
+| 12:00 | 2.5 | 3.2 | 8.3 | 69.1 | 4.88 | 4.34 | 1.09 |
+| 13:00 | 2.8 | 3.7 | 11.6 | 108.3 | 4.82 | 4.01 | 0.44 |
+| 14:00 | 2.8 | 3.9 | 14.6 | 161.3 | 4.76 | 3.65 | 0.13 |
+| 15:00 | 2.5 | 3.6 | 16.7 | 222.1 | 4.71 | 3.31 | 0.03 |
+| 16:00 | 1.9 | 2.9 | 16.6 | 249.2 | 4.66 | 3.03 | 0.01 |
+| 17:00 | 1.1 | 1.9 | 13.7 | 198.5 | 4.63 | 2.82 | 0.00 |
+| 18:00 | 0.5 | 1.0 | 9.6 | 117.3 | 4.62 | 2.70 | 0.00 |
+| 19:00 | 0.2 | 0.5 | 6.1 | 60.8 | 4.61 | 2.64 | 0.00 |
+| 20:00 | 0.1 | 0.2 | 4.4 | 32.8 | 4.61 | 2.62 | 0.00 |
+| 21:00 | 0.2 | 3.8 | 16.5 | 5.3 | 4.61 | 2.62 | 0.00 |
+| 22:00 | 0.7 | 13.1 | 24.6 | 21.3 | 4.61 | 2.62 | 0.00 |
+| 23:00 | 0.8 | 6.9 | 20.1 | 26.6 | 4.61 | 2.61 | 0.00 |
+| 24:00 | 0.8 | 5.0 | 18.2 | 28.7 | 4.61 | 2.61 | 0.00 |
+
+What it shows: the afternoon O3 build-up scales with the VOC's reactivity. Benzene (τ ≈ 4 days)
+changes the day by about a ppb (O3 +1.3 ppb at 18:00; 0.4 of the 5 ppb oxidised). Toluene
+(τ ≈ 17 h) gives a clear afternoon maximum of 41.8 ppb at 17:30 (off: 30.9 at 10:00 and
+falling), +16 ppb at 18:00, 32.8 ppb at midnight instead of 14.1, Ox 42.5 → 52.2 ppb over the
+sunlit hours instead of falling to 38.1. m-Xylene (τ ≈ 4 h) is used up by 16:00 and drives O3 to
+94.5 ppb at 19:00 (NO down to 0.5 ppb by 18:00, NO2 to 3.3 ppb; OH 1.7e7 and HO2 2.5e8 cm⁻³ at
+15:00–16:00, HNO3 16 ppb by midnight) — a strong photochemical episode in a layer that is never
+diluted, honest numbers for Shantanu (A27). With a VOC on, HO2 stays at 1e6–3e7 cm⁻³ at night
+(NO3 and O3 reactions of the ring-opening products; m-xylene also reacts with NO3 before dawn:
+0.3 ppb gone by 06:00).
+
 ## Presets and runtime (warm process, laptop CPU)
 
 | Preset | What it shows | Duration | Δt_c | Wall time |
@@ -320,7 +493,10 @@ H2SO4 in cm⁻³, J in cm⁻³ s⁻¹, "< 10 nm" the number below 10 nm):
 | `level1_volatility` | growth vs c* (0.01: 54→133 nm; 100: 54→57 nm GMD) | 12 h | 300 s | ~1.7 s |
 | `level2_limonene_soa` | limonene oxidation → ~9 µg/m³ SOA (Jathar c* table, A8), top contributors | 6 h | 300 s | ~6 s |
 | `level3_day_night` | diurnal J/OH/NO3; nitrate 0 → 3.3 → 7.1 µg/m³ for γ = 0, 0.02, 0.1; SOA 0.05 µg/m³ | 24 h | 300 s | ~27 s |
-| `level1_urban` | O3/NO/NO2 in midday sun with 1 ppb/h NO (photostationary state to 1 %); 2e4 → 1.2e4 cm⁻³ by coagulation only, dry mass conserved | 6 h | 300 s | ~5.5 s |
+| `level1_urban` | a whole day from 00:00 local: O3 30 ppb at the start, traffic-shaped NO emission (0.5 ppb/h mean), no dilution, no O3 deposition; night loss, evening titration, photostationary state in daylight (1 %); 2e4 → 6.7e3 cm⁻³ by coagulation only, dry mass conserved (A26) | 24 h | 300 s | ~32 s |
+| `level1_urban` + benzene 5 ppb | the VOC selector (A27): limonene + benzene subset (2466 reactions); O3 +1.3 ppb at 18:00 | 24 h | 300 s | ~38 s |
+| `level1_urban` + toluene 5 ppb | limonene + toluene subset (2640 reactions); afternoon O3 maximum 41.8 ppb at 17:30, 32.8 at midnight | 24 h | 300 s | ~44 s |
+| `level1_urban` + m-xylene 5 ppb | limonene + m-xylene subset (2669 reactions); O3 94.5 ppb at 19:00, the VOC used up by 16:00 | 24 h | 300 s | ~48 s |
 | `level2_indoor` | dark limonene ozonolysis at O3 held at 30 ppb, with ventilation, O3 surface loss, vapour wall loss and deposition; SOA peak 1.0 µg/m³ (9 with the losses off; 0.2 with O3 free to fall to 5.6 ppb) | 4 h | 300 s | ~8 s |
 
 With nucleation on, every preset runs at 60 s coupling with 5 s micro-steps and takes
@@ -368,10 +544,11 @@ The urban and indoor levels add constant emissions and first-order losses. They 
 operator-split like everything else: each acts once per coupling interval Δt_c, in this
 order within the interval (A17, A19):
 
-1. Emissions: y_s ← y_s + E_s Δt_c for every emitted species, before the gas chemistry
+1. Emissions: y_s ← y_s + E_s Δt_c ŵ for every emitted species, before the gas chemistry
    (`emissions_ppb_per_h`, converted with E [molec cm⁻³ s⁻¹] = E [ppb/h] × 10⁻⁹ M / 3600).
    Adding the whole interval's emission up front is first order in Δt_c, as the rest of
-   the split (at 300 s with 1 ppb/h of NO this is 0.08 ppb per interval).
+   the split (at 300 s with 1 ppb/h of NO this is 0.08 ppb per interval). ŵ = 1 unless the
+   scenario has a diurnal `emission_profile` (below).
 2. Cloud fraction: every photolysis rate used in the interval (and reported) is
    J = J_clear × (1 − 0.75 CF). This is a tutorial simplification, not a radiative
    transfer result (A16).

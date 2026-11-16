@@ -10,7 +10,9 @@ All functions are pure-JAX and JIT-compilable.
 import warnings
 from typing import NamedTuple
 
+import jax
 import jax.numpy as jnp
+import numpy as np
 
 from ..core.config import (
     SRTSO4, SRTORGLAST, ICOMP,
@@ -97,6 +99,48 @@ DUNNE_TABLE_S2_PARAMS = NucleationParams(
 )
 
 
+_S1_UV = {
+    'bn': (_UBN, _VBN), 'tn': (_UTN, _VTN),
+    'bi': (_UBI, _VBI), 'ti': (_UTI, _VTI),
+}
+
+
+def default_nucleation_params(dunne_form='double_exp'):
+    """Published coefficients for a Dunne form: Table S1 or Table S2.
+
+    ``params=None`` means this everywhere, so 'single_exp' never runs on
+    the Table S1 coefficients (u_bn = 9.7, v_bn = 12.6 give ln k ~ 7 in the
+    single-exponential formula, orders of magnitude off).
+    """
+    if dunne_form == 'double_exp':
+        return DEFAULT_NUCLEATION_PARAMS
+    if dunne_form == 'single_exp':
+        return DUNNE_TABLE_S2_PARAMS
+    raise ValueError(f"Unknown dunne_form '{dunne_form}'. Valid: {DUNNE_FORMS}")
+
+
+def check_dunne_params(params, dunne_form):
+    """Raise if 'single_exp' is given Table S1 (u, v) coefficients.
+
+    Compares the four Dunne (u, v) pairs with Table S1; a match means the
+    double-exponential coefficients went into the single-exponential
+    formula. Other fields (cluster, Riccobono) may be anything, so
+    ``DUNNE_TABLE_S2_PARAMS._replace(rho_nuc=...)`` passes. Skipped for
+    traced values (inside jit/grad/vmap), where it cannot look at them.
+    """
+    if params is None or dunne_form != 'single_exp':
+        return
+    for mech, (u_s1, v_s1) in _S1_UV.items():
+        u, v = getattr(params, 'u_' + mech), getattr(params, 'v_' + mech)
+        if isinstance(u, jax.core.Tracer) or isinstance(v, jax.core.Tracer):
+            continue
+        if np.any((np.asarray(u) == u_s1) & (np.asarray(v) == v_s1)):
+            raise ValueError(
+                f"dunne_form='single_exp' got the Table S1 (double_exp) "
+                f"coefficients u_{mech}={u_s1}, v_{mech}={v_s1}. Use "
+                f"DUNNE_TABLE_S2_PARAMS (or params=None) with 'single_exp'.")
+
+
 def _dunne_lnk(u, v, w, t1000, dunne_form):
     if dunne_form == 'double_exp':
         return u - jnp.exp(v * (t1000 - w))
@@ -139,14 +183,17 @@ def dunne_nucleation_rate(temp, fion, h2so4, nh3, Mair, params=None,
         h2so4: Gas-phase H2SO4 [molec/cm3] (scalar)
         nh3: Gas-phase NH3 [molec/cm3] (scalar)
         Mair: Air number density [molec/cm3] (scalar)
-        params: NucleationParams (None = defaults)
+        params: NucleationParams (None = default_nucleation_params(
+            dunne_form): Table S1, or Table S2 for 'single_exp')
         dunne_form: 'double_exp' (Table S1, default) or 'single_exp'
-            (Table S2; pair with DUNNE_TABLE_S2_PARAMS). Static.
+            (Table S2). Static. 'single_exp' with Table S1 (u, v)
+            coefficients raises (check_dunne_params, concrete params only).
 
     Returns:
         (fn_total, Jbn, Jtn, Jbi, Jti) all [cm^-3 s^-1]
     """
-    p = DEFAULT_NUCLEATION_PARAMS if params is None else params
+    check_dunne_params(params, dunne_form)
+    p = default_nucleation_params(dunne_form) if params is None else params
 
     # Scale to Dunne units (1e6 molec/cm3)
     cna = h2so4 * 1e-6
@@ -625,7 +672,8 @@ def ricco_dunne_nucleation_rate(
 
     Pure rate calculation, no state mutation. Used by adaptive sub-stepping
     and by the API diagnostic snapshots. ``params``: NucleationParams
-    (None = defaults); ``dunne_form``: see dunne_nucleation_rate.
+    (None = default_nucleation_params(dunne_form)); ``dunne_form``: see
+    dunne_nucleation_rate.
     """
     h2so4 = Gc[SRTSO4] / boxvol * 1000.0 / 98.0 * AVOGADRO
     Mair = 2.69e19 * 273.15 / temp * pres / 101325.0
@@ -696,13 +744,14 @@ def nucleation_step(
         enable_organic: 1.0 to enable Riccobono, 0.0 to disable
         enable_inorganic: 1.0 to enable Dunne, 0.0 to disable
         fn_scale: Multiplicative scaling factor for total nucleation rate
-        params: NucleationParams (None = defaults)
+        params: NucleationParams (None = default_nucleation_params(dunne_form))
         dunne_form: Dunne temperature form, see dunne_nucleation_rate (static)
 
     Returns:
         (Nk_new, Mk_new, Gc_new)
     """
-    p = DEFAULT_NUCLEATION_PARAMS if params is None else params
+    check_dunne_params(params, dunne_form)
+    p = default_nucleation_params(dunne_form) if params is None else params
     mnuc = _cluster_mass(p)
     org_frac = p.org_frac
 

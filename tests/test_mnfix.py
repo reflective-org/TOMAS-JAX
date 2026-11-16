@@ -436,28 +436,33 @@ def _random_states(xk, seed, n=25):
         yield jnp.array(Nk), jnp.array(Mk)
 
 
+@pytest.mark.parametrize('trim', [False, True])
 @pytest.mark.parametrize('nbins,ratio', [(40, 2.0), (80, 2.0 ** 0.5), (30, 3.0)])
-def test_bit_identical_to_sequential_reference(nbins, ratio):
+def test_bit_identical_to_sequential_reference(nbins, ratio, trim):
     from tests.reference.mnfix_sequential import mnfix_reference
     from tomas_jax.core.config import XK0
     xk = make_grid(nbins, XK0, ratio)
-    new, ref = jax.jit(mnfix_jax), jax.jit(mnfix_reference)
+    new = jax.jit(lambda N, M, x: mnfix_jax(N, M, x, trim=trim))
+    ref = jax.jit(mnfix_reference)
     for Nk, Mk in _random_states(xk, seed=nbins):
         a, b = new(Nk, Mk, xk), ref(Nk, Mk, xk)
         np.testing.assert_array_equal(np.array(a[0]), np.array(b[0]))
         np.testing.assert_array_equal(np.array(a[1]), np.array(b[1]))
 
 
-def test_forward_mode_matches_reference(xk):
+@pytest.mark.parametrize('trim', [False, True])
+def test_forward_mode_matches_reference(xk, trim):
     from tests.reference.mnfix_sequential import mnfix_reference
     Nk, Mk = next(_random_states(xk, seed=7))
     f = lambda fn: jax.jvp(lambda m: fn(Nk, m, xk)[0], (Mk,), (Mk * 1e-3,))[1]
-    np.testing.assert_array_equal(np.array(f(mnfix_jax)), np.array(f(mnfix_reference)))
+    new = lambda N, M, x: mnfix_jax(N, M, x, trim=trim)
+    np.testing.assert_array_equal(np.array(f(new)), np.array(f(mnfix_reference)))
 
 
 # =========================================================================
-# Phase 3 bin skipping: loop only over [first out-of-range bin, hi], where hi
-# grows with upward-shift targets. Edge cases against the full-loop reference.
+# Phase 3 bin skipping (trim=True): loop only over [first out-of-range bin,
+# hi], where hi grows with upward-shift targets. Edge cases against the
+# full-loop reference, for both trim settings.
 # =========================================================================
 
 def _in_range_state(xk, n=1e6):
@@ -469,10 +474,11 @@ def _in_range_state(xk, n=1e6):
 
 def _assert_same_as_reference(Nk, Mk, xk):
     from tests.reference.mnfix_sequential import mnfix_reference
-    a = jax.jit(mnfix_jax)(Nk, Mk, xk)
     b = jax.jit(mnfix_reference)(Nk, Mk, xk)
-    np.testing.assert_array_equal(np.array(a[0]), np.array(b[0]))
-    np.testing.assert_array_equal(np.array(a[1]), np.array(b[1]))
+    for trim in (False, True):
+        a = jax.jit(lambda N, M: mnfix_jax(N, M, xk, trim=trim))(Nk, Mk)
+        np.testing.assert_array_equal(np.array(a[0]), np.array(b[0]))
+        np.testing.assert_array_equal(np.array(a[1]), np.array(b[1]))
     return a
 
 
@@ -514,7 +520,8 @@ class TestPhase3BinSkipping:
         Mk = Mk.at[12].set(0.0)
         _assert_same_as_reference(Nk, Mk, xk)
 
-    def test_vmap_batch_matches_reference(self, xk):
+    @pytest.mark.parametrize('trim', [False, True])
+    def test_vmap_batch_matches_reference(self, xk, trim):
         """Batched states run the loop to the furthest member's hi.
 
         Not bit-identical: under vmap XLA fuses multiply-adds (FMA) differently
@@ -525,7 +532,47 @@ class TestPhase3BinSkipping:
         states = list(_random_states(xk, seed=3, n=6))
         Nb = jnp.stack([s[0] for s in states])
         Mb = jnp.stack([s[1] for s in states])
-        a = jax.jit(jax.vmap(lambda n, m: mnfix_jax(n, m, xk)))(Nb, Mb)
+        a = jax.jit(jax.vmap(lambda n, m: mnfix_jax(n, m, xk, trim=trim)))(Nb, Mb)
         b = jax.jit(jax.vmap(lambda n, m: mnfix_reference(n, m, xk)))(Nb, Mb)
         np.testing.assert_allclose(np.array(a[0]), np.array(b[0]), rtol=1e-14, atol=0)
         np.testing.assert_allclose(np.array(a[1]), np.array(b[1]), rtol=1e-14, atol=0)
+
+
+def test_coag_euler_trajectory_matches_sequential_reference(monkeypatch):
+    """coag_euler_step (MNFIX after every sub-step) against the same solver
+    with the one-bin-at-a-time reference MNFIX, over 30 jitted 60 s steps.
+
+    Not bit-identical: fused into the coagulation step, XLA contracts
+    multiply-adds differently in the two graphs, and coagulation's N^2
+    feedback amplifies the ulp differences (~10 ulp by step 30 here). The
+    state (1e13 #/cell of 3 nm particles on a 50 nm mode) keeps MNFIX busy:
+    without it N differs by up to 15%."""
+    import tomas_jax.solvers.diffrax as dx
+    from tests.reference.mnfix_sequential import mnfix_reference
+    from tomas_jax.core.config import XK0
+    xk = make_grid(40, XK0, 2.0)
+    xm = np.sqrt(np.asarray(xk[:-1] * xk[1:]))
+    dp = (6.0 * xm / (1770.0 * np.pi)) ** (1.0 / 3.0)
+    Nk = (1e10 * np.exp(-0.5 * (np.log(dp / 50e-9) / np.log(1.6)) ** 2)
+          + 1e13 * np.exp(-0.5 * (np.log(dp / 3e-9) / np.log(1.3)) ** 2) + 1e-3)
+    Mk = np.zeros((40, ICOMP))
+    Mk[:, SRTSO4] = 0.8 * Nk * xm
+    Mk[:, 1] = 0.2 * Nk * xm
+
+    def trajectory():
+        step = jax.jit(lambda N, M: dx.coag_euler_step(
+            N, M, xk, 273.0, 1.0e5, 1.0e6, 60.0, n_substeps=3))
+        s, out = (jnp.asarray(Nk), jnp.asarray(Mk)), []
+        for _ in range(30):
+            s = step(*s)
+            out.append(s)
+        return out
+
+    new = trajectory()
+    monkeypatch.setattr(dx, 'mnfix_jax', lambda N, M, x, icomp, trim=False:
+                        mnfix_reference(N, M, x, icomp))
+    ref = trajectory()
+    rtol = 32 * np.finfo(np.float64).eps
+    for (Na, Ma), (Nb, Mb) in zip(new, ref):
+        np.testing.assert_allclose(np.array(Na), np.array(Nb), rtol=rtol, atol=0)
+        np.testing.assert_allclose(np.array(Ma), np.array(Mb), rtol=rtol, atol=0)

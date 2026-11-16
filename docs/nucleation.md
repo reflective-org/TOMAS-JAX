@@ -95,7 +95,9 @@ n_sub = ceil(dN_full / (max_frac * N_total))    # clamped to [1, max_substeps]
 dt_nuc = dt / n_sub
 ```
 
-Then loop `n_sub` times, each calling `nucleation_step(dt_nuc)` + `mnfix_jax()`:
+In `make_step(nucl_scheme='zhao2024')`, `fn` is `zhao2024_nucleation_rate(...)[0]` instead, the rate the loop applies. Ricco+Dunne is not an upper bound on zhao2024: both contain Dunne, but zhao2024 adds the HNO₃, ULVOC, amine and iodine mechanisms, ignores `org_conc` and uses the default Dunne coefficients whatever `nucl_params` says. Until 2026-11-13 zhao2024 was sized from Ricco+Dunne and took too few sub-steps where those mechanisms dominate.
+
+Then loop `n_sub` times, each calling `nucleation_step(dt_nuc)` (or `zhao2024_nucleation_step`) + `mnfix_jax()`:
 - Each substep recalculates fn with updated (depleted) gas
 - When gas is exhausted in substep k, subsequent substeps see zero gas and add nothing
 - MNFIX between substeps redistributes particles to proper bins
@@ -182,8 +184,19 @@ Dunne et al. (2016) published two fits to the same CLOUD data:
   `ln k = u − exp(v·(T/1000 − w))`.
 - **`'single_exp'`** (SM Table S2, R² 0.83): `ln k = u − v·T/1000`. Dunne uses
   this cross-check fit as the measure of uncertainty in the temperature
-  dependence, especially ion-induced nucleation at low T. Pair it with
-  `DUNNE_TABLE_S2_PARAMS`.
+  dependence, especially ion-induced nucleation at low T. Its coefficients
+  are `DUNNE_TABLE_S2_PARAMS`.
+
+`params=None` (`nucl_params=None` in `make_step`) means
+`default_nucleation_params(dunne_form)`: Table S1 for `'double_exp'`, Table S2
+for `'single_exp'`. The Table S1 coefficients in the single-exponential formula
+are orders of magnitude off (u_bn = 9.7, v_bn = 12.6 give ln k ≈ 7), so
+`'single_exp'` with params whose Dunne (u, v) pairs match Table S1 raises
+`ValueError` (`check_dunne_params`). The check reads values, so it cannot run on
+traced params (inside a caller's `jit`/`grad`/`vmap`); `make_step`'s own jitted
+step checks `nucl_params` before tracing. To change the cluster fields with
+Table S2, start from `DUNNE_TABLE_S2_PARAMS._replace(...)`, not
+`NucleationParams()`.
 
 `dunne_form` is a static argument of `dunne_nucleation_rate`,
 `ricco_dunne_nucleation_rate` and `nucleation_step`, and a `make_step` factory
@@ -192,12 +205,32 @@ argument:
 ```python
 from tomas_jax.physics.nucleation import DUNNE_TABLE_S2_PARAMS
 step = make_step(['nucleation', 'coagulation', 'condensation'], dunne_form='single_exp')
-Nk, Mk, Gc = step(..., fion=10.0, nucl_params=DUNNE_TABLE_S2_PARAMS)
+Nk, Mk, Gc = step(..., fion=10.0)   # Table S2 coefficients
+Nk, Mk, Gc = step(..., fion=10.0,   # Table S2 with a different cluster
+                  nucl_params=DUNNE_TABLE_S2_PARAMS._replace(rho_nuc=1770.0))
 ```
 
-The two forms agree within about a factor of 2 for binary neutral and ion
-nucleation at 208–223 K. Below the lowest CLOUD temperature (208 K) they
-diverge: at 190 K the Table S2 binary-ion rate is 47–200× the baseline.
+How far apart the two forms are depends on [H2SO4] as well as T, because the
+H2SO4 exponents differ (p_bn 3.95 in S1 against 3.62 in S2, p_bi 3.37 against
+2.73). The ratio S2/S1 therefore scales as [H2SO4]^−0.33 for binary neutral
+and [H2SO4]^−0.64 for binary ion nucleation: one decade of H2SO4 changes it by
+2.1× and 4.4×. It does not depend on `fion` or pressure: the ion
+concentration multiplies both forms by the same factor. Ratios S2/S1 for
+binary neutral / binary ion (`dunne_nucleation_rate`, NH3 = 0):
+
+| T [K] | 1e5 cm⁻³ | 1e6 cm⁻³ | 1e7 cm⁻³ | 1e8 cm⁻³ | 1e9 cm⁻³ |
+|------:|---------:|---------:|---------:|---------:|---------:|
+| 190   | 16 / 890 | 7.6 / 204 | 3.6 / 47 | 1.7 / 11 | 0.78 / 2.5 |
+| 208   | 4.2 / 93 | 2.0 / 21 | 0.91 / 4.9 | 0.43 / 1.1 | 0.20 / 0.26 |
+| 223   | 2.4 / 20 | 1.1 / 4.5 | 0.53 / 1.0 | 0.25 / 0.24 | 0.12 / 0.05 |
+| 248   | 4.4 / 4.2 | 2.1 / 0.95 | 0.96 / 0.22 | 0.45 / 0.05 | 0.21 / 0.01 |
+
+At 208–223 K the binary neutral rates agree within a factor of 2 for
+[H2SO4] = 1e6–1e7 cm⁻³; at 1e8 cm⁻³ S2 is 2–4× lower. The binary ion rates
+agree within a factor of 2 only near 1e7 cm⁻³ at 223 K and 1e8 cm⁻³ at 208 K;
+at 1e6 cm⁻³ S2 is 4.5–21× higher. Below the lowest CLOUD temperature (208 K)
+the forms diverge further: at 190 K the Table S2 binary-ion rate is 47× the
+baseline at 1e7 cm⁻³ and 204× at 1e6 cm⁻³, and the gap grows as H2SO4 falls.
 
 ## Files
 

@@ -13,10 +13,9 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent))
-from aaar_fingerprint import CASES, FINGERPRINT_FILE, case_key, fingerprint  # noqa: E402
+from aaar_fingerprint import CASES, FINGERPRINT_FILE, case_key, fingerprint, scenario_of  # noqa: E402
 
 from tomas_jax.box.driver import run  # noqa: E402
-from tomas_jax.box.scenario import load_preset  # noqa: E402
 
 STORED = json.loads(FINGERPRINT_FILE.read_text())
 
@@ -24,7 +23,7 @@ STORED = json.loads(FINGERPRINT_FILE.read_text())
 @pytest.mark.parametrize("name,hours", [(n, h) for n, h, slow in CASES if not slow])
 def test_short_preset_runs_are_bit_identical(name, hours):
     key = case_key(name, hours)
-    got = fingerprint(run(load_preset(name).replace(duration_h=hours)))
+    got = fingerprint(run(scenario_of(name, hours)))
     assert got["sample"] == STORED[key]["sample"]
     assert got["sha256"] == STORED[key]["sha256"]
 
@@ -33,7 +32,7 @@ def test_short_preset_runs_are_bit_identical(name, hours):
 @pytest.mark.parametrize("name,hours", [(n, h) for n, h, slow in CASES if slow])
 def test_full_presets_are_bit_identical(name, hours):
     key = case_key(name, hours)
-    got = fingerprint(run(load_preset(name)))
-    assert load_preset(name).duration_h == hours
+    got = fingerprint(run(scenario_of(name)))
+    assert scenario_of(name).duration_h == hours
     assert got["sample"] == STORED[key]["sample"]
     assert got["sha256"] == STORED[key]["sha256"]

@@ -256,6 +256,7 @@ def ezcond_tfl_jax(
     icomp_nodiag: int = ICOMP_NODIAG,
     sparse_density=None,
     bounded: bool = False,
+    mnfix_trim: bool = False,
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Pure-JAX ezcond using TFL tmcond — JIT-compilable.
 
@@ -275,7 +276,10 @@ def ezcond_tfl_jax(
         icomp_nodiag: Number of non-diagnostic species (static)
         sparse_density: Low-occupancy bin density [kg/m3] for the
             condensation sink (calc_wet_diameters). None = Fortran defaults.
-        bounded: Static; MNFIX uses a bounded loop (reverse-mode AD).
+        bounded: Static; unused (TFL has no traced-trip-count loop), kept
+            for the ezcond_fn interface shared with ezcond_ppm_jax.
+        mnfix_trim: Static; mnfix_jax(trim=...). True is faster but
+            forward-mode AD only.
 
     Returns:
         Nk_out, Mk_out
@@ -329,7 +333,7 @@ def ezcond_tfl_jax(
         def tmcond_path(args):
             Nk_in, Mk_in, tau_in = args
             Nk_fixed, Mk_fixed = mnfix_jax(Nk_in, Mk_in, xk, icomp_nodiag,
-                                           bounded=bounded)
+                                           trim=mnfix_trim)
             Nk2, Mk2 = tmcond_jax(tau_in, xk, Mk_fixed, Nk_fixed, spec,
                                    icomp_nodiag)
             return Nk2, Mk2
@@ -344,7 +348,7 @@ def ezcond_tfl_jax(
             )
             Mk_out = Mk_in.at[:, spec].add(mass_add)
             Nk_out, Mk_out = mnfix_jax(Nk_in, Mk_out, xk, icomp_nodiag,
-                                       bounded=bounded)
+                                       trim=mnfix_trim)
             return Nk_out, Mk_out
 
         # Path 3: No-op
@@ -383,7 +387,7 @@ def ezcond_tfl_jax(
 
         # MNFIX after mass correction (ezcond.f line 279)
         Nk_cond, Mk_cond = mnfix_jax(Nk_cond, Mk_cond, xk, icomp_nodiag,
-                                     bounded=bounded)
+                                     trim=mnfix_trim)
 
         return Nk_cond, Mk_cond
 

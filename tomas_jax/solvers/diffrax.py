@@ -147,7 +147,7 @@ def coag_euler_step(
     n_substeps: int = 3,
     return_overflow: bool = False,
     sparse_density=None,
-    bounded: bool = False,
+    mnfix_trim: bool = False,
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Fixed-step forward Euler coagulation solver (scan-fusable).
 
@@ -162,7 +162,8 @@ def coag_euler_step(
             this timestep, shape (icomp,).
         sparse_density: Density [kg/m3] for low-mass bins in the kernel
             (calc_density's empty-bin fallback). None = 1000 (Fortran).
-        bounded: Static; MNFIX uses a bounded loop (reverse-mode AD).
+        mnfix_trim: Static; mnfix_jax(trim=...). True is faster but
+            forward-mode AD only.
     """
     # Pre-compute coagulation kernel (once per timestep)
     Dpk, Dk, ck = calc_particle_properties(Nk, Mk, temp, pres, sparse_density)
@@ -187,7 +188,7 @@ def coag_euler_step(
 
         # MNFIX after each substep
         Nk_new, Mk_new = mnfix_jax(Nk_new, Mk_new, xk, icomp_nodiag,
-                                   bounded=bounded)
+                                   trim=mnfix_trim)
 
         return (Nk_new, Mk_new, overflow_acc), None
 

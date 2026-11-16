@@ -502,6 +502,10 @@ is assumed, why, where it is implemented and how to change it.
 
 ### A19 — Urban air preset (series)
 
+*Superseded in part by A26 (2026-10-22): the preset is now a whole day from 00:00 local time
+with O3 30, NO 0.5 ppb and a traffic-shaped NO emission of 0.5 ppb/h; what follows is the
+6 h midday version of 2026-10-19.*
+
 - 40 °N, 75 °W, 1 July 2026, 10:00–16:00 EDT (14:00–20:00 UTC), TUV-x sun; 298 K, RH 0.5.
   O3 40, NO 5, NO2 15 ppb; CO 200, CH4 1900, H2 500 ppb; SO2 0. The full limonene
   mechanism runs with no limonene, so it is the inorganic O3–NOx–HOx–CO–CH4 chemistry.
@@ -679,6 +683,169 @@ is assumed, why, where it is implemented and how to change it.
   Alternatives, if the dark start is not wanted: a 24 h spin-up before the plotted day, or
   starting from a day-two state. For Shantanu to confirm.
 
+### A26 — Level 1 Urban air as a whole day with traffic NO emissions (2026-10-22, for Shantanu to confirm)
+
+Shantanu (2026-10-21): "For level 1, can we simulate the whole day (midnight to midnight), where
+you start with an O3 of 30 ppbv. Any NO should convert to NO2 at night. Add NO emissions similar
+to traffic timing and NO2 photolysis during the day will produce O3. Keep the PBL the same
+height and see if we can reproduce the diurnal O3 cycle." Ali: titration only, and state that no
+ozone deposition is assumed. This replaces the 6 h midday Urban preset of A19 (the site, the
+particles and the processes of A19 are unchanged).
+
+- Full day: 24 h from 00:00 local time (EDT, UTC-4) at 40 °N, 75 °W on 1 July 2026,
+  `start_utc` = 2026-07-01T04:00:00+00:00 (the same start convention as Level 3, A25). Initial
+  O3 30 ppb, NO 0.5 ppb, NO2 15 ppb (as before; NO is small because O3 converts any NO to NO2
+  within a minute in the dark, k[O3] = 1.3e-2 s⁻¹), CO 200, CH4 1900, H2 500 ppb. Output every
+  30 min (the run takes about 32 s, 2729 solver steps).
+- Constant boundary layer: nothing is diluted or entrained, so NOx emitted stays in the box
+  (and no O3 is mixed down from aloft).
+- No ozone dry deposition: O3 is removed only by reaction (titration by NO, NO2 + O3 → NO3, and
+  the HOx cycle). `losses` is off. The Level text says "No ozone deposition is assumed".
+- Diurnal emission profile (new model option `Scenario.emission_profile`): the rate of each
+  emitted species at local hour h is E(h) = E_mean w(h) / mean(w), with the 24 hourly weights
+  w(h) and the offset of local time from UTC (-4 h). The mean over 24 h is then E_mean whatever
+  the scale of w (tests: the sum over a day equals 24 E_mean to 1e-9; 12.000 ppb for the
+  default). Within the coupling interval the weight is the exact average of the piecewise-constant
+  hours. Runs without the option are unchanged (fingerprints of Levels 1-3 identical).
+- The traffic weights are the SNAP 7 (road transport) hourly factors of Denier van der Gon,
+  Hendriks, Kuenen, Segers and Visschedijk (2011), "Description of current temporal emission
+  patterns and sensitivity of predicted AQ for temporal emission patterns", TNO report for
+  EU FP7 MACC D_D-EMIS_1.3, Appendix 1 "Hourly variation", category 07 (the link answers
+  HTTP 200):
+  https://atmosphere.copernicus.eu/sites/default/files/2019-07/MACC_TNO_del_1_3_v2.pdf
+  w = 0.19 0.09 0.06 0.05 0.09 0.22 0.86 1.84 1.86 1.41 1.24 1.20 1.32 1.44 1.45 1.59 2.03 2.08
+  1.51 1.06 0.74 0.62 0.61 0.44 (sum 24, mean 1). Two rush hours (07:00-09:00 at 1.84-1.86 and
+  16:00-18:00 at 2.03-2.08) and a minimum of 0.05 at 03:00 (a factor 40 below the evening peak). Assumed: the first entry
+  is the hour 00:00-01:00 local time (the report lists 24 factors without naming the clock
+  convention); the profile is for a weekday of Dutch road traffic (the TNO factors are
+  based on Dutch traffic counts 1985-1998), used for a US city on 1 July. Both for Shantanu to confirm
+  (a US-specific profile, e.g. from the FHWA Traffic Monitoring Guide, would have a later
+  evening peak).
+- Default daily-mean NO emission E_mean = 0.5 ppb/h = 12 ppb of NO per day (it was 1 ppb/h
+  constant in A19). Reasoning: A19's 1 ppb/h came from a flux of about 1e12 molec cm⁻² s⁻¹ into
+  a 1 km layer (1.5 ppb/h); with a layer that is never diluted a whole day of that would add
+  24-36 ppb of NO to the 15.5 ppb it starts with, so the default is half of it. With it NOx
+  (NO + NO2) is 15.5 ppb at the start, 17.7 ppb at 13:00 and peaks at 20.2 ppb at 20:00, and
+  the total oxidised nitrogen (NO + NO2 + HNO3 + 2 N2O5) grows from 15.5 to 27.5 ppb by midnight,
+  of the order of the 10-50 ppb NOx often quoted for polluted cities (an assumption, not a
+  measurement). The student scale is 0, 0.5, 1, 1.5, 2, 2.5, 3 ppb/h (the API allows up to 5).
+- Result (default, 2026-10-22; O3 / NO / NO2 in ppb, hourly in the table of docs/aaar/coupling.md):
+  O3 30 → 24.5 by 05:00 (night; NO emissions are only 0.03-0.1 ppb/h then, so this is NO2 + O3
+  → NO3 → N2O5, which builds up to 2.8 ppb because there is no uptake on particles in this
+  level, not NO titration), 27.3 at 06:00 as NO2 and N2O5/NO3 are photolysed, a daytime
+  maximum of 30.9 ppb at 10:00, 30.3 at 13:00, 25.9 at 18:00, and then the evening rush
+  titrates it to 14.1 ppb at midnight (NO < 0.01 ppb after 21:00, NO2 17.8). Photostationary
+  state within 5 % at every sunlit output. Honest reading: the day shows night loss, a
+  morning recovery with no rush-hour dip (sunrise photolysis outruns the titration), a
+  weak afternoon maximum and evening titration. There is no afternoon O3 build-up: Ox =
+  O3 + NO2 falls from 42.5 ppb (06:00) to 38.1 (18:00) because the NO2 + OH sink (HNO3
+  5.4 ppb) is larger than the production from CO and CH4 (OH 2.7e6 cm⁻³ at 13:00), so without
+  VOCs the sunlit chemistry does not make O3 net. A VOC that converts NO to NO2 (naphthalene,
+  the planned toggle) is what makes net O3.
+  Particles: N 20003 → 6692 cm⁻³ by coagulation only (V and dry mass constant).
+- Library (tomas-fe): the visible inputs are cloud fraction, NO emission strength and total
+  particle number; initial O3, NO and NO2 move under "Unlock all inputs".
+
+### A27 — VOC selector in Urban air: benzene, toluene or m-xylene (MCM v3.3.1 subsets) (2026-10-23, for Shantanu to confirm)
+
+Shantanu (2026-10-22): "Another idea here would be to add a toggle for a VOC like naphthalene that
+can react to convert NO to NO2 and boost O3. This would demonstrate concepts around O3-NOx cycle,
+VOC effect on O3 production, and aerosol coagulation (separately)." Naphthalene is not in MCM
+v3.3.1 (checked: the MCM website species search, the full MCM export, and Lannuque and Sartelet
+2024, https://doi.org/10.5194/acp-24-8589-2024). Ali: "OK, let's do toluene if naphthalene does
+not exist". Shantanu (2026-10-23): "May be use one for m-xylene? I don't want to use benzene or
+toluene since they react too slowly. 0.5 ppb/h is good enough." Ali: "yes. let's do it" — a
+four-way selector none / benzene / toluene / m-xylene, so the three reactivities can be compared
+(the "0.5 ppb/h" confirms the NO emission of A26, it is not a VOC emission).
+
+- Mechanisms: the MCM v3.3.1 BENZENE, TOLUENE and MXYL subsets exported from the MCM website in
+  KPP format with the inorganic and generic rates (`gaschem/mechanisms/{benzene,toluene,mxyl}_mcm.eqn`,
+  byte-identical; URL, retrieval date 2026-10-23 and sha256 in the `.provenance.md` beside each):
+  benzene 157 declared species / 436 reactions / 28 peroxy radicals, toluene 292 / 831 / 56,
+  m-xylene 301 / 860 / 60. Citation, as the MCM requires: the MCM website (http://mcm.york.ac.uk/)
+  and the aromatic protocol papers Jenkin et al. (2003), https://doi.org/10.5194/acp-3-181-2003,
+  and Bloss et al. (2005), https://doi.org/10.5194/acp-5-641-2005 (with Jenkin et al. 1997 and
+  Saunders et al. 2003 for the non-aromatic parts).
+- Merged with the limonene subset in code (`gaschem/merge.py`), never by editing a file: a
+  reaction of an export that the limonene file already has (same reactants, same products and
+  coefficients, same rate expression) is kept once; a reaction with the same reactants and
+  products but a different rate would be a conflict and raises (none in any subset); the rest
+  is added with a label prefix (B, T, X). Against limonene: benzene 36 shared / 121 new species,
+  105 shared / 331 new reactions; toluene 110 / 181, 326 / 505; m-xylene 110 / 191, 326 / 534
+  (every reaction of the shared species is identical). RO2 sum = union (146 + 25 / 37 / 41). One
+  subset alone: 846 / 906 / 916 species (+ NA_HET), 2466 / 2640 / 2669 reactions; all three
+  (a chained merge, a reaction two subsets share kept once): 1097 species, 3173 reactions, 225
+  RO2. The subsets share products (benzene–toluene 61 species, toluene–m-xylene 60, all three 10).
+  Toluene and m-xylene products use two photolysis frequencies the limonene subset does not,
+  J_CH3CHO (TUV-x acetaldehyde, pressure-dependent quantum yield) and J_MVK_CO (the TUV-x MVK
+  total split with the MCM branching); benzene adds none; every J of every merge has a source,
+  and a missing one raises. Atom balance: no new exception in any subset (the toluene and
+  m-xylene exports' two C-gaining C4MDIAL photolyses are the limonene file's <7727>/<7729>).
+- When a subset is used: only when a scenario gives a species of that subset a non-zero initial
+  amount, emission or outdoor value, or holds one; a run with one VOC integrates that subset alone
+  (a species two subsets share selects both). The Urban preset carries no aromatic: it, Levels
+  2–3 and Indoor integrate the limonene mechanism alone and their numbers are bit-identical to
+  before (fingerprints kept, not regenerated; `level1_urban+benzene/+toluene/+mxylene@1h/@24h`
+  added). Investigated: with a merged mechanism forced on every run at VOC = 0, Levels 2, 3,
+  Indoor and Urban change by 1e-7 to 1e-5 (gases) and up to 1e-3 (Level 2 SOA) because the
+  stiff solver's error norm spans more components (fewer accepted steps) and the aromatic
+  products raise the c*-class mean molecular weights by up to 52 %; selecting per run avoids both.
+- c* of the aromatic products: not in Shantanu's table (A8), so they take the Li et al. (2016)
+  estimate (condensable species 228 → 271 / 289 / 297). In the Urban level nothing condenses or
+  nucleates by default, so this changes nothing there and the run does not warn; with SOA
+  partitioning or nucleation on the run warns as a partial table always did. Open: a Nannoolal
+  table for the aromatic products (question 12).
+- Level: the SAME initial mixing ratio for all three, 5 ppb at 00:00, not emitted, so the
+  comparison isolates the reactivity: k_OH(298 K) in the MCM exports is 2.3e-12 exp(−190/T) =
+  1.22e-12 cm³ s⁻¹ for benzene, 1.8e-12 exp(340/T) = 5.63e-12 for toluene and 2.31e-11 for
+  m-xylene (the IUPAC evaluation, Atkinson et al. 2006, https://doi.org/10.5194/acp-6-3625-2006,
+  is the MCM's source); τ = 1/(k_OH [OH]) at 3e6 cm⁻³ OH is 4 days, 17 h and 4 h. Toluene is among
+  the most abundant anthropogenic hydrocarbons in US cities, with city means of the order of 1 ppb
+  (Baker et al. 2008, https://doi.org/10.1016/j.atmosenv.2007.09.007); 5 ppb is the upper end of
+  that range and stands in for the whole urban VOC mix, of which the level has no other member
+  (CO and CH4 only); the same 5 ppb is used for benzene and m-xylene although their ambient
+  levels are lower (a comparison of reactivity, not of ambient mixes). Emitting the VOC with the
+  traffic profile was tried and not used: at the VOC-to-NOx ratio of exhaust (a few per cent by
+  mole: on-road toluene-to-CO emission ratios of a few ppb per ppm, Borbon et al. 2013,
+  https://doi.org/10.1002/jgrd.50059, with CO/NOx of order 5–10) the traffic source would be
+  about 0.02 ppb/h and invisible; even 0.1 ppb/h of toluene (a fifth of the NO emission) adds
+  2 ppb of toluene by midnight and 2 ppb of O3 at most. Toluene sensitivity (initial level; O3
+  in ppb, local time): 1 ppb → maximum 31.1 at 10:30, +2 ppb at 18:00; 2 ppb → 32.0 at 15:00;
+  5 ppb → 41.8 at 17:30; 10 ppb → 81.7 at 19:30.
+- Result (full day, default preset otherwise; hourly O3, NO, NO2, OH, HO2 and the VOC in
+  `docs/aaar/coupling.md`):
+
+| VOC (5 ppb at 00:00) | O3 maximum (ppb, local) | O3 15:00 | O3 18:00 | O3 24:00 | Ox 06:00 → 18:00 | OH 13:00 (1e6 cm⁻³) | HO2 13:00 (1e6) | HNO3 24:00 | VOC left at 24:00 |
+|---|---|---|---|---|---|---|---|---|---|
+| none | 30.9 at 10.0 h | 29.2 | 25.9 | 14.1 | 42.5 → 38.1 | 2.6 | 2.8 | 4.9 | 0.00 |
+| benzene | 31.0 at 10.5 h | 30.1 | 27.2 | 15.7 | 42.5 → 39.2 | 2.8 | 3.7 | 5.5 | 4.61 |
+| toluene | 41.8 at 17.5 h | 38.6 | 41.8 | 32.7 | 42.5 → 52.2 | 4.3 | 11.6 | 9.4 | 2.61 |
+| m-xylene | 94.5 at 19.0 h | 81.3 | 94.0 | 88.6 | 41.4 → 97.8 | 12.7 | 108.3 | 16.4 | 0.00 |
+
+  Benzene (τ ≈ 4 days) changes the day by about a ppb. Toluene (τ ≈ 17 h) gives an afternoon O3
+  build-up: 31 ppb at 10:00 → 41.8 ppb at 17:30, +16 ppb over "none" at 18:00, 32.8 ppb at
+  midnight instead of 14.1; Ox grows by 10 ppb over the sunlit hours instead of falling by 4; OH
+  at 13:00 4.3e6 instead of 2.7e6 cm⁻³, HO2 up to 1.7e7 (RO2 + NO → NO2 + RO, RO + O2 → HO2).
+  m-Xylene (τ ≈ 4 h) is used up by 16:00 and drives O3 to 94.5 ppb at 19:00, NO to 0.5 ppb and
+  NO2 to 3.3 ppb by 18:00, OH to 1.7e7 and HO2 to 2.5e8 cm⁻³, HNO3 to 16 ppb: a strong
+  photochemical episode in a layer that is never diluted. With a VOC on, HO2 stays at 1e6–3e7
+  cm⁻³ at night (NO3 and O3 reactions of the ring-opening products; m-xylene + NO3 before dawn
+  removes 0.3 ppb). Honest reading for Shantanu: the three choices show the reactivity ordering
+  clearly; the m-xylene numbers are large because nothing dilutes the layer (A26).
+- Check against PyCHAM (cases T1 toluene, T2 benzene, T3 m-xylene; `docs/aaar/pycham_comparison.md`):
+  the same merged mechanism written as one KPP file for PyCHAM, 6 h of sunlight from 10:00 EDT
+  with the Urban gases and 5 ppb of the VOC, no emissions, gas phase only. PyCHAM reads the same
+  RO2 pools (183 / 171 / 187). At the preset 300 s coupling the largest relative differences over
+  6 h: toluene 3.8e-4 (O3 2.4e-4, NO 7.1e-4, NO2 4.4e-4, OH 5.3e-4, HO2 1.0e-3); benzene 4.2e-5
+  (O3 7.2e-5, NO 2.1e-4, NO2 1.5e-4, OH 5.1e-4, HO2 6.8e-4); m-xylene: O3 1.3e-4, NO 9.1e-4,
+  NO2 7.5e-4, OH 5.1e-4, HO2 9.4e-4, and 1.7e-2 for the VOC itself on the 0.007 ppb left after
+  6 h (NMB 1e-4). 131 / 54 / 175 species above 1e-5 ppb, all within 10 %, median |NMB| 5e-4 /
+  2.5e-4 / 5.6e-4.
+- Cost: a subset makes one solver step dearer (dense LU on 847 / 907 / 917 species instead of
+  726): 10.0 → 14.0 / 15.7 / 16.0 ms per step on the laptop, so the Urban day takes 27 → 38 / 44
+  / 48 s (factor 1.4 / 1.6 / 1.75; m-xylene also needs 9 % more steps). Runs with no VOC pay
+  nothing.
+
 ## Questions for Shantanu
 
 1. ~~c* table for the mechanism species~~ — received 2026-10-16 and used by Levels 2
@@ -722,3 +889,18 @@ is assumed, why, where it is implemented and how to change it.
 10. Level 3 start (2026-10-20, A25): 00:00 local time with no spin-up (SOA 0.070,
    nitrate 1.39 µg/m³, almost no nitrate on the first night) — acceptable, or add a
    24 h spin-up before the plotted day?
+11. Level 1 urban day (2026-10-22, A26): the TNO road-transport hourly profile (Dutch
+   traffic; first entry = 00:00-01:00) or a US profile; a daily-mean NO emission of 0.5 ppb/h
+   with a layer that is never diluted; and the honest result that without VOCs there is no
+   afternoon O3 build-up (O3 peaks at 30.9 ppb at 10:00 and the night loss is mostly N2O5
+   formation, not NO titration). Is that the diurnal cycle you wanted for Level 1, with the
+   naphthalene toggle as the source of net O3?
+12. VOC selector (2026-10-23, A27): benzene, toluene and m-xylene (naphthalene is not in MCM
+   v3.3.1) at the same 5 ppb at 00:00, not emitted, so the choices isolate k_OH (τ ≈ 4 days,
+   17 h, 4 h). Afternoon O3 maximum: none 30.9 ppb at 10:00, benzene 31.0, toluene 41.8 at 17:30,
+   m-xylene 94.5 at 19:00 (OH 1.7e7, HO2 2.5e8 cm⁻³ at 15:00–16:00, the VOC used up by 16:00)
+   in a layer that is never diluted. Is 5 ppb the level you want for all three, or a lower one
+   for m-xylene (its ambient level is well below toluene's)? The aromatic products' c* fall back
+   to Li et al. (2016): could you extend the Nannoolal table (A8) to them (121 / 181 / 191
+   species)? And the night-time HO2 of 1e6–3e7 cm⁻³ with a VOC on (NO3 and O3 chemistry of the
+   ring-opening products): expected?
