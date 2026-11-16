@@ -254,6 +254,9 @@ def ezcond_tfl_jax(
     boxvol: jnp.ndarray,
     alpha: jnp.ndarray = jnp.array(1.0),
     icomp_nodiag: int = ICOMP_NODIAG,
+    sparse_density=None,
+    bounded: bool = False,
+    mnfix_trim: bool = False,
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Pure-JAX ezcond using TFL tmcond — JIT-compilable.
 
@@ -271,6 +274,12 @@ def ezcond_tfl_jax(
         xk: Bin boundaries [kg], shape (ibins+1,)
         temp, pres, boxvol, alpha: Environment parameters
         icomp_nodiag: Number of non-diagnostic species (static)
+        sparse_density: Low-occupancy bin density [kg/m3] for the
+            condensation sink (calc_wet_diameters). None = Fortran defaults.
+        bounded: Static; unused (TFL has no traced-trip-count loop), kept
+            for the ezcond_fn interface shared with ezcond_ppm_jax.
+        mnfix_trim: Static; mnfix_jax(trim=...). True is faster but
+            forward-mode AD only.
 
     Returns:
         Nk_out, Mk_out
@@ -285,7 +294,7 @@ def ezcond_tfl_jax(
     # Condensation sink (needed for outer branch decision)
     CS, sinkfrac = calc_condensation_sink(
         Nk, Mk, temp, pres, boxvol,
-        alpha=alpha, xk=xk
+        alpha=alpha, xk=xk, sparse_density=sparse_density
     )
 
     # --- Dump path (CS too small): add all mass to first bin ---
@@ -323,7 +332,8 @@ def ezcond_tfl_jax(
         # Path 1: Full tmcond (with MNFIX before, matching ezcond.f line 202)
         def tmcond_path(args):
             Nk_in, Mk_in, tau_in = args
-            Nk_fixed, Mk_fixed = mnfix_jax(Nk_in, Mk_in, xk, icomp_nodiag)
+            Nk_fixed, Mk_fixed = mnfix_jax(Nk_in, Mk_in, xk, icomp_nodiag,
+                                           trim=mnfix_trim)
             Nk2, Mk2 = tmcond_jax(tau_in, xk, Mk_fixed, Nk_fixed, spec,
                                    icomp_nodiag)
             return Nk2, Mk2
@@ -337,7 +347,8 @@ def ezcond_tfl_jax(
                 0.0
             )
             Mk_out = Mk_in.at[:, spec].add(mass_add)
-            Nk_out, Mk_out = mnfix_jax(Nk_in, Mk_out, xk, icomp_nodiag)
+            Nk_out, Mk_out = mnfix_jax(Nk_in, Mk_out, xk, icomp_nodiag,
+                                       trim=mnfix_trim)
             return Nk_out, Mk_out
 
         # Path 3: No-op
@@ -375,7 +386,8 @@ def ezcond_tfl_jax(
                              Mk_corrected, Mk_cond)
 
         # MNFIX after mass correction (ezcond.f line 279)
-        Nk_cond, Mk_cond = mnfix_jax(Nk_cond, Mk_cond, xk, icomp_nodiag)
+        Nk_cond, Mk_cond = mnfix_jax(Nk_cond, Mk_cond, xk, icomp_nodiag,
+                                     trim=mnfix_trim)
 
         return Nk_cond, Mk_cond
 

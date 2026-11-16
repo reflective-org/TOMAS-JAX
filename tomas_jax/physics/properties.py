@@ -90,7 +90,8 @@ def calc_particle_properties(
     Nk: jnp.ndarray,
     Mk: jnp.ndarray,
     temp: Union[float, jnp.ndarray],
-    pres: Union[float, jnp.ndarray]
+    pres: Union[float, jnp.ndarray],
+    sparse_density: Union[float, None] = None,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Calculate particle diameter, diffusivity, and thermal speed.
 
@@ -101,6 +102,8 @@ def calc_particle_properties(
         Mk: Mass concentration [kg/grid cell], shape (ibins, icomp)
         temp: Temperature [K]
         pres: Pressure [Pa]
+        sparse_density: Density [kg/m3] for low-mass bins (calc_density's
+            empty-bin fallback). None = 1000 (Fortran).
 
     Returns:
         Dpk: Particle diameter [m], shape (ibins,)
@@ -112,7 +115,7 @@ def calc_particle_properties(
 
     # 2. Calculate Aerosol Density (Vectorized via density.py)
     # We pass the full Mk matrix. The density module handles indices.
-    rho_p = calc_density(Mk)
+    rho_p = calc_density(Mk, 1000.0 if sparse_density is None else sparse_density)
 
     # 3. Calculate Average Mass per Particle (mp)
     # Sum all species masses for each bin

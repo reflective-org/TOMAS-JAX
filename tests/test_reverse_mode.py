@@ -1,0 +1,194 @@
+"""make_step(ad_mode='reverse'): bounded loops (core/bounded_loop.py) for jax.grad."""
+import jax
+import jax.numpy as jnp
+import numpy as np
+import pytest
+
+from tomas_jax.core.bounded_loop import bounded_while, bounded_fori
+from tomas_jax.core.config import make_grid, XK0
+from tomas_jax.core.mnfix_jax import mnfix_jax
+from tomas_jax.solvers.condensation import make_step
+from sensitivities.dunne_nuc import common as c
+from tests.test_mnfix import _random_states
+
+PROCS = ['so2_chemistry', 'nucleation', 'coagulation', 'condensation']
+FIELDS = c.nuc.NucleationParams._fields
+
+
+def test_bounded_loops_match_and_differentiate():
+    def body(s):
+        i, x = s
+        return i + 1, x * 1.5 + jnp.sin(x)
+
+    def cond(s):
+        return s[0] < 7
+
+    x0 = jnp.float64(0.3)
+    ref = jax.lax.while_loop(cond, body, (0, x0))
+    out = bounded_while(cond, body, (0, x0), 10)
+    assert int(out[0]) == 7 and float(out[1]) == pytest.approx(float(ref[1]), rel=1e-15)
+
+    f = lambda x: bounded_while(cond, body, (0, x), 10)[1]
+    np.testing.assert_allclose(float(jax.grad(f)(x0)), float(jax.jacfwd(f)(x0)),
+                               rtol=1e-13)
+    with pytest.raises(ValueError):
+        jax.grad(lambda x: jax.lax.while_loop(cond, body, (0, x))[1])(x0)
+
+    g = lambda x, n: bounded_fori(0, n, lambda i, y: y * (1.0 + 0.1 * i), x, 20)
+    assert float(g(x0, 5)) == pytest.approx(
+        float(jax.lax.fori_loop(0, 5, lambda i, y: y * (1.0 + 0.1 * i), x0)),
+        rel=1e-15)
+    assert float(jax.grad(g)(x0, 5)) == pytest.approx(
+        np.prod([1.0 + 0.1 * i for i in range(5)]), rel=1e-14)
+
+
+@pytest.mark.parametrize('nbins,ratio', [(40, 2.0), (80, 2.0 ** 0.5), (30, 3.0)])
+def test_mnfix_grad_matches_jacfwd(nbins, ratio):
+    """MNFIX's static-trip-count loop supports reverse mode with no flag."""
+    xk = make_grid(nbins, XK0, ratio)
+    f = lambda N, M: jnp.sum(jnp.log(mnfix_jax(N, M, xk)[0] + 1.0))
+    grad = jax.jit(jax.grad(f, argnums=(0, 1)))
+    jac = jax.jit(jax.jacfwd(f, argnums=(0, 1)))
+    for Nk, Mk in _random_states(xk, seed=nbins):
+        g, j = grad(Nk, Mk), jac(Nk, Mk)
+        for a, b in zip(g, j):
+            # relative to the array's scale: some entries cancel to ~0
+            a, b = np.array(a), np.array(b)
+            np.testing.assert_allclose(a, b, rtol=1e-10,
+                                       atol=1e-10 * np.max(np.abs(b)))
+
+
+def test_diffrax_step_grad():
+    """jax.grad through Tsit5 coagulation (diffrax_step calls MNFIX). diffrax's
+    adjoint is a custom_vjp, so reverse mode is the only AD mode here."""
+    from tomas_jax.core.config import ICOMP
+    from tomas_jax.solvers.diffrax import diffrax_step
+    xk = make_grid(40, XK0, 2.0)
+    xm = np.sqrt(np.asarray(xk[:-1] * xk[1:]))
+    dp = (6.0 * xm / (1770.0 * np.pi)) ** (1.0 / 3.0)
+    Nk = 1e13 * np.exp(-0.5 * (np.log(dp / 50e-9) / np.log(1.6)) ** 2) + 1e-3
+    Mk = np.zeros((40, ICOMP))
+    Mk[:, 0] = Nk * xm
+
+    def f(scale):
+        Nk_f, _ = diffrax_step(jnp.asarray(Nk) * scale, jnp.asarray(Mk) * scale,
+                               xk, 273.0, 1.0e5, 1.0e10, 600.0, n_substeps=2)
+        return jnp.sum(Nk_f)
+
+    h = 1e-5
+    fd = (float(f(1.0 + h)) - float(f(1.0 - h))) / (2 * h)
+    assert float(jax.grad(f)(1.0)) == pytest.approx(fd, rel=1e-6)
+
+
+def _coag_state():
+    from tomas_jax.core.config import ICOMP
+    xk = make_grid(40, XK0, 2.0)
+    xm = np.sqrt(np.asarray(xk[:-1] * xk[1:]))
+    dp = (6.0 * xm / (1770.0 * np.pi)) ** (1.0 / 3.0)
+    Nk = 1e13 * np.exp(-0.5 * (np.log(dp / 50e-9) / np.log(1.6)) ** 2) + 1e-3
+    Mk = np.zeros((40, ICOMP))
+    Mk[:, 0] = Nk * xm
+    return xk, jnp.asarray(Nk), jnp.asarray(Mk)
+
+
+def test_coag_euler_step_grad():
+    """jax.grad through coag_euler_step with default arguments (MNFIX
+    trim=False, a static trip count). With test_mnfix_grad_matches_jacfwd and
+    test_diffrax_step_grad this covers every default-argument caller of MNFIX
+    in reverse mode."""
+    from tomas_jax.solvers.diffrax import coag_euler_step
+    xk, Nk, Mk = _coag_state()
+
+    def f(scale):
+        Nk_f, _ = coag_euler_step(Nk * scale, Mk * scale, xk, 273.0, 1.0e5,
+                                  1.0e10, 600.0, n_substeps=10)
+        return jnp.sum(Nk_f)
+
+    h = 1e-5
+    fd = (float(f(1.0 + h)) - float(f(1.0 - h))) / (2 * h)
+    assert float(jax.grad(f)(1.0)) == pytest.approx(fd, rel=1e-6)
+
+
+def test_mnfix_trim_fails_clearly_in_reverse_mode():
+    """trim=True is a while_loop: jax.grad must raise JAX's reverse-mode
+    error, not return a wrong gradient."""
+    from tomas_jax.solvers.diffrax import coag_euler_step
+    xk, Nk, Mk = _coag_state()
+    match = 'Reverse-mode differentiation does not work'
+    with pytest.raises(ValueError, match=match):
+        jax.grad(lambda s: jnp.sum(mnfix_jax(Nk * s, Mk, xk, trim=True)[0]))(1.0)
+    with pytest.raises(ValueError, match=match):
+        jax.grad(lambda s: jnp.sum(coag_euler_step(
+            Nk * s, Mk * s, xk, 273.0, 1.0e5, 1.0e10, 600.0,
+            mnfix_trim=True)[0]))(1.0)
+
+
+def test_bad_ad_mode_rejected():
+    with pytest.raises(ValueError, match='ad_mode'):
+        make_step(PROCS, ad_mode='backward')
+
+
+def test_mnfix_trim_rejected_in_reverse_mode():
+    with pytest.raises(ValueError, match='mnfix_trim'):
+        make_step(PROCS, ad_mode='reverse', mnfix_trim=True)
+
+
+def _model(xk, so2_ppbv, nsteps, mode, **step_kw):
+    temp = 217.0
+    step = make_step(PROCS, sparse_density=c.SPARSE_DENSITY,
+                     water_scheme=c.WATER_SCHEME, ad_mode=mode, jit=False,
+                     **step_kw)
+    if mode == 'reverse':
+        step = jax.checkpoint(step)
+    state = c.lognormal_state(xk, so2=c.ppbv_to_molec(so2_ppbv, temp,
+                                                      c.STRAT['pres']))
+
+    def f(p):
+        def body(carry, _):
+            return step(*carry, xk, temp, c.STRAT['pres'], c.BOXVOL,
+                        c.STRAT['rh'], c.STRAT['alpha'], 60.0,
+                        oh_conc=c.OH_CONC, org_conc=0.0, nh3_conc=0.0,
+                        fion=c.FION, nucl_params=p), None
+        (Nk, _, _), _ = jax.lax.scan(body, state, None, length=nsteps)
+        return jnp.log(jnp.sum(Nk))
+    return f
+
+
+def _as_vec(p):
+    return np.array([float(getattr(p, k)) for k in FIELDS])
+
+
+@pytest.mark.parametrize('so2_ppbv,nsteps,step_kw', [
+    (1e3, 10, dict(gas_substep='adaptive')),
+    (1e3, 10, dict()),
+    (1e5, 3, dict(gas_substep='adaptive', coag_solver='euler_adaptive')),
+    (1e3, 10, dict(gas_substep='adaptive', ppm_tangent='frozen_shape')),
+])
+def test_grad_matches_jacfwd(xk, so2_ppbv, nsteps, step_kw):
+    """jax.grad of the reverse-mode model = jacfwd of the forward-mode model,
+    and the two models agree in value to round-off."""
+    P = jax.tree.map(jnp.float64, c.NUC_PARAMS)
+    fr = _model(xk, so2_ppbv, nsteps, 'reverse', **step_kw)
+    ff = _model(xk, so2_ppbv, nsteps, 'forward', **step_kw)
+    np.testing.assert_allclose(float(jax.jit(fr)(P)), float(jax.jit(ff)(P)),
+                               rtol=1e-12)
+    g = _as_vec(jax.jit(jax.grad(fr))(P))
+    J = _as_vec(jax.jit(jax.jacfwd(ff))(P))
+    assert np.all(np.isfinite(g))
+    np.testing.assert_allclose(g, J, rtol=1e-8, atol=1e-10 * np.max(np.abs(J)))
+
+
+def test_grad_matches_central_fd(xk):
+    """Directional derivative along the Dunne binary-neutral rate (u_bn).
+
+    The sub-step ladder (dt_rem / 2^k) is piecewise constant in the
+    parameters, so central FD with h >= ~1e-3 can straddle a ladder switch
+    and scatter by a few % (0.056-0.061 here); h = 1e-4 stays on one branch.
+    """
+    P = jax.tree.map(jnp.float64, c.NUC_PARAMS)
+    fr = jax.jit(_model(xk, 1e3, 10, 'reverse', gas_substep='adaptive'))
+    g = float(jax.grad(fr)(P).u_bn)
+    h = 1e-4
+    fd = (float(fr(P._replace(u_bn=P.u_bn + h)))
+          - float(fr(P._replace(u_bn=P.u_bn - h)))) / (2 * h)
+    np.testing.assert_allclose(g, fd, rtol=1e-3)

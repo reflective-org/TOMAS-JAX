@@ -17,6 +17,7 @@ For production use, prefer diffrax.py (Tsit5 adaptive RK) which is:
 import jax
 # float64 enforced by core/config.py
 import jax.numpy as jnp
+from functools import partial
 from typing import Tuple, Optional
 
 from ..physics.properties import calc_particle_properties
@@ -24,6 +25,7 @@ from ..physics.coagulation_kernel import calc_coagulation_kernel
 from ..physics.coagulation_rates import calc_coagulation_rates
 from ..core.mnfix_jax import mnfix_jax
 from ..core.mnfix_fortran import mnfix_fortran
+from ..core.bounded_loop import loop_while
 from ..core.config import ICOMP_NODIAG, TINY_N, TINY_M
 
 
@@ -90,6 +92,10 @@ def euler_step(
     recompute_kernel: bool = False,
     max_substeps: int = 10000,
     return_info: bool = False,
+    sparse_density=None,
+    bounded: bool = False,
+    mnfix_trim: bool = False,
+    return_dt_left: bool = False,
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Forward Euler integration of coagulation over timestep dt.
 
@@ -115,17 +121,30 @@ def euler_step(
         max_substeps: Maximum number of sub-steps
         return_info: If True, returns (Nk, Mk, n_substeps_used) so callers
             can detect when max_substeps was hit (integration truncated).
+        sparse_density: Density [kg/m3] for low-mass bins in the kernel
+            (see calc_particle_properties). None = 1000 (Fortran).
+        bounded: If True (static), the sub-step loop is a bounded loop of
+            max_substeps iterations (core/bounded_loop.py), so reverse-mode
+            AD works.
+        mnfix_trim: Static; mnfix_jax(trim=...). True is faster but
+            forward-mode AD only.
+        return_dt_left: Static; if True, also return the time [s] left
+            uncovered when max_substeps bound (0 otherwise). That part of
+            dt gets no coagulation.
 
     Returns:
         Nk_final: Updated number concentration
         Mk_final: Updated mass concentration
         n_substeps: (only if return_info=True) Number of substeps used
+        dt_left: (only if return_dt_left=True, after n_substeps) time [s]
+            not integrated because max_substeps bound
     """
     # Select MNFIX function
-    mnfix_fn = mnfix_fortran if use_fortran_mnfix else mnfix_jax
+    mnfix_fn = (mnfix_fortran if use_fortran_mnfix
+                else partial(mnfix_jax, trim=mnfix_trim))
 
     # Initial kernel computation
-    Dpk, Dk, ck = calc_particle_properties(Nk, Mk, temp, pres)
+    Dpk, Dk, ck = calc_particle_properties(Nk, Mk, temp, pres, sparse_density)
     kij = calc_coagulation_kernel(Dpk, Dk, ck, boxvol)
 
     # State for while_loop: (Nk, Mk, kij, time_elapsed, substep_count)
@@ -138,7 +157,8 @@ def euler_step(
 
         # Optionally recompute kernel (FORTRAN recomputes each sub-step)
         def recompute():
-            Dpk_new, Dk_new, ck_new = calc_particle_properties(Nk_s, Mk_s, temp, pres)
+            Dpk_new, Dk_new, ck_new = calc_particle_properties(
+                Nk_s, Mk_s, temp, pres, sparse_density)
             return calc_coagulation_kernel(Dpk_new, Dk_new, ck_new, boxvol)
 
         kij_use = jax.lax.cond(
@@ -170,12 +190,17 @@ def euler_step(
         return Nk_new, Mk_new, kij_use, t_elapsed + dt_sub, n_steps + 1
 
     init_state = (Nk, Mk, kij, jnp.float64(0.0), jnp.int32(0))
-    Nk_final, Mk_final, _, _, n_substeps = jax.lax.while_loop(
-        cond_fn, body_fn, init_state)
+    Nk_final, Mk_final, _, t_final, n_substeps = loop_while(
+        cond_fn, body_fn, init_state, bounded, max_iter=max_substeps)
 
+    out = (Nk_final, Mk_final)
     if return_info:
-        return Nk_final, Mk_final, n_substeps
-    return Nk_final, Mk_final
+        out += (n_substeps,)
+    if return_dt_left:
+        # The loop stops early only at the cap; the rest of dt is dropped
+        dt_left = jnp.where(t_final < dt - 1e-15, dt - t_final, 0.0)
+        out += (jax.lax.stop_gradient(dt_left),)
+    return out
 
 
 def euler_single_step(
