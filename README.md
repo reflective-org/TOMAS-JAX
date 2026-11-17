@@ -484,6 +484,6 @@ Direct port of TOMAS Fortran (coagulation, condensation, nucleation). Fortran so
 
 ## License
 
-Distributed under the LGPL-3.0 License. The full LGPL-3.0 text is in [`LICENSE`](LICENSE); LGPL-3.0 incorporates GPLv3 by reference, and the full GPLv3 text is in [`LICENSE.GPL`](LICENSE.GPL) so both licenses are available in the repository.
+Distributed under the LGPL-3.0 License (SPDX: `LGPL-3.0-only`) for the JAX code. The vendored Fortran in `tomas_fortran/` keeps its original headers; see [`NOTICE`](NOTICE). The full LGPL-3.0 text is in [`LICENSE`](LICENSE); LGPL-3.0 incorporates GPLv3 by reference, and the full GPLv3 text is in [`LICENSE.GPL`](LICENSE.GPL) so both licenses are available in the repository.
 
 _Built with [JAX](https://github.com/google/jax) and [Diffrax](https://github.com/patrick-kidger/diffrax)._

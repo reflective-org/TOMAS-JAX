@@ -1,0 +1,25 @@
+tomas-jax
+Copyright (c) the tomas-jax authors.
+
+The JAX code in this repository (tomas_jax/) is distributed under the
+LGPL-3.0 (SPDX: LGPL-3.0-only); see LICENSE and LICENSE.GPL.
+
+Third-party credit
+------------------
+This work is a JAX port of, and is validated against, the TOMAS (TwO-Moment
+Aerosol Sectional) microphysics model. We gratefully credit:
+
+  - The TOMAS authors, notably Peter J. Adams, John H. Seinfeld, Jeffrey R.
+    Pierce and co-workers, for the TOMAS algorithms and Fortran code
+    (Adams and Seinfeld, 2002, J. Geophys. Res., doi:10.1029/2001JD001010).
+  - The GEOS-Chem TOMAS implementation and its developers, from which the
+    TOMAS aerosol routines descend.
+
+The Fortran source in tomas_fortran/src is a vendored copy of the original
+TOMAS box-model code, included for validation benchmarks. It is redistributed
+with credit to its authors and retains its original file headers and
+copyright notices (including author lines and any institutional copyright
+notices). Those headers must be kept intact. The vendored Fortran is NOT
+licensed under the LGPL by this repository; the LGPL-3.0 above does not apply
+to it, and it remains subject to whatever terms its original authors and
+copyright holders set.
