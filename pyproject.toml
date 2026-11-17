@@ -3,7 +3,7 @@ name = "tomas-jax"
 version = "0.1.0"
 description = "High-performance, differentiable aerosol microphysics in JAX"
 readme = "README.md"
-license = "MIT"
+license = "LGPL-3.0-only"
 requires-python = ">=3.10"
 dependencies = [
     "jax>=0.4.30",
