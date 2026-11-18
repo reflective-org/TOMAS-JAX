@@ -57,7 +57,8 @@ def h2so4_loss_frequency(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dts,
         oh_conc: OH [molec/cm3] (ignored if has_chem is False)
         nuc_kwargs: dict of the make_step nucleation kwargs: org_conc,
             nh3_conc, fion, fn_scale, and enable_organic, enable_inorganic,
-            nucl_params (ricco_dunne) or hno3, ulvoc, dma, hio3,
+            nucl_params, fn_prescribed (ricco_dunne; fn_prescribed = a
+            constant J [cm-3 s-1] replacing the scheme) or hno3, ulvoc, dma, hio3,
             enable_masks (zhao2024)
         has_chem / has_nuc: whether the gas loop contains SO2 chemistry /
             nucleation (static)
@@ -87,7 +88,12 @@ def h2so4_loss_frequency(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dts,
         p = default_nucleation_params(dunne_form) if params is None else params
         loss_per_J = (1.0 - p.org_frac) * _cluster_mass(p) * boxvol
 
+        fn_prescribed = nuc_kwargs.get('fn_prescribed')
+
         def rate(c):
+            # Prescribed J does not depend on C: n_eff = 1, k_nuc = J m / C
+            if fn_prescribed is not None:
+                return jnp.asarray(fn_prescribed, dtype=jnp.float64) + 0.0 * c
             return ricco_dunne_nucleation_rate(
                 Gc.at[SRTSO4].set(c), temp, pres, boxvol,
                 nuc_kwargs.get('org_conc', 0.0), nuc_kwargs.get('nh3_conc', 0.0),

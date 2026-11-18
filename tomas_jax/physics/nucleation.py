@@ -725,7 +725,7 @@ def nucleation_step(
     Nk, Mk, Gc, xk, temp, pres, boxvol, dt,
     org_conc, nh3_conc, fion,
     enable_organic=1.0, enable_inorganic=1.0, fn_scale=1.0, params=None,
-    dunne_form='double_exp',
+    dunne_form='double_exp', fn_prescribed=None,
 ):
     """Apply nucleation to aerosol state (JIT-compilable).
 
@@ -746,6 +746,9 @@ def nucleation_step(
         fn_scale: Multiplicative scaling factor for total nucleation rate
         params: NucleationParams (None = default_nucleation_params(dunne_form))
         dunne_form: Dunne temperature form, see dunne_nucleation_rate (static)
+        fn_prescribed: None (default, the scheme's rate) or a rate
+            [cm^-3 s^-1] that replaces it (traced; differentiable). The
+            gas clamp and mass bookkeeping are unchanged.
 
     Returns:
         (Nk_new, Mk_new, Gc_new)
@@ -771,6 +774,8 @@ def nucleation_step(
 
     # Total rate with enable masks and scaling
     fn = (fn_org * enable_organic + fn_inorg * enable_inorganic) * fn_scale
+    if fn_prescribed is not None:
+        fn = fn_prescribed
 
     # Number of new particles
     dN = fn * boxvol * dt

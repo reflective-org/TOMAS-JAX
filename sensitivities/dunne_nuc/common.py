@@ -228,7 +228,8 @@ def make_prescribed_j_runner(xk, nsteps, cond=STRAT, fion=FION, oh_conc=OH_CONC,
                              max_nucleation_frac=0.5, sparse_density=SPARSE_DENSITY,
                              water_scheme=WATER_SCHEME, coag_solver='euler_fixed',
                              params=NUC_PARAMS, cond_method='ppm_jit',
-                             ppm_tangent='exact'):
+                             ppm_tangent='exact', gas_substep=None,
+                             gas_substep_frac=0.1, gas_min_dt=1e-3):
     """Build run(J, Nk, Mk, Gc) -> (Nk, Mk, Gc, diag) with a prescribed J [cm-3 s-1].
 
     Same step as make_runner, except that nucleation inserts clusters at the
@@ -239,6 +240,17 @@ def make_prescribed_j_runner(xk, nsteps, cond=STRAT, fion=FION, oh_conc=OH_CONC,
     diag['J_scheme'] is the Riccobono/Dunne rate at the same H2SO4, for
     reference. Gradients w.r.t. J are blind to the sub-step count and clamp.
     ppm_tangent: see make_runner.
+
+    gas_substep='adaptive': one make_step call per dt with make_step's
+    H2SO4-budget sub-steps (docs/gas_substep.md) and fn_prescribed = J, so
+    the sub-step criterion sees k_nuc = J m_nuc boxvol / H2SO4 (n_eff = 1).
+    n_sub is then the number of gas sub-steps, clamp is k_nuc*dt_sub > 1,
+    and J_scheme is the rate at the end-of-step gas. A prescribed J above the
+    H2SO4 supply empties the gas (k_nuc = J m / C grows as C -> 0): the clamp
+    fires on every sub-step whatever its length and the criterion walks down
+    to gas_min_dt, 16384 sub-steps of which cover 16 s at the default 1 ms.
+    Raise gas_min_dt there; the clamped result (nucleation takes all the
+    production) does not depend on the sub-step.
     """
     chem = make_step(['so2_chemistry'], jit=False)
     rest = make_step(['coagulation', 'condensation'], cond_method=cond_method,
@@ -260,7 +272,34 @@ def make_prescribed_j_runner(xk, nsteps, cond=STRAT, fion=FION, oh_conc=OH_CONC,
         Mk = Mk.at[0, SRTSO4].add(dM_so4).at[0, SRTORGLAST].add(org_frac * dN * mnuc)
         return Nk, Mk, Gc.at[SRTSO4].add(-gas), clamp
 
+    if gas_substep is not None:
+        full = make_step(['so2_chemistry', 'nucleation', 'coagulation',
+                          'condensation'], cond_method=cond_method,
+                         max_nucleation_frac=max_nucleation_frac,
+                         max_nuc_substeps=max_nuc_substeps,
+                         sparse_density=sparse_density,
+                         water_scheme=water_scheme, coag_solver=coag_solver,
+                         gas_substep=gas_substep,
+                         gas_substep_frac=gas_substep_frac,
+                         gas_min_dt=gas_min_dt,
+                         return_substep_info=True, ppm_tangent=ppm_tangent,
+                         jit=False)
+
     def run(J, Nk, Mk, Gc):
+        def body_adaptive(carry, _):
+            Nk, Mk, Gc, info = full(*carry, xk, temp, pres, boxvol, rh, alpha,
+                                    dt, oh_conc=oh_conc, org_conc=0.0,
+                                    nh3_conc=0.0, fion=fion,
+                                    nucl_params=params, fn_prescribed=J)
+            J_scheme = nuc.ricco_dunne_nucleation_rate(
+                Gc, temp, pres, boxvol, 0.0, 0.0, fion, params=params)
+            h2so4 = Gc[SRTSO4] / boxvol * 1000.0 / MW_H2SO4 * AVOGADRO
+            so2 = Gc[SRTSO2] / boxvol * 1000.0 / MW_SO2 * AVOGADRO
+            diag = dict(J=J_scheme, n_sub=info['n_sub'],
+                        clamp=info['knuc_dt_max'] > 1.0, h2so4=h2so4, so2=so2,
+                        N_total=jnp.sum(Nk) / boxvol)
+            return (Nk, Mk, Gc), diag
+
         def body(carry, _):
             Nk, Mk, Gc = carry
             Nk, Mk, Gc = chem(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha,
@@ -286,7 +325,9 @@ def make_prescribed_j_runner(xk, nsteps, cond=STRAT, fion=FION, oh_conc=OH_CONC,
                         N_total=jnp.sum(Nk) / boxvol)
             return (Nk, Mk, Gc), diag
 
-        (Nk, Mk, Gc), diag = jax.lax.scan(body, (Nk, Mk, Gc), None, length=nsteps)
+        step_body = body if gas_substep is None else body_adaptive
+        (Nk, Mk, Gc), diag = jax.lax.scan(step_body, (Nk, Mk, Gc), None,
+                                          length=nsteps)
         return Nk, Mk, Gc, diag
 
     return run

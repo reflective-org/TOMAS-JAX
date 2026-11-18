@@ -90,7 +90,7 @@ _VALID_MAKE_STEP_KWARGS = {
     # nucleation (common)
     'org_conc', 'nh3_conc', 'fion', 'fn_scale',
     # nucleation (ricco_dunne)
-    'enable_organic', 'enable_inorganic', 'nucl_params',
+    'enable_organic', 'enable_inorganic', 'nucl_params', 'fn_prescribed',
     # nucleation (zhao2024)
     'hno3', 'ulvoc', 'dma', 'hio3', 'enable_masks',
     # coagulation
@@ -1120,6 +1120,8 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                     kwargs.get('nucl_params'),
                     dunne_form,
                 )
+                if kwargs.get('fn_prescribed') is not None:
+                    fn = kwargs['fn_prescribed']
             N_total = jnp.sum(Nk)
             n_nuc = compute_nucleation_substeps(
                 fn, boxvol, dt, N_total,
@@ -1160,6 +1162,7 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                         kwargs.get('fn_scale', 1.0),
                         kwargs.get('nucl_params'),
                         dunne_form,
+                        fn_prescribed=kwargs.get('fn_prescribed'),
                     )
                     Nk_s, Mk_s = mnfix_jax(Nk_s, Mk_s, xk, ICOMP_NODIAG,
                                            trim=mnfix_trim)
@@ -1249,7 +1252,7 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                            ('enable_masks', ZHAO2024_ALL_ENABLED))
         else:
             scheme_keys = (('enable_organic', 1.0), ('enable_inorganic', 1.0),
-                           ('nucl_params', None))
+                           ('nucl_params', None), ('fn_prescribed', None))
         nuc_kwargs = {k: kwargs.get(k, d) for k, d in (
             ('org_conc', 0.0), ('nh3_conc', 0.0), ('fion', 0.0),
             ('fn_scale', 1.0)) + scheme_keys}
@@ -1411,6 +1414,8 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
         if use_zhao and kwargs.get('nucl_params') is not None:
             raise ValueError("nucl_params is ricco_dunne only; "
                              "zhao2024_nucleation_step does not take it")
+        if use_zhao and kwargs.get('fn_prescribed') is not None:
+            raise ValueError("fn_prescribed is ricco_dunne only")
         if gas_substep is None:
             for process in processes:
                 dt_p = 0.5 * dt if (split_chemistry and

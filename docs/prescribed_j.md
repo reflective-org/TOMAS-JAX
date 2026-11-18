@@ -4,7 +4,7 @@ How much does the particle number SABRE would measure change when the nucleation
 
 Code: `sensitivities/dunne_nuc/common.py` (`make_prescribed_j_runner`) and `sensitivities/dunne_nuc/prescribed_j.py`. Results (git-ignored): `sensitivities/dunne_nuc/results/prescribed_j/`.
 
-Status (2026-11-05): 217 K, 40 bins done, with pure sulfate clusters (`org_frac = 0`). Other temperatures, 80 bins and the HiLa conditions are not run.
+Status (2026-11-18): 217 K / 55 hPa, 40 bins done, with pure sulfate clusters (`org_frac = 0`). The AFGL tropical altitudes (13–25 km) with adaptive gas sub-steps are done on 40 bins ([below](#results-tropical-altitudes-40-bins)); they show that a constant J cannot probe the high-J end at high SO₂, and a J that scales with H₂SO₄ is being developed on a separate branch. Other temperatures, 80 bins and the HiLa conditions are not run.
 
 ## Quantities
 
@@ -176,3 +176,67 @@ At 0.01 ppbv N(>3 nm) is the background (10 cm⁻³) and N(3–10.65) is below 0
 - **Up to 1 ppmv** AD and FD agree in all but three cells: two at 0.1 ppbv and 5.6–10× J_ref (AD 0.37 and 0.28, FD 0.57 and 0.41) and one FD outlier at 10 ppbv.
 - **At 10 and 100 ppmv** 13 cells disagree. There FD jumps between −1.0 and 9.6 from one J level to the next while AD varies smoothly. With 43 000–173 000 steps (2 s and 0.5 s), a 2% change in J moves particles across bin edges and sub-step counts, so the FD is not a reliable check either. Neither number is confirmed at ≥ 10 ppmv.
 - N(>12 nm) and N(>53 nm) disagree in 3 and 4 cells, all small values.
+
+## Tropical altitudes with adaptive gas sub-steps (`prescribed_j_tropical.py`)
+
+The study above on the `gas_substep_psd80` grid: altitude 13–25 km (`common.TROPICAL_AFGL`, T and P together) × SO₂ × 9 J factors, 24 h, `make_step(gas_substep='adaptive')` (f = 0.1) instead of `dt_for`.
+
+- **`fn_prescribed`.** `make_step`'s step function and `nucleation_step` take `fn_prescribed` [cm⁻³ s⁻¹] (ricco_dunne only; `None` = the scheme, bit-identical). It replaces the rate in the nucleation step, its sub-step count and the gas sub-step criterion: J does not depend on H₂SO₄, so n_eff = 1 and k_nuc = (1 − org_frac) m_nuc boxvol J / C. `common.make_prescribed_j_runner(..., gas_substep='adaptive', gas_min_dt=...)` uses it with the chemistry split around nucleation, as the scheme runner does.
+- **J above the H₂SO₄ supply.** The gas empties, k_nuc = J m / C grows as C → 0 and the clamp fires on every sub-step whatever its length; with the default 1 ms floor the 16384-sub-step cap then binds (`GasSubstepCapWarning`, wrong answer). The study uses a floor of `MIN_DT` = 0.1 s (600 sub-steps per 60 s step at most). The clamped result (nucleation takes the production, condensation gets none) does not depend on the sub-step. Those cells are marked by `frac_clamp` in the figures.
+- **J_ref** = 24 h mean of the scheme's J from an adaptive-sub-step scheme run in the same cell (`make_runner`, 60 s end-of-step values, as in the Phase 2 map).
+- **One file per run.** `jref_z<km>_<so2>.npz` and `pj_z<km>_<so2>_j<i>.npz` (value, AD tangent, FD ±2%), run in separate processes (`--all`, `NJOBS` at a time, resumable): an adaptive `while_loop` under `vmap` runs at the pace of its slowest lane, so cells and J factors are not batched. Output: `results/prescribed_j_tropical/<bins>bin/`.
+- **Run time (40 bins, one J = J_ref point, one process):** 1 ppmv 90 s, 10 ppmv 400 s at 15 km. 80 bins costs about 5×, and at ≥ 100 ppmv the 80-bin AD tangent blows up (above), so 80 bins is for a subset.
+- **Tests:** `tests/test_prescribed_j_adaptive.py` (default bit-identical, scheme-rate equivalence, the criterion's k_nuc, adaptive against fixed 1 s, AD against FD).
+
+```bash
+python -m sensitivities.dunne_nuc.prescribed_j_tropical --smoke                 # 2 h, 15 km, 10 ppbv
+python -m sensitivities.dunne_nuc.prescribed_j_tropical --all                   # SO2 <= 10 ppmv, 40 bins
+python -m sensitivities.dunne_nuc.prescribed_j_tropical --all --so2 1e5         # 100 ppmv
+python -m sensitivities.dunne_nuc.prescribed_j_tropical --all --bins 80 --alts 15 20 --so2 0.01 1 100 1e4
+sensitivities/dunne_nuc/run_prescribed_j_overnight.sh [40|80] [main|hi|all]     # overnight, resumable
+```
+
+### Results: tropical altitudes, 40 bins
+
+First pass, 2026-11-17: 6 altitudes × 8 SO₂ levels (0.01 ppbv–100 ppmv) × 9 J factors, 432 runs, 26 CPU-h. Per run, 9 s at ≤ 1 ppbv, 26–135 s at 1 ppmv, 83–555 s at 10 ppmv and 245–2296 s at 100 ppmv. Figures: `results/prescribed_j_tropical/40bin/pj_40bin_z<km>.png` and `pj_40bin_elasticity_vs_so2.png`.
+
+**Where the window sits against the H₂SO₄ ceiling.** The table gives J_ref / (P/28), where P = k₁[OH][SO₂] at t = 0 (see [The H₂SO₄ ceiling on J](#the-h₂so₄-ceiling-on-j)):
+
+| SO₂ (ppbv) | 13 km | 15 km | 17 km | 20 km | 23 km | 25 km |
+|---|---|---|---|---|---|---|
+| 0.01 | 0.01 | 0.02 | 0.03 | 0.00 | 0.00 | 0.00 |
+| 0.1 | 0.05 | 0.10 | 0.15 | 0.09 | 0.01 | 0.00 |
+| 1 | 0.04 | 0.10 | 0.16 | 0.08 | 0.06 | 0.06 |
+| 10 | 0.05 | 0.15 | 0.24 | 0.10 | 0.05 | 0.04 |
+| 100 | 0.10 | 0.26 | 0.37 | 0.16 | 0.06 | 0.04 |
+| 1e3 | 0.17 | 0.38 | 0.50 | 0.29 | 0.12 | 0.07 |
+| 1e4 | 0.24 | 0.48 | 0.60 | 0.41 | 0.22 | 0.15 |
+| 1e5 | 0.30 | 0.54 | 0.65 | 0.51 | 0.32 | 0.24 |
+
+- The scheme uses an increasing share of the supply as SO₂ rises, most at 15–17 km (cold).
+- **The clamp fires on > 1% of steps at the first J level that is 1.3–2.4× P/28 or more,** in every cell where the window reaches that far. The level below it is under 1.4× P/28 (quarter-decade grid). So P/28 is the ceiling, within the grid spacing.
+- **45 of 432 runs are clamped,** all at J / J_ref ≥ 1.8: 0–2 per SO₂ level up to 10 ppbv, then 5, 8, 13 and 15 at 0.1, 1, 10 and 100 ppmv. From 1 ppmv up, the top 2–4 J factors are clamped at most altitudes. There d ln N / d ln J = 0 by AD, FD and physics alike: N is set by the supply, not by J.
+
+**Elasticity d ln N(>3 nm) / d ln J at J = J_ref, AD, 24 h** (* = AD and FD ±2% differ by more than 0.05 + 10%):
+
+| SO₂ (ppbv) | 13 km | 15 km | 17 km | 20 km | 23 km | 25 km |
+|---|---|---|---|---|---|---|
+| 0.01 | 0.90 | 0.93 | 0.86* | 0.01 | 0.00 | 0.00 |
+| 0.1 | 0.35 | 0.28 | 0.25* | 0.57* | 0.90* | 0.20 |
+| 1 | 0.28 | 0.28 | 0.27 | 0.23 | 0.33* | 0.40 |
+| 10 | 0.51 | 0.51 | 0.48 | 0.37 | 0.28 | 0.25 |
+| 100 | 0.96 | 0.88 | 0.76 | 0.63 | 0.50 | 0.43 |
+| 1e3 | 1.28* | 1.58 | 1.31 | 1.05 | 0.87 | 0.76 |
+| 1e4 | 1.35* | 1.73* | 1.73 | 1.80 | 1.50 | 1.30 |
+| 1e5 | 1.46* | 2.01* | 2.04 | 1.89* | 1.86* | 1.58* |
+
+- **At 20–25 km and 0.01 ppbv (and 0.1 ppbv at 25 km) N(>3 nm) is the background seed.** New particles do not reach 3 nm in 24 h, so the elasticity is ~0. Where they do grow at the lowest SO₂ (13–17 km at 0.01 ppbv, 23 km at 0.1 ppbv), N is nearly proportional to J (0.86–0.93).
+- **0.1–10 ppbv: 0.2–0.6.** As in the 217 K study, extra particles are offset by self-coagulation and by sharing the H₂SO₄.
+- **Above 100 ppbv the elasticity exceeds 1 and rises with SO₂, to 1.3–2.0 at 10–100 ppmv.** Across the window it peaks just below the clamp: for example 2.17 at 13 km / 100 ppmv, 3.2× J_ref. One step further up it falls to 0. Near the ceiling, nucleation draws H₂SO₄ down. A scheme's J would fall with it, but the prescribed J does not, so this end of the window is where a constant J is least representative.
+
+**AD against FD.** Of the 387 unclamped runs, 91 differ: 4–11 per SO₂ level up to 1 ppmv (mostly single isolated cells where FD jumps), then 18 at 10 ppmv and 30 at 100 ppmv. At 10–100 ppmv the ±2% FD swings between about −5 and +11 from one J level to the next while AD varies smoothly (e.g. 13 km / 10 ppmv: AD 1.35, FD 9.21 at J_ref). This is the same bin-edge and sub-step noise as in the 217 K study, so **AD is not confirmed at ≥ 10 ppmv**, except at 17 and 20 km near J_ref where the two agree. Where FD is smooth (most cells ≤ 1 ppmv), AD agrees to a few %.
+
+**Conclusion of the first pass.** At high SO₂, J_ref is already 0.15–0.65 of the H₂SO₄ ceiling, so the upper half of the ×10 window is either clamped (elasticity 0) or in the drawdown regime that a constant J misrepresents. A constant prescribed J therefore cannot explore the sensitivity at high J. Two things are needed:
+
+- **A prescribed J that responds to H₂SO₄,** such as J = A·J_ref·(C/C_ref)^n. It falls as nucleation draws down H₂SO₄, so it never clamps; n = 0 recovers the runs above. It is being developed on a separate branch. The gas sub-step criterion already derives n_eff from J(C) when it is given a rate function; `fn_prescribed` currently fixes n_eff = 1.
+- **A more robust FD check at ≥ 1 ppmv:** a larger step, or the Phase 3 regression stencil.
