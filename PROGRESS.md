@@ -4,6 +4,32 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-11-18 (Wed) PST — Long outer dt and `euler_adaptive` coagulation with adaptive gas sub-steps
+
+- On the AFGL tropical grid (13–25 km × SO2 0.01 ppbv–100 ppmv, 40 bins, 24 h), `benchmarks/python/gas_substep_dt360.py` and `gas_substep_euler_adaptive.py` show that adaptive gas sub-steps (f = 0.1) pass hour-mean L1 ≤ 0.05 in all 48 cells at an outer dt of 360 s, just as at 60 s and for about the same total wall time, whereas constant dt = 60 s and 360 s pass only 20/48 and 6/48 (failing from 10 ppbv up, NaN at the highest SO2); `coag_solver='euler_adaptive'` removes those NaNs but not the error, and inside the adaptive gas sub-steps it gives the same accuracy in about half the wall time (about 6× less at 80 bins), with one `CoagSubstepCapWarning` at 100 ppmv.
+
+---
+
+## 2026-11-16 (Mon) PST — 40-bin rerun of the 80-bin temperature grid for a like-for-like comparison
+
+- **Why:** `grid.npz` (40 bins) and `psd80/T*.npz` (80 bins) differ by L1 number median 0.16 / max 0.43 at 24 h (merged bins, snapshots), but the 40-bin file has snapshots only and a coarser reference dt (15 s down to 0.02 s against 0.25 s), so snapshot noise and dt were not separated from resolution.
+- **Added:** `benchmarks/python/gas_substep_psd40.py` (`--all`, `--run T SO2 kind`, `--compare`): the same 48 cells at 5500 Pa, same initial state, kinds and dt per kind as the 80-bin files (dt checked against the file), 40 bins, hour means and hourly series saved to `results/gas_substep/psd40/`; `--compare` gives hour-mean and snapshot L1 and N(>3 nm) ratios, 40 vs 80 bins merged in pairs. 282 runs. `compare_40_80_bins.py` is the snapshot-only comparison.
+- **Checked:** `T217_1_f0.1` reproduces the `grid.npz` run exactly (max relative difference 0). The full grid has not been run.
+- **Altitude grid:** `--grid tropical` does the same for `psd80_tropical/` (AFGL 13-25 km × SO2, incl. `ref_split`/`ref_split_half`) into `psd40_tropical/`; `--kinds` restricts it; the dt of each run is read from its 80-bin file. 354 runs, estimated ~52 CPU-h (~9 h on 6 workers; `ref_split_half` 19 h, `ref` 11 h). Not yet run; only `z20_1_f0.1` was run as a test. `plot_gas_substep_40v80.py --grid tropical` makes the figures.
+- **Next:** `run_awake -m benchmarks.python.gas_substep_psd40 --grid tropical --all`, then `--compare`.
+
+---
+
+## 2026-11-16 (Mon) 16:50 PST — Prescribed-J sensitivity on the tropical altitudes with adaptive gas sub-steps
+
+- **Added:** `fn_prescribed` (constant J replacing the scheme) in `nucleation_step`, `make_step` and the gas sub-step criterion (`gas_substep.py`; n_eff = 1); `make_prescribed_j_runner(gas_substep='adaptive', gas_min_dt=...)`; `sensitivities/dunne_nuc/prescribed_j_tropical.py` (one NPZ per cell × J, resumable `--all`, `--plot`, `--smoke`); `run_prescribed_j_overnight.sh`; `tests/test_prescribed_j_adaptive.py`. Docs: `docs/prescribed_j.md`, `CLAUDE.md`.
+- **Checked:** default (`fn_prescribed=None`) bit-identical; `test_gas_substep`, `test_nucleation*` pass (100); adaptive runner within 3e-4 of a fixed 1 s run.
+- **Known issue:** a J above the H2SO4 supply drives the criterion to `gas_min_dt` and hits `gas_max_substeps` (wrong answer, warns); the study uses `MIN_DT` = 0.1 s.
+- **Time (40 bins, 15 km, one J = J_ref point, one process):** 1 ppmv 90 s, 10 ppmv 400 s, 100 ppmv 1623 s. Estimate: `main` (≤ 10 ppmv) ~9 CPU-h, `hi` (100 ppmv) ~25 CPU-h; 80 bins ~5×.
+- **Next:** run `run_prescribed_j_overnight.sh 40 all`, inspect AD vs FD and clamped cells, then 80 bins on a subset.
+
+---
+
 ## 2026-11-16 (Mon) 10:57 PST — Merge `adaptive-substep` into `dlm`
 
 - **Library and tests:** the `adaptive-substep` versions replace `dlm`'s for every conflicted file in `tomas_jax/` and `tests/`; they are the reviewed port of `dlm`'s adaptive gas sub-step / reverse-mode work (MNFIX `bounded=` → `trim=`, `dunne_form='single_exp'` rejects Table S1 coefficients, `make_step` rejects ignored options, `CoagSubstepCapWarning`/`GasSubstepCapWarning`, zhao2024 sub-step sizing).

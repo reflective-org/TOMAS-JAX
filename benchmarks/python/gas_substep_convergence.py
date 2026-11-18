@@ -62,7 +62,8 @@ def ref_dt(so2_ppbv):
 
 
 def build(xk, dt, report_hours, frac=None, ppm_tangent='exact', fd_alpha=None,
-          pres=None, split_chemistry=False):
+          pres=None, split_chemistry=False, sample_s=60.0, gas_max_substeps=None,
+          coag_solver='euler_fixed', coag_max_substeps=None):
     """run(direction, temp, Nk0, Mk0, Gc0) -> (out, tangent, info). out and
     tangent hold, at each report hour, Nk [#/cm3], dry Mk per bin [kg/cell]
     and NMASS N(>3 nm), N(>12 nm) [#/cm3], and Nk_avg, Mk_avg: the means over
@@ -80,18 +81,34 @@ def build(xk, dt, report_hours, frac=None, ppm_tangent='exact', fd_alpha=None,
     direction (one side of a finite difference); the tangent is returned as 0.
     pres: pressure [Pa]; None is STRAT's 5500 Pa.
     split_chemistry: make_step's (fixed dt only; adaptive always splits).
+    sample_s: interval of the state samples behind the hour means [s] (default
+    60; a multiple of dt, and dt <= sample_s, e.g. 360 for an outer dt of 360 s).
+    gas_max_substeps: make_step's cap on gas sub-steps per outer step (adaptive;
+    None = its default).
+    coag_solver, coag_max_substeps: make_step's ('euler_adaptive' recomputes the
+    kernel and limits sub-steps as Fortran multicoag.f; a binding cap emits
+    CoagSubstepCapWarning). Defaults are bit-identical to before.
     """
     kw = dict(sparse_density=c.SPARSE_DENSITY, water_scheme=c.WATER_SCHEME,
               ppm_tangent=ppm_tangent, jit=False)
     if frac is not None:
         kw.update(gas_substep='adaptive', gas_substep_frac=frac,
                   return_substep_info=True)
+        if gas_max_substeps is not None:
+            kw.update(gas_max_substeps=gas_max_substeps)
     elif split_chemistry:
         kw.update(split_chemistry=True)
+    if coag_solver != 'euler_fixed':
+        kw.update(coag_solver=coag_solver)
+    if coag_max_substeps is not None:
+        kw.update(coag_max_substeps=coag_max_substeps)
     step = make_step(PROCS, **kw)
-    per_minute = int(round(60.0 / dt))
-    if dt > 60.0 or abs(per_minute * dt - 60.0) > 1e-9:
-        raise ValueError(f"dt = {dt} s must divide 60 s (hour means sample once a minute)")
+    per_minute = int(round(sample_s / dt))     # steps per sample
+    n_samples = int(round(3600.0 / sample_s))
+    if (dt > sample_s or abs(per_minute * dt - sample_s) > 1e-9
+            or abs(n_samples * sample_s - 3600.0) > 1e-9):
+        raise ValueError(f"dt = {dt} s must divide sample_s = {sample_s} s, "
+                         f"which must divide 3600 s")
     P = jax.tree.map(jnp.float64, c.NUC_PARAMS)
     pres = c.STRAT['pres'] if pres is None else pres
     rh, alpha_acc = c.STRAT['rh'], c.STRAT['alpha']
@@ -122,8 +139,8 @@ def build(xk, dt, report_hours, frac=None, ppm_tangent='exact', fd_alpha=None,
         def hour(carry, _):
             zero = (jnp.zeros_like(carry[0]), jnp.zeros(carry[1].shape[0]))
             (carry, sum_N, sum_M), diag = jax.lax.scan(
-                minute, (carry, *zero), None, length=60)
-            return carry, (diag, sum_N / 60.0, sum_M / 60.0)
+                minute, (carry, *zero), None, length=n_samples)
+            return carry, (diag, sum_N / n_samples, sum_M / n_samples)
 
         carry, ((n_sub, knuc, cap), mean_N, mean_M) = jax.lax.scan(
             hour, state, None, length=n_hours)
@@ -156,14 +173,14 @@ def build(xk, dt, report_hours, frac=None, ppm_tangent='exact', fd_alpha=None,
         t_compile, t, ts, outs, tans, diags = 0.0, 0.0, [], [], [], []
         for n in lengths:
             if n not in compiled:
-                t0 = time.time()
+                t0 = time.perf_counter()
                 compiled[n] = seg_jit.lower(state, dstate, direction, temp,
                                             n).compile()
-                t_compile += time.time() - t0
-            t0 = time.time()
+                t_compile += time.perf_counter() - t0
+            t0 = time.perf_counter()
             (state, out), (dstate, dout), diag = jax.block_until_ready(
                 compiled[n](state, dstate, direction, temp))
-            t += time.time() - t0
+            t += time.perf_counter() - t0
             ts.append(t)
             outs.append(out)
             tans.append(dout)

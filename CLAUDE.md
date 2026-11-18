@@ -129,6 +129,8 @@ benchmarks/
   python/benchmark_so2_sensitivity.py — SO2 sensitivity benchmark (5 SO2 × 4 modes × 3 altitudes × 2 grids, 48h, 12 figures)
   python/benchmark_dilution.py — Dilution benchmark (3 cases × 24h, all processes + SO2 + dilution, 6 figures)
   python/gas_substep_convergence.py — Adaptive gas sub-steps vs fixed-dt reference, 40 bins, T × SO2 grid (--smoke, --part/--merge)
+  python/gas_substep_psd40.py — 40-bin rerun of the 80-bin temperature grid (same cells, 5500 Pa, kinds, dt) with hour means into psd40/; `--grid tropical` the altitude grid into psd40_tropical/; `--compare` 40 vs 80 bins merged in pairs
+  python/compare_40_80_bins.py — 40- vs 80-bin L1 and ratios from the stored snapshots (grid.npz vs psd80/)
   python/gas_substep_psd80.py — Test of record for adaptive gas sub-steps: 80 bins, AFGL tropical altitudes × SO2 (--all, --check)
   pycham/                     — AAAR box model vs PyCHAM (independent check): config.py (single source of truth),
                                 ours.py (run + record via driver.run(observer=...)), jvalues.py (our J -> PyCHAM J.xlsx),
