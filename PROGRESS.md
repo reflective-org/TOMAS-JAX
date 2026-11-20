@@ -4,6 +4,14 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-11-20 (Fri) PST — `make_step(coag_n_floor=...)`: floor on the `euler_adaptive` number limit
+
+- **Added:** `coag_n_floor` (default `None`) in `make_step`, `n_floor` in `euler_step` and `_compute_adaptive_dt`: bins with N at or below the floor are left out of the number sub-step limit. Needs `coag_solver='euler_adaptive'` and a value ≥ 0 (`ValueError`). `build(coag_n_floor=...)` in `gas_substep_convergence.py`, kinds `nf0.01`/`nf0.001` in `gas_substep_coag_interval.py`, `benchmarks/python/coag_speed_eval.py` (config timing/L1 screen). Docs: `docs/gas_substep.md`, `CLAUDE.md`.
+- **Checked:** off is bit-identical to HEAD (24 arrays); `tests/test_coag_adaptive.py` (two new tests) and `test_gas_substep.py` pass (25); coagulation-only dry mass budget ≤ 1e-9.
+- **Known issue:** not validated on 80 bins; stays opt-in.
+
+---
+
 ## 2026-11-18 (Wed) PST — Long outer dt and `euler_adaptive` coagulation with adaptive gas sub-steps
 
 - On the AFGL tropical grid (13–25 km × SO2 0.01 ppbv–100 ppmv, 40 bins, 24 h), `benchmarks/python/gas_substep_dt360.py` and `gas_substep_euler_adaptive.py` show that adaptive gas sub-steps (f = 0.1) pass hour-mean L1 ≤ 0.05 in all 48 cells at an outer dt of 360 s, just as at 60 s and for about the same total wall time, whereas constant dt = 60 s and 360 s pass only 20/48 and 6/48 (failing from 10 ppbv up, NaN at the highest SO2); `coag_solver='euler_adaptive'` removes those NaNs but not the error, and inside the adaptive gas sub-steps it gives the same accuracy in about half the wall time (about 6× less at 80 bins), with one `CoagSubstepCapWarning` at 100 ppmv.

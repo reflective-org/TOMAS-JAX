@@ -63,7 +63,8 @@ def ref_dt(so2_ppbv):
 
 def build(xk, dt, report_hours, frac=None, ppm_tangent='exact', fd_alpha=None,
           pres=None, split_chemistry=False, sample_s=60.0, gas_max_substeps=None,
-          coag_solver='euler_fixed', coag_max_substeps=None):
+          coag_solver='euler_fixed', coag_max_substeps=None, coag_interval_frac=None,
+          coag_n_floor=None):
     """run(direction, temp, Nk0, Mk0, Gc0) -> (out, tangent, info). out and
     tangent hold, at each report hour, Nk [#/cm3], dry Mk per bin [kg/cell]
     and NMASS N(>3 nm), N(>12 nm) [#/cm3], and Nk_avg, Mk_avg: the means over
@@ -88,6 +89,8 @@ def build(xk, dt, report_hours, frac=None, ppm_tangent='exact', fd_alpha=None,
     coag_solver, coag_max_substeps: make_step's ('euler_adaptive' recomputes the
     kernel and limits sub-steps as Fortran multicoag.f; a binding cap emits
     CoagSubstepCapWarning). Defaults are bit-identical to before.
+    coag_interval_frac: make_step's (adaptive gas sub-steps only; None = its 0.01).
+    coag_n_floor: make_step's (euler_adaptive only; None = Fortran mask).
     """
     kw = dict(sparse_density=c.SPARSE_DENSITY, water_scheme=c.WATER_SCHEME,
               ppm_tangent=ppm_tangent, jit=False)
@@ -96,12 +99,16 @@ def build(xk, dt, report_hours, frac=None, ppm_tangent='exact', fd_alpha=None,
                   return_substep_info=True)
         if gas_max_substeps is not None:
             kw.update(gas_max_substeps=gas_max_substeps)
+        if coag_interval_frac is not None:
+            kw.update(coag_interval_frac=coag_interval_frac)
     elif split_chemistry:
         kw.update(split_chemistry=True)
     if coag_solver != 'euler_fixed':
         kw.update(coag_solver=coag_solver)
     if coag_max_substeps is not None:
         kw.update(coag_max_substeps=coag_max_substeps)
+    if coag_n_floor is not None:
+        kw.update(coag_n_floor=coag_n_floor)
     step = make_step(PROCS, **kw)
     per_minute = int(round(sample_s / dt))     # steps per sample
     n_samples = int(round(3600.0 / sample_s))

@@ -860,6 +860,7 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
               gas_substep_frac=0.1, gas_max_substeps=16384, gas_min_dt=1e-3,
               coag_interval_frac=0.01, return_substep_info=False,
               split_chemistry=False,
+              coag_n_floor=None,
               ad_mode='forward', ppm_max_substeps=64, ppm_tangent='exact',
               mnfix_trim=None, jit=True):
     """Build a step function from an ordered list of process names.
@@ -902,6 +903,9 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
         coag_max_substeps: Sub-step cap for 'euler_adaptive' (None:
             10000, or 1024 with ad_mode='reverse'). Hitting it truncates
             the coagulation step silently.
+        coag_n_floor: 'euler_adaptive' only, opt-in (None = Fortran): bins
+            with N <= coag_n_floor [#/cell] are left out of the number
+            sub-step limit (see euler.euler_step n_floor).
         max_nucleation_frac: Max dN/N_total per nucleation substep (0.5 = 50%)
         max_nuc_substeps: Hard cap on nucleation substeps
         water_scheme: Aerosol water uptake, WATER_SCHEME_BISULFATE (default,
@@ -1061,6 +1065,11 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
         raise ValueError("dunne_form is ricco_dunne only; zhao2024 uses its own "
                          f"Dunne fit (got dunne_form='{dunne_form}')")
 
+    if coag_n_floor is not None and (coag_solver != 'euler_adaptive'
+                                     or not coag_n_floor >= 0.0):
+        raise ValueError("coag_n_floor needs coag_solver='euler_adaptive' "
+                         f"and a value >= 0 (got {coag_n_floor})")
+
     if gas_substep not in (None, 'adaptive'):
         raise ValueError(f"Unknown gas_substep '{gas_substep}'. "
                          f"Valid: [None, 'adaptive']")
@@ -1185,6 +1194,7 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                     bounded=bounded,
                     mnfix_trim=mnfix_trim,
                     return_dt_left=True,
+                    n_floor=coag_n_floor,
                 )
             else:
                 Nk, Mk = coag_euler_step(

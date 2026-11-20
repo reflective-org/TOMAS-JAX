@@ -35,7 +35,8 @@ def _compute_adaptive_dt(
     dNdt: jnp.ndarray,
     dMdt: jnp.ndarray,
     dt_remaining: float,
-    icomp_nodiag: int = ICOMP_NODIAG
+    icomp_nodiag: int = ICOMP_NODIAG,
+    n_floor=None,
 ) -> jnp.ndarray:
     """Compute adaptive timestep matching FORTRAN multicoag.f logic.
 
@@ -58,7 +59,8 @@ def _compute_adaptive_dt(
     # Number-based limit: dt < 0.25 * N / |dN/dt|
     # Mask out empty bins (Fortran skips bins with Nk < Neps)
     abs_dNdt = jnp.maximum(jnp.abs(dNdt), 1e-30)
-    dtlimit = jnp.where(Nk > TINY_N, 0.25 * jnp.abs(Nk) / abs_dNdt, jnp.inf)
+    n_cut = TINY_N if n_floor is None else jnp.maximum(n_floor, TINY_N)
+    dtlimit = jnp.where(Nk > n_cut, 0.25 * jnp.abs(Nk) / abs_dNdt, jnp.inf)
     dt_N = jnp.min(dtlimit)
 
     # Mass-based limit: dt < 10.0 * M / |dM/dt|
@@ -96,6 +98,7 @@ def euler_step(
     bounded: bool = False,
     mnfix_trim: bool = False,
     return_dt_left: bool = False,
+    n_floor=None,
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Forward Euler integration of coagulation over timestep dt.
 
@@ -128,6 +131,11 @@ def euler_step(
             AD works.
         mnfix_trim: Static; mnfix_jax(trim=...). True is faster but
             forward-mode AD only.
+        n_floor: Opt-in (None = Fortran, bit-identical). Bins with
+            Nk <= n_floor [#/cell] are left out of the number limit
+            0.25 N/|dN/dt| (the mask is Nk > TINY_N otherwise), so a nearly
+            empty bin that MNFIX keeps resetting to its 1e-5 floor cannot
+            collapse the sub-step. Mass limit unchanged.
         return_dt_left: Static; if True, also return the time [s] left
             uncovered when max_substeps bound (0 otherwise). That part of
             dt gets no coagulation.
@@ -173,7 +181,8 @@ def euler_step(
         # Adaptive timestep
         dt_remaining = dt - t_elapsed
         dt_sub = _compute_adaptive_dt(
-            Nk_s, Mk_s, dNdt, dMdt, dt_remaining, icomp_nodiag
+            Nk_s, Mk_s, dNdt, dMdt, dt_remaining, icomp_nodiag,
+            n_floor=n_floor,
         )
 
         # Forward Euler update
