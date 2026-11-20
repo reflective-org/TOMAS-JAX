@@ -96,6 +96,18 @@ where σ is surface tension and v is molar volume. Growth is proportional to C �
 
 **Effort (if needed for H2SO4 above ~22 km in background air or above ~240 K, or for new low-volatility species):** 2–3 days, as an opt-in flag (default off keeps Fortran parity).
 
+#### 3b. Vapour molecule size in the collision rate (not included)
+
+TOMAS's per-particle rate `2π Dp D β(Kn)` (Kn = 2λ/Dp, λ = 2D/c̄) tends to `π/4 Dp² c̄ α` in the kinetic limit: it treats the H2SO4 molecule as a point. With the collision diameter Dp + d_v (Lehtinen & Kulmala 2003; Nieminen et al. 2010), and optionally the particle's own diffusivity and thermal speed, the rate is higher for the smallest particles. `benchmarks/python/vapour_cross_section.py` computes the ratio to TOMAS (same Fuchs–Sutugin β and λ = 2D/c̄, α = 1, d_v = 0.55 nm for bare H2SO4 from its bulk density):
+
+| Dp (wet) | 1.7 nm | 2 nm | 3 nm | 5 nm | 10 nm | 20 nm | 50 nm | 100 nm |
+|---|---|---|---|---|---|---|---|---|
+| Dp + d_v only | 1.76 | 1.63 | 1.40 | 1.23 | 1.11 | 1.06 | 1.02 | 1.01 |
+| + particle diffusivity and speed | 1.79 | 1.65 | 1.41 | 1.24 | 1.11 | 1.06 | 1.02 | 1.01 |
+| same, d_v = 0.64 nm (H2SO4(H2O)2) | 1.93 | 1.77 | 1.48 | 1.28 | 1.13 | 1.07 | 1.03 | 1.01 |
+
+The ratios are the same at 217 K / 55 hPa and 298 K / 1013 hPa to 3 digits: below ~20 nm both are near the kinetic limit, where the ratio is (1 + d_v/Dp)²; the particle-motion terms add < 2 %. So the cross section roughly doubles growth out of bin 0 and adds 10 % at 10 nm, while the condensation sink (dominated by ≳ 50 nm particles) changes by ≲ 2 %. Not implemented; it would be an opt-in factor on the per-bin rate in `condensation_sink.py` / `dmdt_int` (default off for Fortran parity).
+
 ---
 
 ### 4. Equilibrium Partitioning (Implicit Solver)

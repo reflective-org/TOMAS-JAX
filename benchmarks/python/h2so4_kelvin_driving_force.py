@@ -8,9 +8,12 @@ pressure, so no Kelvin term), as TOMAS Fortran does.
 
 Growth is proportional to C - C_eq, so with S = C_H2SO4 / C_eq(Dp)
     growth / nonvolatile growth = 1 - 1/S,  growth lost = C_eq / C = 1/S.
-The figure plots 1/S on a log axis (1 - 1/S is within 1e-3 of 1 for the
-plume and would be a flat line). Reference lines: 1/S = 1 (S = 1, growth
-stops; above it the droplet evaporates), 0.1 (10 % slower), 0.01 (1 %).
+The figure plots the ratio to TOMAS growth, R = 1 - 1/S, on a linear axis,
+TOMAS = 1
+(C_eq = 0). Reference lines: R = 0.9 (10 % slower, S = 10), R = 0 (S = 1, growth
+stops; below it the droplet evaporates, shaded). For the plume R is within 1e-3
+of 1, so its curves sit on the TOMAS line except near 1.7 nm; the tables still
+print S.
 
 Equilibrium H2SO4 over a binary solution (as in CARMA/WACCM,
 vaporp_H2SO4_Ayers1980.F90):
@@ -26,7 +29,7 @@ of the water vapour (scenarios.rh_from_h2o, Buck 1981 over liquid water).
 Kelvin factor exp(4 sigma v / (R T Dp)), v = M_H2SO4 / rho_solution,
 sigma = 0.08 N/m (upper end of 0.07-0.08 for 50-75 wt%: conservative).
 
-(a) 1/S vs wet diameter (1.5-100 nm) for two Phase 3 scenarios
+(a) 1 - 1/S vs wet diameter (1.5-100 nm) for two Phase 3 scenarios
     (sensitivities/dunne_nuc/scenarios.py), both at fixed 217 K, 5500 Pa,
     5 ppmv H2O -> RH 0.89 %, 72 wt%, so they differ only in H2SO4:
       sai_plume  10 ppmv SO2, hourly-mean H2SO4 6.0e7-1.0e8 cm-3;
@@ -42,14 +45,14 @@ sigma = 0.08 N/m (upper end of 0.07-0.08 for 50-75 wt%: conservative).
     RH matters beyond the wet size: it sets wt %, hence the H2SO4 activity
     (the dominant term in C_eq) and the density in the Kelvin factor.
     Panel (b) sizes are wet.
-(b) 1/S at 1.7 nm (solid), 3 nm (dashed) and for a flat surface (dotted) vs
+(b) 1 - 1/S at 1.7 nm (solid), 3 nm (dashed) and for a flat surface (dotted) vs
     altitude 13-22 km, AFGL tropical (Anderson et al. 1986, AFGL-TR-86-0110;
     AFGL_TROPICAL, 1 km levels: linear T and H2O, log p), with its H2O
     profile, so RH and the droplet composition follow altitude: 9.9 ppmv at
     13 km, 2.9 at 17 km, 2.6-2.8 at 19-22 km (the scenarios use 5 ppmv).
     T and wt% on the top axis. Each run's lowest hourly-mean H2SO4, reused at
     every altitude (not re-run).
-(c) 1/S vs gas-phase H2SO4 (1e4-1e10 cm-3) at 13, 15, 17, 19, 22 km (Z_C,
+(c) 1 - 1/S vs gas-phase H2SO4 (1e4-1e10 cm-3) at 13, 15, 17, 19, 22 km (Z_C,
     same profile as (b)): 1.7 nm wet (solid) and flat (dotted); 1/S =
     C_eq / C, so each is a line of slope -1 and growth stops where it crosses
     1/S = 1 (C = C_eq). Shaded columns: the runs' hourly-mean H2SO4 ranges.
@@ -83,6 +86,7 @@ import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+import matplotlib.ticker
 
 from tomas_jax.core.config import MW_H2SO4, MW_SO4
 from tomas_jax.physics.water_equilibrium import tabazadeh_h2so4_wt
@@ -114,8 +118,9 @@ WT_SENS = 90.0          # composition for the sensitivity line when the table cl
 
 INK, INK2, MUTED, GRID, SURFACE = '#1f1f1e', '#5f5e58', '#898781', '#e4e3df', '#fcfcfb'
 SCEN_COLOR = {'bg_midlat': '#2a78d6', 'sai_plume': '#eb6834'}
-SCEN_LABEL = {'bg_midlat': 'bg_midlat (0.02 ppbv SO$_2$)',
-              'sai_plume': 'sai_plume (10 ppmv SO$_2$)'}
+SCEN_LABEL = {'bg_midlat': 'background mid-lat (0.02 ppbv SO$_2$)',
+              'sai_plume': 'SAI plume (10 ppmv SO$_2$)'}
+SCEN_SHORT = {'bg_midlat': 'background mid-lat', 'sai_plume': 'SAI plume'}
 
 
 def afgl(z_km):
@@ -269,52 +274,60 @@ def print_tables(rows, prof):
               f'({prof["T"][i[0]]:.1f} K, RH {prof["rh"][i[0]]:.3f} %)')
 
 
-def _reference_lines(ax, label, label_x=1.0, above=False):
-    # growth with C_eq / growth with C_eq = 0 (the model) = (C - C_eq) / C = 1 - 1/S,
-    # so the growth lost by treating H2SO4 as nonvolatile is 1/S = C_eq / C
-    for y, text in ((1.0, 'growth stops (S = 1)'), (0.1, 'growth 10 % slower (S = 10)'),
-                    (0.01, 'growth 1 % slower (S = 100)')):
-        ax.axhline(y, color=INK2 if y == 1.0 else MUTED, lw=1.2 if y == 1.0 else 0.8,
-                   ls='-' if y == 1.0 else '--', zorder=1)
+def _reference_lines(ax, label, label_x=1.0, above=False, log=False):
+    # growth with C_eq / growth with C_eq = 0 (the model, TOMAS) = (C - C_eq) / C = 1 - 1/S
+    for y, text in ((1.0, 'TOMAS (C$_{eq}$ = 0)'), (0.9, 'growth 10 % slower (S = 10)'),
+                    (0.0, 'growth stops (S = 1)')):
+        if log and y == 0.0:
+            continue
+        ax.axhline(y, color=INK2 if y in (0.0, 1.0) else MUTED, lw=1.2 if y in (0.0, 1.0) else 0.8,
+                   ls='-' if y in (0.0, 1.0) else '--', zorder=1)
         if label:
             ax.annotate(text, (label_x, y), xycoords=('axes fraction', 'data'),
                         xytext=(-4, 3 if above else -3), textcoords='offset points', ha='right',
                         va='bottom' if above else 'top', fontsize=8.5, color=INK2)
-    ax.axhspan(1.0, 1e8, color=GRID, alpha=0.7, lw=0, zorder=0)
+    if not log:
+        ax.axhspan(-1e3, 0.0, color=GRID, alpha=0.7, lw=0, zorder=0)   # evaporation
 
 
-def _style(ax, ylim):
+def _style(ax, ylim, log=False):
     ax.set_facecolor(SURFACE)
     ax.grid(color=GRID, lw=0.6)
-    ax.set_yscale('log')
+    if log:
+        ax.set_yscale('log')
+        ax.set_yticks([0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
+        ax.set_yticklabels(['0.5', '0.6', '0.7', '0.8', '0.9', '1.0'])
+        ax.yaxis.set_minor_formatter(matplotlib.ticker.NullFormatter())
     ax.set_ylim(*ylim)
     for sp in ax.spines.values():
         sp.set_color('#c3c2b7')
     ax.tick_params(colors=INK2)
-    ax.set_ylabel('Growth lost to the vapour pressure: 1/S = C$_{eq}$(D$_p$) / C$_{H_2SO_4}$',
+    ax.set_ylabel('Growth rate / TOMAS growth rate: (C - C$_{eq}$(D$_p$)) / C = 1 - 1/S',
                   color=INK)
 
 
-def _panel_a(ax, rows, title, ylim, stats_xy, legend_loc, sens_rows=None):
-    _style(ax, ylim)
-    _reference_lines(ax, label=True)
+def _panel_a(ax, rows, title, ylim, legend_loc, sens_rows=None, log=True):
+    _style(ax, ylim, log)
+    _reference_lines(ax, label=True, log=log)
     for r in rows:
         col = SCEN_COLOR[r['name']]
-        ax.fill_between(DP_NM, r['c_eq'] / r['h_hi'], r['c_eq'] / r['h_lo'],
+        ax.fill_between(DP_NM, 1 - r['c_eq'] / r['h_hi'], 1 - r['c_eq'] / r['h_lo'],
                         color=col, alpha=0.3, lw=0)
-        ax.plot(DP_NM, r['c_eq'] / r['h_med'], color=col, lw=2, label=SCEN_LABEL[r['name']])
-        ax.axhline(r['flat'] / r['h_med'], color=col, lw=1.4, ls=':')
+        ax.plot(DP_NM, 1 - r['c_eq'] / r['h_med'], color=col, lw=2, label=SCEN_LABEL[r['name']])
+        # on top of the solid lines, in the legend's dark colour (both scenarios are within
+        # 6e-5 of 1 and a same-colour dotted line would vanish on its solid line)
+        ax.axhline(1 - r['flat'] / r['h_med'], color=INK2, lw=1.6, ls=':', zorder=5)
     for r in sens_rows or ():
-        ax.plot(DP_NM, r['c_eq'] / r['h_med'], color=SCEN_COLOR[r['name']], lw=1.4, ls='-.')
-    ax.plot([], [], color=INK2, lw=2, label=f'droplet with Kelvin term, {rows[0]["wt"]:.0f} wt%')
+        ax.plot(DP_NM, 1 - r['c_eq'] / r['h_med'], color=SCEN_COLOR[r['name']], lw=1.4, ls='-.')
+    ax.plot([], [], color=INK2, lw=2, label=f'droplet with Kelvin term, {rows[0]["wt"]:.0f} wt% H$_2$SO$_4$ droplet')
     ax.plot([], [], color=INK2, lw=1.4, ls=':', label='flat surface (no Kelvin), median H$_2$SO$_4$')
     if sens_rows:
         ax.plot([], [], color=INK2, lw=1.4, ls='-.',
-                label=f'droplet with Kelvin term, {sens_rows[0]["wt"]:.0f} wt%, median')
+                label=f'droplet with Kelvin term, {sens_rows[0]["wt"]:.0f} wt% H$_2$SO$_4$ droplet, median')
     fdw = dry_over_wet(rows[0]['wt'])
     d_nuc = 1.7 / fdw   # nucleated cluster = bin 0 edge, 1.7 nm dry
     ax.axvline(d_nuc, color=MUTED, lw=0.8, ls=':')
-    ax.annotate(f'1.7 nm dry\n({d_nuc:.2f} nm wet)\nnucleated\ncluster', (d_nuc, 0.04),
+    ax.annotate(f'1.7 nm dry\n({d_nuc:.2f} nm wet)\nnucleated\ncluster', (d_nuc, 0.45),
                 xycoords=('data', 'axes fraction'),
                 xytext=(4, 0), textcoords='offset points', fontsize=8.5, color=INK2, va='bottom')
     ax.set_xscale('log')
@@ -331,17 +344,11 @@ def _panel_a(ax, rows, title, ylim, stats_xy, legend_loc, sens_rows=None):
                    f'dry/wet = {fdw:.3f})', color=INK2, fontsize=9)
     ax.set_title(title, color=INK, loc='left', fontsize=10)
     ax.legend(loc=legend_loc, frameon=False, fontsize=8.5)
-    stats = [f'Hourly-mean H$_2$SO$_4$ [cm$^{{-3}}$], 48 h run, hours {SKIP_HOURS + 1}–48:']
-    for r in rows:
-        stats.append(f'{r["name"]}: min {r["h_lo"]:.1e} (hour {r["hour_lo"]}), '
-                     f'median {r["h_med"]:.1e}, max {r["h_hi"]:.1e} (hour {r["hour_hi"]})')
-    ax.text(*stats_xy, '\n'.join(stats), transform=ax.transAxes, ha='left', va='bottom',
-            fontsize=8, color=INK2, linespacing=1.5)
 
 
-SUPTITLE = ('Growth lost by treating H$_2$SO$_4$ as nonvolatile, sulfate–water droplets with the '
-            f'Kelvin term (σ = {SIGMA} N/m): growth ∝ C − C$_{{eq}}$, so 1 − growth / nonvolatile '
-            'growth = C$_{{eq}}$ / C = 1/S\n'
+SUPTITLE = ('Growth rate of sulfate–water droplets with the Kelvin term (σ = '
+            f'{SIGMA} N/m) relative to TOMAS (H$_2$SO$_4$ nonvolatile, = 1): growth ∝ C − C$_{{eq}}$, so '
+            'ratio = 1 − C$_{{eq}}$ / C = 1 − 1/S\n'
             'Ayers (1980) + Kulmala & Laaksonen (1990) pure acid, Giauque (1960) activity, '
             'Tabazadeh (1997) composition')
 
@@ -351,7 +358,7 @@ Z_C = (13.0, 15.0, 17.0, 19.0, 22.0)
 # dataviz palette validator (CVD and normal-vision separation, contrast on white)
 Z_COLOR = ('#13864a', '#e05a9e', '#b08900', '#5a3fc0', '#8a2f12')
 # (worst colour-blind pair 13/17 km is in the 6-8 dE band: lines are also labelled)
-YLIM_BC = (1e-24, 10.0)   # shared by panels (b) and (c)
+YLIM_BC = (-1.0, 1.05)   # shared by panels (b) and (c)
 C_AXIS = np.geomspace(1e4, 1e10, 200)
 
 
@@ -361,32 +368,39 @@ def _panel_c(ax, rows):
     _reference_lines(ax, label=False)
     for r in rows:
         ax.axvspan(r['h_lo'], r['h_hi'], color=SCEN_COLOR[r['name']], alpha=0.18, lw=0, zorder=0)
-        ax.text(np.sqrt(r['h_lo'] * r['h_hi']), 0.985, r['name'], transform=ax.get_xaxis_transform(),
+        ax.text(np.sqrt(r['h_lo'] * r['h_hi']), 0.985, SCEN_SHORT[r['name']], transform=ax.get_xaxis_transform(),
                 ha='center', va='top', fontsize=8.5, color=INK2, rotation=90)
     T, p, h2o = afgl(np.array(Z_C))
     rh = 100.0 * rh_from_h2o(h2o, T, p)
     wt = wt_percent(T, rh)
     print('\n(c) C_eq [cm-3] at the panel (c) altitudes (80 wt% where clamped; 90 wt% in [])')
+    # inset: same y quantity zoomed into R = 1, so the altitudes near the TOMAS line separate
+    ins = ax.inset_axes([0.42, 0.47, 0.55, 0.25])
+    ins.set_facecolor(SURFACE)
+    ins.axhline(1.0, color=INK2, lw=1.0)
     for z, t, w, col in zip(Z_C, T, wt, Z_COLOR):
         flat = float(c_eq_flat(t, w))
         ce = flat * float(kelvin(t, w, 1.7))
-        ax.plot(C_AXIS, ce / C_AXIS, color=col, lw=2.2,
-                label=f'{z:g} km ({t:.0f} K, {w:.0f} wt%{"+" if w >= WT_TABLE_MAX else ""})')
-        ax.plot(C_AXIS, flat / C_AXIS, color=col, lw=1.3, ls=':')
-        x_lab = 2e9   # direct label near the right end of the solid line
-        ax.annotate(f'{z:g} km', (x_lab, ce / x_lab), xytext=(0, 4), textcoords='offset points',
-                    ha='center', va='bottom', fontsize=8.5, color=INK, rotation=-11,
-                    rotation_mode='anchor')
+        ins.plot(C_AXIS, 1 - ce / C_AXIS, color=col, lw=1.8)
+        ax.plot(C_AXIS, 1 - ce / C_AXIS, color=col, lw=2.2,
+                label=f'{z:g} km ({t:.0f} K, {w:.0f}{"+" if w >= WT_TABLE_MAX else ""} wt% H$_2$SO$_4$ droplet)')
+        ax.plot(C_AXIS, 1 - flat / C_AXIS, color=col, lw=1.3, ls=':')
         extra = ''
         if w >= WT_TABLE_MAX:
             ce_hi = float(c_eq_flat(t, WT_SENS) * kelvin(t, WT_SENS, 1.7))
-            ax.plot(C_AXIS, ce_hi / C_AXIS, color=col, lw=1.2, ls='-.')
+            ax.plot(C_AXIS, 1 - ce_hi / C_AXIS, color=col, lw=1.2, ls='-.')
             extra = f' [{ce_hi:.2e}]'
         print(f'  {z:4.0f} km {t:6.1f} K {w:5.1f} wt%: 1.7 nm {ce:.2e}{extra}, flat {flat:.2e}')
+    ins.set_xscale('log')
+    ins.set_xlim(C_AXIS[0], C_AXIS[-1])
+    ins.set_ylim(0.97, 1.002)
+    ins.grid(color=GRID, lw=0.5)
+    ins.tick_params(labelsize=7.5, colors=INK2)
+    ins.set_title('Zoom on the TOMAS line (R = 1), same lines', fontsize=8.5, color=INK, loc='left')
     ax.set_xscale('log')
     ax.set_xlim(C_AXIS[0], C_AXIS[-1])
     ax.set_xlabel('Gas-phase H$_2$SO$_4$ [molec cm$^{-3}$]', color=INK)
-    ax.set_title('(c) vs H$_2$SO$_4$ at fixed altitudes: 1.7 nm wet (solid), flat (dotted),\n'
+    ax.set_title('(b) tropics: vs H$_2$SO$_4$ at fixed altitudes, 1.7 nm wet (solid), flat (dotted),\n'
                  'AFGL tropical T, p and H$_2$O', color=INK, loc='left', fontsize=10)
     h, l = ax.get_legend_handles_labels()
     from matplotlib.lines import Line2D
@@ -394,57 +408,19 @@ def _panel_c(ax, rows):
         h.append(Line2D([], [], color=INK2, lw=1.2, ls='-.'))
         l.append(f'1.7 nm at {WT_SENS:g} wt% (wt%+: table limit, solid = {WT_TABLE_MAX:g} wt%)')
     h += [Line2D([], [], color=INK2, lw=1.2), Line2D([], [], color=MUTED, lw=0.8, ls='--')]
-    l += ['S = 1 (shaded above: evaporation)', 'S = 10, 100']
-    ax.legend(h, l, loc='lower left', frameon=False, fontsize=8.5)
+    l += ['growth stops (S = 1); shaded: evaporation', 'S = 10 (10 % slower)']
+    ax.legend(h, l, loc='lower right', frameon=False, fontsize=8.5)
 
 
 def plot(rows, prof, fname):
-    fig, (ax_a, ax_b, ax_c) = plt.subplots(1, 3, figsize=(19.5, 6.2), facecolor=SURFACE,
+    fig, (ax_a, ax_c) = plt.subplots(1, 2, figsize=(13.5, 6.2), facecolor=SURFACE,
                                            layout='constrained')
-    _panel_a(ax_a, rows, f'(a) 217 K, 5.5 kPa, {rows[0]["wt"]:.0f} wt%: line = median, '
-             'band = hourly-mean range', (1e-13, 3.0), (0.12, 0.30), 'lower right')
+    r0, h2o_ppmv = rows[0], SCENARIOS[rows[0]['name']]['h2o_vmr'] * 1e6
+    _panel_a(ax_a, rows, f'(a) mid-latitude ~20 km: {r0["T"]:g} K, {r0["p"] / 1000:g} kPa, '
+             f'{h2o_ppmv:g} ppmv H$_2$O (RH {r0["rh"]:.2f} %),\n'
+             f'{r0["wt"]:.0f} wt% H$_2$SO$_4$ droplet; line = median, band = hourly-mean range',
+             (0.5, 1.05), 'center right', log=False)
 
-    _style(ax_b, YLIM_BC)   # room for the legend below the 17 km minimum
-    _reference_lines(ax_b, label=False)   # 25 decades: labels would collide; in the legend
-    cap = prof['capped']
-    z_cap = ALT_KM[np.nonzero(cap)[0][0]] if cap.any() else None
-    for r in rows:
-        n, col = r['h_lo'], SCEN_COLOR[r['name']]
-        for d, ls in ((1.7, '-'), (3.0, '--')):
-            ax_b.plot(ALT_KM, prof['c_eq'][d] / n, color=col, lw=2, ls=ls)
-            ax_b.fill_between(ALT_KM, prof['c_eq'][d] / n, prof['c_eq_hi'][d] / n, where=cap,
-                              color=col, alpha=0.15, lw=0)
-        ax_b.plot(ALT_KM, prof['flat'] / n, color=col, lw=1.4, ls=':')
-        ax_b.fill_between(ALT_KM, prof['flat'] / n, prof['flat_hi'] / n, where=cap,
-                          color=col, alpha=0.15, lw=0)
-        ax_b.plot([], [], color=col, lw=2,
-                  label=f'{r["name"]}, lowest hourly mean {n:.1e} cm$^{{-3}}$')
-    if z_cap is not None:
-        ax_b.axvline(z_cap, color=MUTED, lw=0.8, ls=':')
-        ax_b.annotate(f'RH below the Tabazadeh table above {z_cap:.0f} km:\n'
-                      f'line = {WT_TABLE_MAX:g} wt% (lower bound), band to {WT_SENS:g} wt%',
-                      (z_cap, 1e-23), xytext=(4, 0), textcoords='offset points',
-                      fontsize=8.5, color=INK2, va='bottom')
-    for d, ls in ((1.7, '-'), (3.0, '--')):
-        ax_b.plot([], [], color=INK2, lw=2, ls=ls, label=f'{d:g} nm wet')
-    ax_b.plot([], [], color=INK2, lw=1.4, ls=':', label='flat surface')
-    ax_b.plot([], [], color=INK2, lw=1.2, label='S = 1 (growth stops; shaded: evaporation)')
-    ax_b.plot([], [], color=MUTED, lw=0.8, ls='--', label='S = 10, 100 (10 %, 1 % slower)')
-    top = ax_b.secondary_xaxis('top')
-    zt = np.array([13.0, 15.0, 17.0, 19.0, 21.0, 22.0])
-    T_t, p_t, h_t = afgl(zt)
-    wt_t = wt_percent(T_t, 100.0 * rh_from_h2o(h_t, T_t, p_t))
-    top.set_xticks(zt)
-    top.set_xticklabels([f'{t:.0f} K\n{w:.0f} wt%' for t, w in zip(T_t, wt_t)], fontsize=8,
-                        color=INK2)
-    top.tick_params(colors=MUTED)
-    ax_b.set_xlim(ALT_KM[0], ALT_KM[-1])
-    ax_b.set_xlabel('Altitude [km] (AFGL tropical T, p and H$_2$O; T and droplet wt% '
-                    'on the top axis)', color=INK)
-    ax_b.set_title('(b) wet 1.7 nm (solid), 3 nm (dashed), flat (dotted) vs altitude,\n'
-                   'AFGL tropical H$_2$O (9.9 ppmv at 13 km, 2.6–2.9 ppmv at 17–22 km)',
-                   color=INK, loc='left', fontsize=10)
-    ax_b.legend(loc='lower left', frameon=False, fontsize=8.5)
     _panel_c(ax_c, rows)
 
     fig.suptitle(SUPTITLE, fontsize=10, color=INK)
@@ -460,7 +436,7 @@ def plot_conditions(rows, sens_rows, fname):
            'C$_{eq}$ a lower bound)' if r0['wt_capped'] else f'{r0["wt"]:.0f} wt%')
     _panel_a(ax, rows, f'{r0["T"]:g} K, {r0["p"] / 100:g} hPa, H$_2$O 5 ppmv; {cap}\n'
              'line = median, band = hourly-mean range; H$_2$SO$_4$ from the 217 K runs',
-             (1e-3, 1e6), (0.22, 0.02), 'upper right', sens_rows=sens_rows)
+             (-3.0, 1.1), 'center right', sens_rows=sens_rows, log=False)
     fig.suptitle(SUPTITLE, fontsize=9, color=INK)
     fig.savefig(fname, dpi=150, facecolor=SURFACE)
     plt.close(fig)
@@ -476,7 +452,7 @@ def main():
     os.makedirs(OUTDIR, exist_ok=True)
     if args.temp is None and args.pres is None:
         rows = scenario_rows()
-        prof = altitude_profile()
+        prof = altitude_profile()   # (b) table only: the altitude panel is not plotted
         print_tables(rows, prof)
         fname = os.path.join(OUTDIR, 'h2so4_kelvin_driving_force.png')
         plot(rows, prof, fname)
