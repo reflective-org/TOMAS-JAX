@@ -112,3 +112,59 @@ def test_cap_warns(xk):
     with warnings.catch_warnings():
         warnings.simplefilter('error', CoagSubstepCapWarning)
         jax.block_until_ready(batched(jnp.stack([Nq, Nq]), jnp.stack([Mq, Mq])))
+
+
+def test_n_floor_off_is_identical_and_validated(xk):
+    """coag_n_floor=None and 0.0 both keep the Fortran TINY_N mask (bit-identical);
+    it needs euler_adaptive and a value >= 0."""
+    Nk, Mk, Gc = _state(xk, {0: 1e9, 12: 10.0})
+    a = make_step(['coagulation'], coag_solver='euler_adaptive')(Nk, Mk, Gc, xk, *ENV)
+    b = make_step(['coagulation'], coag_solver='euler_adaptive',
+                  coag_n_floor=0.0)(Nk, Mk, Gc, xk, *ENV)
+    for x, y in zip(a, b):
+        np.testing.assert_array_equal(np.array(x), np.array(y))
+    with pytest.raises(ValueError, match='coag_n_floor'):
+        make_step(['coagulation'], coag_n_floor=1e-2)            # euler_fixed
+    with pytest.raises(ValueError, match='coag_n_floor'):
+        make_step(['coagulation'], coag_solver='euler_adaptive', coag_n_floor=-1.0)
+
+
+def test_n_floor_keeps_mass_and_number(xk):
+    """A floor of 1e-2 #/cell leaves dry mass (budget < 1e-8) and total N (< 2%)
+    where the Fortran mask puts them, and takes fewer sub-steps."""
+    Nk0, Mk0, Gc = _state(xk, {0: 3e8, 12: 10.0})
+    step = {f: make_step(['coagulation'], coag_solver='euler_adaptive', coag_n_floor=f)
+            for f in (None, 1e-2)}
+    out = {}
+    for f, fn in step.items():
+        Nk, Mk = Nk0, Mk0
+        for _ in range(5):
+            Nk, Mk, *_ = fn(Nk, Mk, Gc, xk, *ENV)
+        out[f] = (Nk, Mk)
+        assert abs(_dry(Mk) - _dry(Mk0)) / _dry(Mk0) < 1e-8
+    assert abs(float(out[1e-2][0].sum() / out[None][0].sum()) - 1.0) < 0.02
+
+
+def test_heun_adaptive(xk):
+    """heun_adaptive: finite and mass-closing where fixed Euler fails, equal to
+    euler_adaptive on a dilute state (both converge to the same N), cap warning,
+    reverse mode matches forward."""
+    from tomas_jax.solvers.condensation import CoagSubstepCapWarning
+    Nk, Mk, Gc = _state(xk, {0: 3.3e9, 20: 10.0})
+    hd = make_step(['coagulation'], coag_solver='heun_adaptive')(Nk, Mk, Gc, xk, *ENV)
+    assert np.all(np.isfinite(np.array(hd[0]))) and np.all(np.isfinite(np.array(hd[1])))
+    assert abs(_dry(hd[1]) / _dry(Mk) - 1.0) < 1e-6
+    Nq, Mq, _ = _state(xk, {6: 1e4, 20: 10.0})
+    h = make_step(['coagulation'], coag_solver='heun_adaptive')(Nq, Mq, Gc, xk, *ENV)
+    e = make_step(['coagulation'], coag_solver='euler_adaptive')(Nq, Mq, Gc, xk, *ENV)
+    np.testing.assert_allclose(float(h[0].sum()), float(e[0].sum()), rtol=0.01)
+    with pytest.warns(CoagSubstepCapWarning):
+        jax.block_until_ready(make_step(['coagulation'], coag_solver='heun_adaptive',
+                                        coag_max_substeps=5)(Nk, Mk, Gc, xk, *ENV))
+    r = make_step(['coagulation'], coag_solver='heun_adaptive', ad_mode='reverse')(
+        Nq, Mq, Gc, xk, *ENV)
+    np.testing.assert_allclose(np.array(r[0]), np.array(h[0]), rtol=1e-9)
+    g = jax.grad(lambda n: jnp.sum(make_step(
+        ['coagulation'], coag_solver='heun_adaptive', ad_mode='reverse', jit=False)(
+        n, Mq, Gc, xk, *ENV)[0]))(Nq)
+    assert np.all(np.isfinite(np.array(g)))

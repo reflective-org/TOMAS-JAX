@@ -4,6 +4,23 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-11-20 (Fri) PST — `make_step(coag_solver='heun_adaptive')`: error-controlled Heun coagulation
+
+- **Added:** `heun_step` (`solvers/euler.py`), `coag_solver='heun_adaptive'` with `coag_heun_rtol`/`coag_heun_atol` in `make_step`; the coagulation cap warning covers it; reverse mode via the bounded loop. Opt-in, defaults unchanged. `test_heun_adaptive` in `tests/test_coag_adaptive.py` (9 pass). Benchmark kind `ha_f0.1_360` in `gas_substep_euler_adaptive.py`.
+- **Documented:** `docs/gas_substep.md` (algorithm, why the Fortran limit and the floor fail, grid results).
+- **Known issues:** about half the L1 N of `euler_adaptive` on the tropical grid at 40 and 80 bins, but 1.1–2.5× the time except where `euler_adaptive` hits its cap; rtol 1e-2 gives the same time and error as 3e-3 on the grid (no cost lever); not Fortran-parity.
+- **Next:** count Heun iterations per coagulation interval; if it is ~1, the cost is the per-step price (kernel + two rate evaluations), and the lever is a cheaper second stage or longer intervals.
+
+---
+
+## 2026-11-20 (Fri) PST — `make_step(coag_n_floor=...)`: floor on the `euler_adaptive` number limit
+
+- **Added:** `coag_n_floor` (default `None`) in `make_step`, `n_floor` in `euler_step` and `_compute_adaptive_dt`: bins with N at or below the floor are left out of the number sub-step limit. Needs `coag_solver='euler_adaptive'` and a value ≥ 0 (`ValueError`). `build(coag_n_floor=...)` in `gas_substep_convergence.py`, kinds `nf0.01`/`nf0.001` in `gas_substep_coag_interval.py`, `benchmarks/python/coag_speed_eval.py` (config timing/L1 screen). Docs: `docs/gas_substep.md`, `CLAUDE.md`.
+- **Checked:** off is bit-identical to HEAD (24 arrays); `tests/test_coag_adaptive.py` (two new tests) and `test_gas_substep.py` pass (25); coagulation-only dry mass budget ≤ 1e-9.
+- **Known issue:** not validated on 80 bins; stays opt-in.
+
+---
+
 ## 2026-11-15 21:10 PST — Tests: reverse mode with default arguments, `coag_euler_step` against the sequential MNFIX
 
 - **Why (review):** the first check in `test_default_is_fixed_euler` takes the same path twice, so it only pins the default. Nothing tested `jax.grad` through `coag_euler_step`, the error from the forward-only `trim=True`, or a whole coagulation trajectory against `tests/reference/mnfix_sequential.py`.
@@ -2937,3 +2954,7 @@ The PPM closure step (`M_cs = M_dry_integral - M_noncond`) systematically lost ~
 
 ### Validation
 - Mass conservation < 1e-13 relative error for coagulation
+
+## 2026-11-21 (Sat) PST — heun_adaptive h0 = dt
+
+`heun_step` initial step is dt instead of 1 s (`h0=None`). Reran the tropical grid at 40 and 80 bins: total time 848 s / 4001 s (was 863 s / 4116 s), max L1 N 24 h 0.016 / 0.018, valid 48/48 and 47/48. rtol 1e-2 gives no change. Next: cheaper second rates evaluation at 80 bins.

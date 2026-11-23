@@ -2,10 +2,28 @@
 
 > **Branches:** `gas_substep_psd80.py`, `gas_substep_convergence.py`, `sensitivities/dunne_nuc/run_map.py` and `sabre_bins.py` are in this branch. The figure scripts (`plot_gas_substep_*.py`) are on the `dlm` branch only. `benchmarks/results/gas_substep/run_grid_parts.sh` is a local, git-ignored file.
 
+> The coagulation benchmark scripts named below (`gas_substep_euler_adaptive.py`, `gas_substep_coag_interval.py`, `gas_substep_dt360.py`, `diag_coag_cap.py`, `coag_speed_eval.py`) and their results are on the `dlm` branch, not here.
+
 Two opt-in `make_step` options (2026-11-05). With both at their defaults, `make_step` is bit-identical to before (Fortran parity).
 
 - `gas_substep='adaptive'`: sub-steps SO₂ chemistry, nucleation and condensation, sized from the H₂SO₄ budget. One setting covers 10 pptv–100 ppmv SO₂ at 190–240 K.
 - `ad_mode='reverse'`: every loop with a traced trip count gets a static length, so `jax.grad` and `jax.vjp` work.
+
+## Recommended settings
+
+```python
+make_step(processes, cond_method='ppm_jit',
+          gas_substep='adaptive',       # gas_substep_frac = 0.1
+          coag_solver='heun_adaptive',  # coag_interval_frac = 0.01 (default)
+          split_chemistry=True)         # only required for fixed-dt references
+```
+
+- `gas_substep='adaptive'` with f = 0.1 (`gas_substep_frac`): passes every cell of the 80-bin validation grid.
+- `coag_solver='heun_adaptive'`: lowest L1 N error; fastest at 40 bins with high SO2, 1.4× slower than `euler_adaptive` at 80 bins ([details](#recommended-coagulation-solver-2026-11-23)).
+- `coag_interval_frac` 0.01 (default); do not raise it.
+- Scale `gas_max_substeps` with the outer dt (~41,000 per 600 s at 217 K / 100 ppmv); a binding cap warns and gives a wrong answer.
+- `ad_mode='reverse'` for `jax.grad`; do not combine it with `gas_substep='adaptive'` and `vmap`.
+- Defaults (`euler_fixed`, no gas sub-stepping) stay bit-identical to Fortran.
 
 ## Why
 
@@ -44,6 +62,27 @@ Coagulation and dilution run on intervals, not on the outer 60 s step (that was 
 - An interval ends at its target length, or when nucleation has added `coag_interval_frac` (0.01)·N. At 0.1 the 1.7 nm bin was ~7% low (60 s of coagulation on seconds-old clusters); at 0.01 it is within 0.6%, at 1.5–2× the cost.
 - Every interval takes at least one gas sub-step before the end test (a do-while, in both modes). An interval can start closed: with N = 0 and no coagulation in `processes` to add TINY values back, dN < `coag_interval_frac`·N is 0 < 0. A loop that tested first then took no sub-step and never advanced t. `coag_interval_frac` must be > 0 (`ValueError`).
 - If coagulation removed a fraction r > `coag_interval_frac` of N, the next target shrinks to t_int·frac/r, rounded down to a power of 2 s; otherwise it may double. Intervals never cross the end of the outer step, and the target resets to the outer dt at the start of every outer step, so the first interval of each step always tries the full dt. Rounding keeps the lengths discrete, so gradients do not see a continuously moving step.
+
+#### Recommended coagulation solver (2026-11-23)
+
+Use `coag_solver='heun_adaptive'` for accuracy: on the tropical grid its max L1 N at 24 h is 0.016 (40 bins) and 0.018 (80 bins) against 0.019 and 0.025 for `euler_adaptive`, and about half of it in most cells. Speed depends on resolution and SO2. Wall time to 24 h summed over the six altitudes (13–25 km), 40 bins, outer dt 360 s, f = 0.1 (`benchmarks/results/gas_substep/euler_adaptive_tropical`):
+
+| SO2 [ppbv] | euler_fixed (default) | euler_adaptive | heun_adaptive |
+|---|---|---|---|
+| 1 | 1 s | 0 s | 0 s |
+| 10 | 3 s | 1 s | 1 s |
+| 100 | 13 s | 4 s | 5 s |
+| 1000 | 65 s | 22 s | 26 s |
+| 10000 | 293 s | 111 s | 128 s |
+| 100000 | 1402 s | 2146 s (cap hit, 5/6 valid) | 688 s |
+| all SO2 | 1777 s | 2284 s | 848 s |
+
+- Up to 10000 ppbv `euler_adaptive` is fastest, `heun_adaptive` about 15 % slower and `euler_fixed` about 2.6× slower than either.
+- At 100000 ppbv `euler_adaptive` hits its sub-step cap (5/6 valid) and `heun_adaptive` is 3× faster than it and 2× faster than `euler_fixed`; this dominates the total.
+- At 80 bins `heun_adaptive` is 1.4× slower than `euler_adaptive` (4001 s against 2797 s) because the linear-scheme rates are twice as costly per iteration; the accuracy gain remains.
+- Caveats: validated on the tropical grid only; opt-in and not Fortran, so `euler_fixed` stays the `make_step` default; `coag_n_floor` does not apply. The table's single-run timings are on a loaded machine and are good to roughly 10 %; euler_fixed's L1 N was not re-evaluated here.
+
+Details: [`heun_adaptive`](#coag_solverheun_adaptive-error-controlled-heun-coagulation-2026-11-20), [`coag_n_floor`](#coag_n_floor-opt-in-floor-on-the-euler_adaptive-number-limit).
 
 ### Caps, diagnostics, usage
 
@@ -120,6 +159,70 @@ Snapshots only; reference `dt_for`/4, 0.1 s at 10 ppmv, 0.02 s at 100 ppmv. Run 
 - **`vmap`:** `cond` runs both branches, so every iteration up to the cap costs a full one, whether it is needed or not. With `gas_substep='adaptive'` that is `gas_max_substeps` (16384) gas sub-steps plus a coagulation interval each: about 61 s per step against 9 ms in forward mode. Do not combine `ad_mode='reverse'`, `gas_substep='adaptive'` and `vmap`; loop over the members, or use forward mode (`jacfwd`) for batched sensitivities.
 - **When worth it:** few outputs, many more inputs than the 25 `NucleationParams` (e.g. initial-state sensitivities). For 25 inputs `jacfwd` is ~7× cheaper: d ln N(>3 nm) at 24 h, 217 K, 1 ppmv, 40 bins took 34 s / 0.67 GB with `jacfwd` and 238 s / 1.26 GB with `grad` (`benchmarks/python/reverse_mode_cost.py`), agreeing to 2.4e-12.
 
+## coag_interval_frac ladder (benchmark)
+
+`benchmarks/python/gas_substep_coag_interval.py`: `coag_solver='euler_adaptive'` with adaptive gas sub-steps (f = 0.1) at outer dt = 360 s, `coag_interval_frac` = 0.003, 0.03, 0.1, 0.3, 0.5 on the tropical grid (13–25 km × SO₂, 40 bins, 24 h). The 0.01 default is the existing `ea_f0.1_360` run (not recomputed; its wall time is from a single-job machine load, the new rungs ran 3 jobs at once, so time ratios are rough and, if biased, understate the savings of coarser rungs). Reference: the smallest-dt split-chemistry run of each cell, `ref_split_half` (SO₂ ≥ 100 ppbv) else `ref_split`. Valid: L1 N ≤ 0.05 at 6 h and 24 h, finite, no gas or coagulation cap. `--all`, then `--compare`; output `benchmarks/results/gas_substep/coag_interval_tropical/` (table in `compare.txt`). `build(coag_interval_frac=...)` in `gas_substep_convergence.py` passes it to `make_step`.
+
+Results (48 cells per rung):
+
+| frac | valid | wall time vs 0.01 | L1 N at SO₂ ≥ 100 ppbv |
+|---|---|---|---|
+| 0.003 | 47 | ~3× slower | 0.002–0.004 |
+| 0.01 | 47 | 1 | ~0.006–0.008 |
+| 0.03 | 48 | 1.2–1.5× faster | 0.02–0.03 |
+| 0.1 | 2 (SO₂ ≤ 10 ppbv) | 1.3–1.7× faster | ~0.08 |
+| 0.3, 0.5 | 2 | 1.3–1.8× faster | 0.12–0.25 |
+
+- **0.03 is the coarsest rung that passes everywhere.** From 0.1 up the L1 N exceeds the tolerance at SO₂ ≥ 100 ppbv (accuracy failures, no cap) while time barely drops further (100,000 ppbv: 544, 538, 538 s summed over altitudes at 0.1, 0.3, 0.5). The error stops growing near 0.3–0.5, and the sub-steps inside each interval, not the interval count, carry most of the cost.
+- **0.003 costs ~3× the default** (more intervals, more `euler_adaptive` and gas sub-steps) for an L1 already below 0.01 at 0.01.
+- **The two invalid cells below 0.1** (`ci0.003` and `ci0.01`, 15 km / 100,000 ppbv) hit `CoagSubstepCapWarning` at `coag_max_substeps` = 10000, with L1 N ≤ 0.01. Rerun at `COAG_MAX_SUBSTEPS` = 100000 (the 0.01 file in `euler_adaptive_tropical/` was overwritten; the capped runs are in `bak_capped/`): the warning still fires, L1 N is unchanged (0.005 and 0.010), and wall time rises to 382 s and 1717 s (0.03: 175 s). Both cells stay flagged and their times are cap-dominated. Diagnosis below.
+
+### Why `ci0.01` hits the coagulation cap and `ci0.03` does not (15 km, 100,000 ppbv)
+
+`benchmarks/python/diag_coag_cap.py FRAC HOURS CAP` wraps `euler_step` and prints every coagulation interval that needed ≥ 1000 sub-steps, with the limiting bin and species of `_compute_adaptive_dt` at the start and end state (24 h, cap 10000; the first 6 h of `ci0.01` have none).
+
+- `ci0.01`: 758 intervals needed ≥ 1000 sub-steps (the first eight printed are all at the cap); `ci0.03`: none.
+- The capped intervals are the shrunk intervals of the burst, 0.03–0.07 s long. The limiter is the **number limit** `0.25 N/|dN/dt|` of **one bin (bin 6)** every time; the mass limit stays large (~48 s at the end state).
+- Bin 6 enters each of them nearly empty (N ≈ 0.02–0.09 #/cell) with a source of ~2×10⁴ #/cell/s that does not depend on N, and ends at N ≈ 10⁻⁵ (MNFIX's floor), where the limit is ~10⁻¹⁰ s.
+- Probable mechanism (not tested): each sub-step grows bin 6 by ≤ 25%; the new particles' mean mass lies outside the bin, so MNFIX moves them out and resets the bin to its 10⁻⁵ floor; the limit collapses again and the cycle runs to the cap. The mask in `_compute_adaptive_dt` excludes bins below `TINY_N` (10⁻¹⁰), but MNFIX leaves 10⁻⁵, so a floored bin that is not empty sets the step.
+- Effect: each capped interval drops essentially its whole 0.03–0.07 s of coagulation; 758 of them are well under a minute of 24 h, which is why L1 N stays ≈ 0.01 (0.03's error of 0.029 is not from this).
+- Why 0.03 avoids it is not established: its intervals (rounded down to powers of 2 s) apparently never put bin 6 in that state, and the time of the first capped interval was not traced for either rung. 0.003 is also capped, so the cap is not monotonic in `coag_interval_frac`.
+- Masking floored bins in `_compute_adaptive_dt` would diverge from Fortran `multicoag.f`, so it is opt-in: `coag_n_floor` (next section).
+
+### `coag_n_floor`: opt-in floor on the euler_adaptive number limit
+
+`make_step(coag_solver='euler_adaptive', coag_n_floor=x)` (default `None`) passes `n_floor=x` to `euler_step`, which leaves bins with N ≤ x [#/cell] out of the number limit `0.25 N/|dN/dt|` (the mask is N > `TINY_N` = 1e-10 otherwise). The mass limit is unchanged. It needs `euler_adaptive` and x ≥ 0 (`ValueError`); `0.0` equals `None`.
+
+Checks:
+- **Off is bit-identical.** A 3-step `make_step` run (15 and 25 km × 100 and 10000 ppbv, with and without adaptive gas sub-steps) against an archived HEAD copy: 24 arrays, all equal. `tests/test_coag_adaptive.py`.
+- **Mass and number.** Coagulation only (`euler_step`, `recompute_kernel=True`, 217 K, 10 × 360 s, 1e7 and 3e9 cm⁻³ 1.7 nm burst on a background): dry mass closes to ≤ 1e-9 of M₀ with the floor off, 1e-3 and 1e-2 (overflow estimated from the rate at each step start; the residual of 5e-10 is that estimate), no species moves more than the total, total mass differs between floor and no floor by ≤ 4e-11. Sub-steps fall 1.4–1.9× at 1e7 and 13× (12902 to ≈ 900) at 3e9. Total N differs by 0.4–1.3 % and bins with N > 1e-3 #/cell by up to 0.4 (1e7) and 0.9 (3e9): the bin-shift noise of thin bins, no truth reference in this test.
+- **Truth reference for that test** (`benchmarks/python/coag_n_floor_truth.py`, 2026-11-20): the same 40-bin TFL + MNFIX, kernel recomputed each sub-step, floor off, with every sub-step divided by s (64 → 1.0e6 sub-steps for 3e9; the s = 16 → 64 change is L1 3.6e-3 at 1e7 and 2.3e-3 at 3e9, first order, so s = 64 is within about 1e-3). Background: lognormal 500 cm⁻³, 60 nm, σg 1.8 (not the original test's background, which was not kept), 10 × 360 s, 217 K. Against it, L1 of the 40-bin number distribution and total N: at 1e7 the floor never binds (floor 1e-3, 1e-2 and off give the same 385 sub-steps; all 2.7e-2 L1, −2.0 % N, the Fortran step's own time error); at 3e9 floor off 17377 sub-steps, L1 4.9e-3, −0.13 % N; floor 1e-3 801 sub-steps, L1 2.1e-2, −1.5 % N; floor 1e-2 795, 2.2e-2, −1.6 %. **At 3e9 the floor is 22× cheaper and 4× less accurate in coagulation alone**: the bins it takes out of the limit are not noise. The per-bin max relative error (N > 1e-3) is not a usable metric: it is 0.03–0.6 between truth runs of s = 16 and 64 and 0.3–0.9 for every floor setting. The grid check above (48/48, L1 N 0.047 at 24 h) is against a coupled reference and is not affected, but the "bin-shift noise" reading of the 0.4–1.3 % above is wrong for the 3e9 case.
+- **Grid** (`gas_substep_coag_interval.py`, kinds `nf0.01`, `nf0.001`: `coag_interval_frac` 0.01 with floor 1e-2 / 1e-3; same 48 cells, reference and criteria as the ladder): both pass 48/48 (the ladder's 0.01 passed 47, the capped cell excepted). Sub-step counts equal the 0.01 run in 46 of 48 cells (15 km / 100000 ppbv changes, 17 km / 1000 ppbv by 5 of 292999) and the max L1 N over the 48 cells is 0.047 for both floors and for 0.01.
+- **15 km / 100000 ppbv** (the cell that hit `CoagSubstepCapWarning`): no cap, L1 N 0.010 / 0.009 (6 h / 24 h; 0.01 gave 0.010 / 0.010 with the cap), 24 h in 206 s against 377 s at `coag_max_substeps` = 10000 (the 100000-cap rerun took 1717 s and still warned). Plain 0.03 takes 175 s with L1 N 0.029 / 0.028. The floor therefore keeps the 0.01 accuracy at 1.8× less time; 0.03 is a further 15 % faster for three times the error.
+- Elsewhere the floor does nothing: the wall times at the long runs are 0.92–0.94 of the 0.01 run's (the short ones are noise), but sub-step counts are equal, so that is load (3 jobs at once against one for the 0.01 run), not the floor.
+- Floors 1e-2 and 1e-3 give the same result at every cell; 1e-2 is the suggested value. Bins that cause the collapse sit at 0.02–0.09 #/cell, far above MNFIX's 1e-5, so a floor of 2e-5 would not mask them. Not validated on 80 bins; stays opt-in.
+- Mechanism: confirmed only by this effect (cap gone, same L1), not traced inside a run.
+
+### Ideas that did not speed up the 0.01 default (workflow of 2026-11-20)
+
+Four candidates were run on a 10-cell quick set (13/20/25 km × 10–1000 ppbv, 13 km at 10000 ppbv; `benchmarks/python/coag_speed_eval.py`) plus 15 km / 100000 ppbv, one reviewed independently. Wall times are ±10 % (shared machine).
+- **Decoupling the two interval closers** (`coag_loss_frac`, `coag_target_growth`, not merged): the accuracy loss at `coag_interval_frac` ≥ 0.03 comes from the nucleation trigger, not the shrink rule. Raising the shrink threshold alone gave 1.06× over the 10 cells (max L1 N 0.035); slower target growth changed nothing; a tighter nucleation trigger (0.005) cut L1 N 2.5× at 1.3× the time. The 13 km / 10000 ppbv cell (65 % of the time) did not change.
+- **Strang-style coagulation on the mid-interval state** (`coag_split='mid'`, not merged): second order in the interval, mid 0.03 has max L1 N 0.030 against 0.044 for plain 0.03 at about 1.3× over 0.01 (mid 0.05: 0.038, 1.3×; mid 0.3 fails). Review found no bug, but phase 2 has no nucleation-based closure, there are no tests, and it is forward-mode only.
+- **Cost reduction at identical numerics** (not merged): the time per gas sub-step (31–46 µs at 13 km / 1000 ppbv) is thunk dispatch and control flow (nested `while`/`cond`), not arithmetic: coagulation 35–40 %, PPM condensation about 35 %. Dropping the MNFIX that follows nucleation at the start of condensation was 1.01–1.09× (bit-identical); a kernel computed inside the loop was 1e-12 off and gave nothing. Gains must come from fewer sub-steps, not faster ones.
+- **Interval count is not the cost:** at 13 km / 1000–10000 ppbv there is about one `euler_adaptive` sub-step per coagulation interval and 0.6 intervals per gas sub-step, so no coagulation setting removes more than the 1.2–1.5× that 0.03 gives. The semi-implicit gas step under Limitations is the remaining way to cut the gas sub-steps.
+
+
+### `coag_solver='heun_adaptive'`: error-controlled Heun coagulation (2026-11-20)
+
+`solvers/euler.heun_step`, `make_step(coag_solver='heun_adaptive', coag_heun_rtol=3e-3, coag_heun_atol=1e-6)`. Not Fortran, opt-in (defaults untouched). Per iteration: kernel at the current state (frozen over both stages), Euler predictor, Heun update N + h/2 (f0 + f1), MNFIX on the result. Error per bin = h/2 |f1 − f0| / (atol·ΣN + rtol·N); rejected and retried when > 1; next h = h·clip(0.9/√err, 0.2, 5); h0 = 1 s. The error is absolute against total N, so a bin that MNFIX keeps resetting to 1e-5 has no weight and cannot collapse the step. `coag_max_substeps` counts iterations (accepted + rejected); the cap warning is shared with `euler_adaptive`; `bounded` gives the reverse-mode loop. Tests `tests/test_coag_adaptive.py::test_heun_adaptive`.
+
+Why: the 3e9 truth study showed the Fortran limit's real error is first-order time error in the bulk bins (8–12), and the collapse at near-empty bins is a rate artifact (TFL treats N < NEPS = 1e-3 as 1e-3 while the update uses the real N, so bin 0's rate is ~100× too large after MNFIX resets it). Net-rate-relative limits (floor, relative floor, loss-only, tighter factor) all lie on one error × sub-steps line; only the second-order update moves off it (the same controller with Euler gains nothing). Prototypes of the five ideas (Heun + controller, Heun with scaled Fortran limits, loss-only limit, Patankar, diagnosis) against the s = 64 truth: burst 3e9, 17377 Fortran sub-steps / L1 4.9e-3 → Heun 611 + 17 rejected / L1 8.5e-4; burst 1e7, 385 / 2.7e-2 → 394 evals / 3.1e-3 (rate evaluations, 2 per Heun step). L1 below ~2–3e-3 is the truth's own first-order error.
+
+Grid (`gas_substep_euler_adaptive.py`, kind `ha_f0.1_360`: adaptive f = 0.1, outer 360 s, same 48 cells and references as `ea_f0.1_360`; one job at a time):
+- 40 bins: 48/48 valid, no cap (euler_adaptive 47/48: 15 km / 100000 ppbv capped). Max L1 N 0.047 at 6 h (the same as euler_adaptive: set by the gas/nucleation sub-stepping, not coagulation) and 0.016 at 24 h (0.019). L1 N at 24 h is about half euler_adaptive's cell by cell. Wall time: summed 861 s against 2285 s for euler_adaptive, of which 15 km / 100000 ppbv is 211 s against ~1717 s (cap-dominated); elsewhere Heun is 1.1–1.2× slower at SO₂ ≥ 1000 ppbv and 1.2–2.5× at 10–100 ppbv.
+- 80 bins (linear sub-bin coagulation): 47/48, the same cell failing as euler_adaptive and euler_fixed (13 km / 0.1 ppbv, L1 N 0.086 at 6 h, not a coagulation effect). Max L1 N 24 h 0.018 (0.025). Wall time summed 4116 s against 2797 s: about 1.5× slower at SO₂ ≥ 1000 ppbv (100000 ppbv: 3138 s against 2221 s).
+- So: lower error everywhere, similar cost at 40 bins (cheaper where euler_adaptive hits its cap), 1.5× the cost at 80 bins. Heun reaches half the L1 at about 1.2–1.5× the time; it does not make the grid cheaper. - **rtol 1e-2 changes nothing on the grid** (kind `ha1e-2_f0.1_360`, `coag_heun_rtol=1e-2`; 40 bins 874 s against 863 s at 3e-3, 80 bins 4085 s against 4116 s; max L1 N 24 h 0.016 / 0.018 and the same valid counts, 48/48 and 47/48). The coagulation sub-step count inside a gas sub-step is not set by the tolerance: probably each coagulation interval is short enough that one Heun step (two rate evaluations plus the kernel) covers it (as for `euler_adaptive`, about one sub-step per interval; not traced for Heun), so the cost over `euler_adaptive` is the per-step price of Heun and not its step count. Not tested: Heun with `coag_interval_frac` above 0.01, stiffer coupled settings.
+
 ## Gradient blind spots
 
 In both modes: MNFIX bin selection, nucleation sub-step counts, the clamp (cannot fire with gas sub-steps), the gas sub-step choice. The Δt_rem/2^k ladder makes the objective piecewise smooth, so central FD with h ≳ 1e-3 can straddle a switch (1 ppmv: FD 0.056–0.061 vs AD 0.0563); at h = 1e-4 FD equals AD.
@@ -130,3 +233,14 @@ In both modes: MNFIX bin selection, nucleation sub-step counts, the clamp (canno
 - **Coagulation intervals react after the fact:** no rejection; the nucleation trigger ends an interval after 0.01·N new particles.
 - **Order:** gas processes run before coagulation in each interval, whatever the process list says.
 - **Bin-shift noise:** MNFIX timing of slowly growing small bins makes per-bin distances noisy at 0.02–0.1 on 40 bins and at 0.16 per bin on 80 bins, independent of dt. Hence hour means and 40-bin resolution for the test.
+
+#### `heun_adaptive` initial step h0 = dt (2026-11-21)
+
+`heun_step` now starts each call at h0 = dt (was 1 s). With a 1 s start and `fac_max` = 5 a long interval needed several ramp-up iterations (20 km: 3 against 1) for no accuracy gain; Heun never rejects at rtol 3e-3 or 1e-2, so rtol is not a cost lever. Tropical grid, outer dt 360 s, f = 0.1, 48 cells per resolution:
+
+| bins | Heun h0 = 1 s | Heun h0 = dt | euler_adaptive | max L1 N 24 h (Heun h0 = dt / euler_adaptive) |
+|---|---|---|---|---|
+| 40 | 863 s | 848 s | 2284 s | 0.016 / 0.019 |
+| 80 | 4116 s | 4001 s | 2797 s | 0.018 / 0.025 |
+
+Valid 48/48 (40 bins) and 47/48 (80 bins, the same cell as euler_adaptive). The h0 change saves only ~2 % in total: the cost is the per-iteration work (80 bins: the second rates evaluation is ~48 % of a Heun iteration), not the iteration count. Heun is 2.7x faster than euler_adaptive at 40 bins (euler_adaptive hits its cap at 100000 ppmv) and 1.4x slower at 80 bins, with roughly half the L1 N error in most cells. Old runs: kinds `hs_*`, outputs in `benchmarks/results/gas_substep/h01s_old/`.

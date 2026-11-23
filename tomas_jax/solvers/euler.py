@@ -35,7 +35,8 @@ def _compute_adaptive_dt(
     dNdt: jnp.ndarray,
     dMdt: jnp.ndarray,
     dt_remaining: float,
-    icomp_nodiag: int = ICOMP_NODIAG
+    icomp_nodiag: int = ICOMP_NODIAG,
+    n_floor=None,
 ) -> jnp.ndarray:
     """Compute adaptive timestep matching FORTRAN multicoag.f logic.
 
@@ -58,7 +59,8 @@ def _compute_adaptive_dt(
     # Number-based limit: dt < 0.25 * N / |dN/dt|
     # Mask out empty bins (Fortran skips bins with Nk < Neps)
     abs_dNdt = jnp.maximum(jnp.abs(dNdt), 1e-30)
-    dtlimit = jnp.where(Nk > TINY_N, 0.25 * jnp.abs(Nk) / abs_dNdt, jnp.inf)
+    n_cut = TINY_N if n_floor is None else jnp.maximum(n_floor, TINY_N)
+    dtlimit = jnp.where(Nk > n_cut, 0.25 * jnp.abs(Nk) / abs_dNdt, jnp.inf)
     dt_N = jnp.min(dtlimit)
 
     # Mass-based limit: dt < 10.0 * M / |dM/dt|
@@ -96,6 +98,7 @@ def euler_step(
     bounded: bool = False,
     mnfix_trim: bool = False,
     return_dt_left: bool = False,
+    n_floor=None,
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Forward Euler integration of coagulation over timestep dt.
 
@@ -128,6 +131,11 @@ def euler_step(
             AD works.
         mnfix_trim: Static; mnfix_jax(trim=...). True is faster but
             forward-mode AD only.
+        n_floor: Opt-in (None = Fortran, bit-identical). Bins with
+            Nk <= n_floor [#/cell] are left out of the number limit
+            0.25 N/|dN/dt| (the mask is Nk > TINY_N otherwise), so a nearly
+            empty bin that MNFIX keeps resetting to its 1e-5 floor cannot
+            collapse the sub-step. Mass limit unchanged.
         return_dt_left: Static; if True, also return the time [s] left
             uncovered when max_substeps bound (0 otherwise). That part of
             dt gets no coagulation.
@@ -173,7 +181,8 @@ def euler_step(
         # Adaptive timestep
         dt_remaining = dt - t_elapsed
         dt_sub = _compute_adaptive_dt(
-            Nk_s, Mk_s, dNdt, dMdt, dt_remaining, icomp_nodiag
+            Nk_s, Mk_s, dNdt, dMdt, dt_remaining, icomp_nodiag,
+            n_floor=n_floor,
         )
 
         # Forward Euler update
@@ -200,6 +209,88 @@ def euler_step(
         # The loop stops early only at the cap; the rest of dt is dropped
         dt_left = jnp.where(t_final < dt - 1e-15, dt - t_final, 0.0)
         out += (jax.lax.stop_gradient(dt_left),)
+    return out
+
+
+def heun_step(
+    Nk: jnp.ndarray,
+    Mk: jnp.ndarray,
+    xk: jnp.ndarray,
+    temp: float,
+    pres: float,
+    boxvol: float,
+    dt: float,
+    icomp_nodiag: int = ICOMP_NODIAG,
+    rtol: float = 3e-3,
+    atol_frac: float = 1e-6,
+    max_substeps: int = 10000,
+    sparse_density=None,
+    bounded: bool = False,
+    mnfix_trim: bool = False,
+    return_info: bool = False,
+    return_dt_left: bool = False,
+    h0=None,
+    safety: float = 0.9,
+    fac_max: float = 5.0,
+):
+    """Error-controlled Heun (explicit trapezoid) coagulation over dt.
+
+    Not in Fortran multicoag.f. Each iteration computes the kernel at the
+    current state (frozen over both stages), the Euler predictor N1 and the
+    Heun update N + h/2 (f0 + f1), then MNFIX on the Heun result. The error
+    estimate is the Euler-Heun difference h/2 |f1 - f0| per bin, scaled by
+    atol_frac * sum(N) + rtol * N: it is an absolute error against the total,
+    so a nearly empty bin that MNFIX keeps resetting has no weight and cannot
+    collapse the step (the failure of the Fortran limit 0.25 N/|dN/dt|, see
+    docs/gas_substep.md). h is rejected and retried when the scaled error
+    exceeds 1; the next h = h * clip(safety / sqrt(err), 0.2, fac_max).
+    Second order in h (the Fortran Euler step is first order). Dry mass
+    closes through the top-bin overflow as in euler_step.
+
+    max_substeps bounds the iterations (accepted + rejected); return_info
+    gives the accepted count, return_dt_left the time not integrated when
+    the cap bound. bounded: static, bounded loop for reverse-mode AD.
+    h0: first trial step [s]; None (default) = dt, so a short interval is
+    covered by one step. (h0 = 1 s needed 3 iterations on a 12 s interval,
+    1 s then 5 s then the rest: docs/gas_substep.md.)
+    """
+    def kernel(N, M):
+        Dpk, Dk, ck = calc_particle_properties(N, M, temp, pres, sparse_density)
+        return calc_coagulation_kernel(Dpk, Dk, ck, boxvol)
+
+    def cond_fn(state):
+        t, n_it = state[2], state[5]
+        return (t < dt - 1e-12) & (n_it < max_substeps)
+
+    def body_fn(state):
+        N, M, t, h, n_acc, n_it = state
+        h = jnp.minimum(h, dt - t)
+        kij = kernel(N, M)
+        dN0, dM0, _ = calc_coagulation_rates(N, M, kij, xk, icomp_nodiag)
+        N1 = jnp.maximum(N + h * dN0, 0.0)
+        M1 = jnp.maximum(M + h * dM0, 0.0)
+        dN1, dM1, _ = calc_coagulation_rates(N1, M1, kij, xk, icomp_nodiag)
+        Nh = jnp.maximum(N + 0.5 * h * (dN0 + dN1), 0.0)
+        Mh = jnp.maximum(M + 0.5 * h * (dM0 + dM1), 0.0)
+        atol = jnp.maximum(atol_frac * jnp.sum(N), TINY_N)
+        err = jnp.max(0.5 * h * jnp.abs(dN1 - dN0)
+                      / (atol + rtol * jnp.maximum(N, 1e-300)))
+        ok = (err <= 1.0) | (h < 1e-9)
+        Nn, Mn = mnfix_jax(Nh, Mh, xk, icomp_nodiag, trim=mnfix_trim)
+        fac = jnp.clip(safety * jnp.maximum(err, 1e-10) ** -0.5, 0.2, fac_max)
+        return (jnp.where(ok, Nn, N), jnp.where(ok, Mn, M),
+                jnp.where(ok, t + h, t), h * fac, n_acc + ok.astype(jnp.int32),
+                n_it + 1)
+
+    init = (Nk, Mk, jnp.float64(0.0), jnp.minimum(jnp.float64(dt if h0 is None else h0), dt),
+            jnp.int32(0), jnp.int32(0))
+    N, M, t, _, n_acc, _ = loop_while(cond_fn, body_fn, init, bounded,
+                                      max_iter=max_substeps)
+    out = (N, M)
+    if return_info:
+        out += (n_acc,)
+    if return_dt_left:
+        out += (jax.lax.stop_gradient(jnp.where(t < dt - 1e-12, dt - t, 0.0)),)
     return out
 
 
