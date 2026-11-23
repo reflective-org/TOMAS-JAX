@@ -79,7 +79,7 @@ from ..physics.water_equilibrium import (
 )
 from ..core.mnfix_jax import mnfix_jax
 from ..solvers.diffrax import coag_euler_step
-from ..solvers.euler import euler_step
+from ..solvers.euler import euler_step, heun_step
 from ..solvers.gas_substep import choose_gas_substep
 from ..core.bounded_loop import loop_fori, bounded_while
 
@@ -860,7 +860,7 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
               gas_substep_frac=0.1, gas_max_substeps=16384, gas_min_dt=1e-3,
               coag_interval_frac=0.01, return_substep_info=False,
               split_chemistry=False,
-              coag_n_floor=None,
+              coag_n_floor=None, coag_heun_rtol=3e-3, coag_heun_atol=1e-6,
               ad_mode='forward', ppm_max_substeps=64, ppm_tangent='exact',
               mnfix_trim=None, jit=True):
     """Build a step function from an ordered list of process names.
@@ -903,6 +903,11 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
         coag_max_substeps: Sub-step cap for 'euler_adaptive' (None:
             10000, or 1024 with ad_mode='reverse'). Hitting it truncates
             the coagulation step silently.
+        coag_solver='heun_adaptive': error-controlled Heun (solvers/euler.heun_step,
+            not Fortran; second order, absolute error against total N so near-empty
+            bins cannot collapse the step). coag_heun_rtol / coag_heun_atol (x sum N)
+            set the tolerance; coag_max_substeps bounds iterations (cap warning as
+            euler_adaptive). Opt-in; docs/gas_substep.md.
         coag_n_floor: 'euler_adaptive' only, opt-in (None = Fortran): bins
             with N <= coag_n_floor [#/cell] are left out of the number
             sub-step limit (see euler.euler_step n_floor).
@@ -1050,9 +1055,9 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
             UserWarning, stacklevel=2,
         )
 
-    if coag_solver not in ('euler_fixed', 'euler_adaptive'):
+    if coag_solver not in ('euler_fixed', 'euler_adaptive', 'heun_adaptive'):
         raise ValueError(f"Unknown coag_solver '{coag_solver}'. "
-                         f"Valid: ['euler_fixed', 'euler_adaptive']")
+                         f"Valid: ['euler_fixed', 'euler_adaptive', 'heun_adaptive']")
 
     valid_schemes = {'ricco_dunne', 'zhao2024'}
     if nucl_scheme not in valid_schemes:
@@ -1196,6 +1201,17 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                     return_dt_left=True,
                     n_floor=coag_n_floor,
                 )
+            elif coag_solver == 'heun_adaptive':
+                Nk, Mk, coag_left = heun_step(
+                    Nk, Mk, xk, temp, pres, boxvol, dt,
+                    icomp_nodiag=kwargs.get('icomp_nodiag', ICOMP_NODIAG),
+                    rtol=coag_heun_rtol, atol_frac=coag_heun_atol,
+                    max_substeps=coag_max_substeps,
+                    sparse_density=sparse_density,
+                    bounded=bounded,
+                    mnfix_trim=mnfix_trim,
+                    return_dt_left=True,
+                )
             else:
                 Nk, Mk = coag_euler_step(
                     Nk, Mk, xk, temp, pres, boxvol,
@@ -1228,7 +1244,7 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
 
     def warn_coag_cap(coag_dt_left, dt):
         # Always on, like the gas cap: the dropped time gets no coagulation
-        if coag_solver == 'euler_adaptive' and 'coagulation' in processes:
+        if coag_solver in ('euler_adaptive', 'heun_adaptive') and 'coagulation' in processes:
             jax.debug.callback(_warn_coag_cap, coag_dt_left, dt,
                                coag_max_substeps, ad_mode)
 

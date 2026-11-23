@@ -78,10 +78,13 @@ KINDS = {'f0.1_60': (60.0, 0.1, 'euler_fixed'),
          'ea_f0.1_60': (60.0, 0.1, 'euler_adaptive'),
          'ea_f0.1_360': (360.0, 0.1, 'euler_adaptive'),
          'ea_dt60': (60.0, None, 'euler_adaptive'),
-         'ea_dt360': (360.0, None, 'euler_adaptive')}
+         'ea_dt360': (360.0, None, 'euler_adaptive'),
+         # error-controlled Heun coagulation (make_step coag_solver='heun_adaptive')
+         'ha_f0.1_360': (360.0, 0.1, 'heun_adaptive')}   # h0 = dt (hs_*: h0 = 1 s, older runs)
+HEUN_RTOL = {}       # kind -> coag_heun_rtol (default 3e-3)
 # kind -> (directory, file kind) of the euler_fixed run it is compared with
 PAIR = {'ea_f0.1_60': 'f0.1_60', 'ea_f0.1_360': 'f0.1_360', 'ea_dt60': 'dt60',
-        'ea_dt360': 'dt360'}
+        'ea_dt360': 'dt360', 'ha_f0.1_360': 'f0.1_360'}
 BASE = {'f0.1_60': DOUT, 'f0.1_360': DBASE, 'dt60': DBASE, 'dt360': DBASE}
 FIXED = ['f0.1_360', 'dt60', 'dt360']       # euler_fixed baselines
 if BINS == 80:      # no 80-bin baselines exist: run them here
@@ -123,6 +126,7 @@ def run_one(z, so2, kind):
     out, _, info = build(xk, dt, REPORT_HOURS, frac, fd_alpha=0.0, pres=pres,
                          sample_s=SAMPLE_S, gas_max_substeps=GAS_MAX_SUBSTEPS,
                          coag_solver=solver, coag_max_substeps=COAG_MAX_SUBSTEPS,
+                         coag_heun_rtol=HEUN_RTOL.get(kind),
                          split_chemistry=SPLIT and frac is None)(
         direction, T, *state)
     os.makedirs(DOUT, exist_ok=True)
@@ -152,7 +156,7 @@ def row(z, T, so2, kind, ref):
     ok = bool(np.all(np.isfinite(d['Nk_avg'])) and np.all(np.isfinite(d['Mk_avg'])))
     r = dict(z=z, T=T, so2=so2, kind=kind, finite=ok, gas_cap=bool(d['cap']),
              coag_cap=coag_cap_hit(z, so2, kind) if kind in KINDS and kind != 'f0.1_60'
-             and KINDS[kind][2] == 'euler_adaptive' else False)
+             and KINDS[kind][2] in ('euler_adaptive', 'heun_adaptive') else False)
     for i, h in enumerate(d['hours']):
         j = list(ref['hours']).index(h)
         r[f't_{int(h)}h'] = float(d['t'][i])
@@ -179,6 +183,11 @@ def compare():
                     base = np.load(pkind(z, s, PAIR[k]))
                     for h, i in ((6, 0), (24, 1)):
                         r[f'x_fixed_{h}h'] = float(base['t'][i]) / max(r[f't_{h}h'], 1e-3)
+                if k.startswith('ha'):      # against the Fortran-limit euler_adaptive run
+                    ea = np.load(pkind(z, s, 'ea_f0.1_360'))
+                    r['x_ea_24h'] = float(ea['t'][1]) / max(r['t_24h'], 1e-3)
+                    r['eN_ea_24h'] = l1(merged(ea['Nk_avg'][1]), merged(ref['Nk_avg'][1]),
+                                        merged(ref['Nk_avg'][1]))
                 rows.append(r)
     np.save(os.path.join(OUTDIR, 'euler_adaptive_compare' + SFX + '.npy'),
             np.array(rows, dtype=object), allow_pickle=True)
@@ -191,6 +200,12 @@ def compare():
         print(f"{r['z']:3g} {r['so2']:8g} {r['kind']:>12s} {r['t_24h']:8.1f} "
               f"{r.get('x_fixed_24h', float('nan')):8.2f} {r['eN_6h']:7.3f} "
               f"{r['eN_24h']:8.3f} {r['eM_24h']:8.3f}  {flags}")
+    for hk in [k for k in ALL_KINDS if k.startswith('ha')]:
+        ha = [r for r in rows if r['kind'] == hk]
+        print(f"\n{hk} vs ea_f0.1_360 (euler_adaptive): ea/ha time and L1 N 24 h of each")
+        for r in ha:
+            print(f"  {r['z']:3g} km SO2 {r['so2']:8g}: x{r['x_ea_24h']:5.2f}  "
+                  f"ha {r['eN_24h']:.3f}  ea {r['eN_ea_24h']:.3f}")
     print("\nper SO2 (sum of wall time to 24 h over altitudes; valid = finite, no cap, L1 N <= "
           f"{TOL} at 6 h and 24 h):")
     for s in SO2_PPBV:
