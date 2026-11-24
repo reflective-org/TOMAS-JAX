@@ -4,6 +4,16 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-11-24 (Tue) PST — `TOMAS_SPECIES=sulfate` reduced layout: pure-sulfate clusters required (`org_frac == 0`)
+
+- **Added:** `TOMAS_SPECIES=sulfate` (read once at import, `core/config.py`): `ICOMP=3` (SO4, NH4 placeholder, H2O), no organic/nitrate/SOA slots; organics, NH3, SOA and the box model raise. Default layout unchanged and bit-identical.
+- **Rule:** in the sulfate layout `make_step` with `'nucleation'` requires `nucl_params` with `org_frac == 0` (e.g. `DEFAULT_NUCLEATION_PARAMS._replace(org_frac=0.0)`); `None` (library default 0.1) or `org_frac != 0` raises ValueError, checked on concrete values before jit. Why: the default layout adds the organic share of new clusters to `Mk` without removing any gas; with no organic column that mass would be folded into SO4 from nothing.
+- **Verified (CPU):** `tests/test_sulfate_only.py` runs both layouts with `org_frac = 0` on 6 stratospheric cells incl. a 5 kg SO2 plume cell, 40 bins, `heun_adaptive`: full chain, coag only, cond only. Nk, SO4, SO2, H2SO4 bit-identical; water at most 2.2e-16 relative. Default-layout nucleation, coag_adaptive and smoke tests pass.
+- **Known:** 10 `test_aaar_*` files cannot be collected in the Python 3.10 venv (`tomllib`); `test_aaar_nitrate_gate::test_level3_leaves_no_band_below_the_mode` fails at 5aeacd5 already.
+- **Next:** GPU timing of 44-column vs sulfate-only `heun_adaptive` on CESM cells; H2SO4-production-sorted chunking.
+
+---
+
 ## 2026-11-23 (Mon) 16:30 PST — Batched GPU timing of `heun_adaptive` at CESM stratospheric cells; `make_step(cap_warnings=...)`
 
 - **Added:** `make_step(cap_warnings=True)` (`solvers/condensation.py`): `False` drops the gas and coagulation cap-warning `jax.debug.callback`s, which JAX unrolls per batch member under `vmap` (8192 cells: compile 217 s against 9 s, step 5.3 s against 0.06 s). Default unchanged and bit-identical; with `False` the caller reads `info['hit_cap']` / `info['coag_dt_left']`. Test: `test_cap_warnings_false_is_silent_and_values_unchanged` (`tests/test_gas_substep.py`); `test_gas_substep.py` + `test_coag_adaptive.py` 28 passed (CPU).

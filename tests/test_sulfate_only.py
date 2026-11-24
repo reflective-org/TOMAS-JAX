@@ -20,6 +20,8 @@ WORKER = textwrap.dedent('''
     from tomas_jax.core.config import (NBINS, ICOMP, N_GAS_SPECIES, SRTSO4,
                                        SRTH2O, SRTSO2, SRTORGLAST, HAS_ORG)
     from tomas_jax.solvers.condensation import make_step
+    from tomas_jax.physics.nucleation import DEFAULT_NUCLEATION_PARAMS
+    NUC = DEFAULT_NUCLEATION_PARAMS._replace(org_frac=0.0)   # sulfate layout requires it
     out_path, procs = sys.argv[1], json.loads(sys.argv[2])
     assert NBINS == 40, NBINS
     BOXVOL = 1e12
@@ -41,7 +43,7 @@ WORKER = textwrap.dedent('''
         Mk = jnp.zeros((NBINS, ICOMP)).at[:, SRTSO4].set(Nk * xk[:NBINS] * 1.0)
         Gc = (jnp.zeros(N_GAS_SPECIES).at[SRTSO4].set(h2so4).at[SRTSO2].set(so2))
         r = step(Nk, Mk, Gc, xk, T, P, BOXVOL, RH, 1.0, 60.0, oh_conc=oh,
-                 org_conc=0.0, nh3_conc=0.0)
+                 org_conc=0.0, nh3_conc=0.0, nucl_params=NUC)
         res["Nk"].append(np.asarray(r[0]))
         res["so4"].append(np.asarray(r[1][:, SRTSO4]))
         # nucleation's organic share: default -> SRTORGLAST column, sulfate -> folded into SO4
@@ -97,19 +99,9 @@ def test_sulfate_matches_default(tmp_path, name):
     # Gas phase is bit-identical in every case.
     for f in ("so2", "h2so4"):
         assert np.array_equal(d[f], s[f], equal_nan=True), (name, f, diffs)
-    nucleates = "nucleation" in CASES[name]
-    for f in ("Nk", "so4_org", "h2o", "so4"):
-        if nucleates and f == "so4":
-            continue   # raw SO4 column: sulfate mode folds nucleation's organic share in
-        cells = slice(None)
-        rtol = TIGHT
-        if nucleates and f == "h2o":
-            cells = slice(0, PLUME)   # plume: organic share changes water uptake
-        assert _close(d[f][cells], s[f][cells], rtol), (name, f, diffs)
-    if nucleates:
-        # Plume cell water: organic share (~1/11 of nucleated mass) is treated as
-        # sulfate in sulfate mode; effect is confined to the new-particle bin.
-        assert _close(d["h2o"][PLUME:], s["h2o"][PLUME:], 2e-2), (name, diffs)
+    # org_frac = 0 in both layouts: every field agrees to round-off, plume cell included.
+    for f in ("Nk", "so4", "so4_org", "h2o"):
+        assert _close(d[f], s[f], TIGHT), (name, f, diffs)
 
 
 def test_reduced_layout_rejects_unsupported_kwargs_under_jit():
@@ -120,12 +112,22 @@ def test_reduced_layout_rejects_unsupported_kwargs_under_jit():
         pytest.skip("reduced layout only")
     import jax.numpy as jnp
     from tomas_jax.solvers.condensation import make_step
+    from tomas_jax.physics.nucleation import DEFAULT_NUCLEATION_PARAMS as D
+    NUC10 = D._replace(org_frac=0.1)
+    NUC0 = D._replace(org_frac=0.0)
     for jit in (True, False):
         st = make_step(['so2_chemistry', 'nucleation', 'coagulation',
                         'condensation'], coag_solver='heun_adaptive', jit=jit)
         args = (jnp.ones(40), jnp.ones((40, 3)), jnp.ones(3), jnp.ones(41),
                 270., 1e5, 1e9, .5, 1., 10.)
         for kw in (dict(org_conc=1e6), dict(nh3_conc=1e9), dict(ulvoc=1.0),
-                   dict(nucl_params=object()), dict(enable_organic=0.5)):
+                   dict(enable_organic=0.5)):
             with pytest.raises(ValueError):
+                st(*args, nucl_params=NUC0, **kw)
+        for kw in (dict(nucl_params=object()), dict(nucl_params=None),
+                   dict(nucl_params=NUC10), dict()):    # missing / org_frac != 0
+            with pytest.raises(ValueError, match="org_frac"):
                 st(*args, **kw)
+
+        # the rule: org_frac == 0 is accepted, with and without jit
+        st(*args, nucl_params=NUC0)

@@ -1460,10 +1460,21 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                 raise ValueError(
                     f"{_k}={_v!r} needs organic/NH3/HNO3 species; "
                     f"unsupported with TOMAS_SPECIES={SPECIES_LAYOUT}")
-        if kwargs.get('nucl_params') is not None:
-            raise ValueError(
-                f"nucl_params is unsupported with TOMAS_SPECIES="
-                f"{SPECIES_LAYOUT} (it can change the organic nucleation share)")
+        if 'nucleation' in processes:
+            # No organic slot: nucleated clusters must be pure sulfate, i.e.
+            # nucl_params.org_frac == 0 (the library default is 0.1, so
+            # nucl_params=None is rejected too). Under jit nucl_params is a
+            # Tracer; that case is checked on concrete values before tracing.
+            _np = kwargs.get('nucl_params')
+            _msg = (f"TOMAS_SPECIES={SPECIES_LAYOUT} requires nucl_params with "
+                    f"org_frac == 0 (pure-sulfate clusters), e.g. "
+                    f"DEFAULT_NUCLEATION_PARAMS._replace(org_frac=0.0); got "
+                    f"nucl_params={'None' if _np is None else type(_np).__name__}")
+            if _np is None or not hasattr(_np, 'org_frac'):
+                raise ValueError(_msg)
+            _of = _np.org_frac
+            if not isinstance(_of, jax.core.Tracer) and np.any(np.asarray(_of) != 0.0):
+                raise ValueError(f"{_msg} (org_frac={_of!r})")
         for _k in ('enable_organic', 'enable_inorganic'):
             _v = kwargs.get(_k, 1.0)
             if isinstance(_v, jax.core.Tracer):
