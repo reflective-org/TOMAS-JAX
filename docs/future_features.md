@@ -70,7 +70,7 @@ This document tracks features that are not currently needed but would unlock sig
 **What:** Replace the O(N^2) Brownian coagulation kernel computation with a neural network surrogate trained on forward-simulation data.
 
 **Unlocks:**
-- **Speedup** for the coagulation step — with the forward Euler solvers the kernel matrix is computed once per step and is a small part of coagulation wall time (per step on CPU: kernel 3/10/38 µs at 40/80/160 bins vs 170/950/2800 µs for a `make_step(['coagulation'])` step, `benchmarks/python/coag_rates_profile.py`); the rates and MNFIX, called every sub-step, dominate. The kernel matters more for Tsit5 adaptive solves (`diffrax_step`), where it is still computed once per step
+- **Speedup** for the coagulation step — modest: the kernel is a small part of coagulation wall time (per step on CPU: kernel 3/10/38 µs at 40/80/160 bins vs 170/950/2800 µs for a `make_step(['coagulation'])` step, `benchmarks/python/coag_rates_profile.py`). `coag_euler_step` (`euler_fixed`) computes it once per step and the rates and MNFIX run every sub-step; `euler_adaptive` recomputes it every sub-step, and that adds only about 5% to `euler_step` (sai_plume 6 h, dt = 60 s, `recompute_kernel` False → True: 235 → 243 µs at 40 bins, 789 → 829 µs at 80 bins, CPU under load). Tsit5 (`diffrax_step`) computes it once per step and evaluates the rates at every RHS call (≥ 6 per step), so there its share is smaller still
 - **Amortized cost** — a learned kernel that generalizes across temperature/pressure conditions avoids recomputing the full matrix each step
 - **Foundation for online learning** — update the surrogate during simulation based on residuals
 

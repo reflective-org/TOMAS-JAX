@@ -1,10 +1,20 @@
 """Original linear sub-bin coagulation rates (scatter-add formulation).
 
-Verbatim copy of ``calc_coagulation_rates_linear`` as it was before the
-dense masked-reduction rewrite (2026-11-24). Kept as the reference that
-``tests/test_coagulation_rates_linear_fast.py`` compares the library function
-against (values and tangents to round-off) and that
-``benchmarks/python/coag_rates_profile.py`` times. Not used by the library.
+Verbatim copy of ``calc_coagulation_rates_linear`` (renamed) and of the
+helpers it calls from ``tomas_jax/physics/coagulation_rates_linear.py``
+(``linear_subbin_reconstruction``, ``_partial_moments``, ``_NARROW``,
+``_TINY``) as they were before the 2026-11-24 rewrite, which evaluates only
+the pairs i <= j, finds the destination bin in closed form on geometric grids
+and accumulates with one windowed scatter per array. The helpers are copied
+rather than imported so that later changes to the library (for example a
+double-where in the reconstruction) do not change this reference. The only
+library import is ``_preprocess_concentrations``, the empty-bin cleanup shared
+with TFL.
+
+Kept as the reference that ``tests/test_coagulation_rates_linear_fast.py``
+compares the library function against (values and tangents to round-off) and
+that ``benchmarks/python/coag_rates_profile.py`` times. Not used by the
+library.
 """
 import jax.numpy as jnp
 # float64 enforced by core/config.py
@@ -12,8 +22,76 @@ from typing import Tuple
 
 from tomas_jax.core.config import ICOMP_NODIAG
 from tomas_jax.physics.coagulation_rates import _preprocess_concentrations
-from tomas_jax.physics.coagulation_rates_linear import (
-    _TINY, _partial_moments, linear_subbin_reconstruction)
+
+_NARROW = 1.0e-6
+_TINY = 1.0e-300
+
+
+def linear_subbin_reconstruction(
+    xbar: jnp.ndarray, xk: jnp.ndarray
+) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    """Per-particle linear number density within each bin.
+
+    Returns the support [lo, hi] and the endpoint densities (n_lo, n_hi) of a
+    non-negative linear density with unit integral and mean xbar:
+
+      - xbar within w/6 of the bin centre: full-bin linear profile;
+      - xbar further toward an edge: a ramp to zero on a sub-interval
+        (support [3*xbar - 2*b, b] or [a, 3*xbar - 2*a]);
+      - xbar at or outside an edge: a narrow uniform centred on xbar.
+
+    Args:
+        xbar: Mean particle mass per bin [kg], shape (nbins,)
+        xk: Bin boundaries [kg], shape (nbins+1,)
+
+    Returns:
+        lo, hi, n_lo, n_hi: each shape (nbins,), densities in [1/kg].
+    """
+    a, b = xk[:-1], xk[1:]
+    w = b - a
+    c = 0.5 * (a + b)
+
+    # Full-bin profile: n(x) = 1/w + 12 (xbar - c)(x - c) / w^3
+    g = 6.0 * (xbar - c) / (w * w)
+    lo, hi, n_lo, n_hi = a, b, 1.0 / w - g, 1.0 / w + g
+
+    # Ramp rising to the top edge (zero at x0)
+    x0 = 3.0 * xbar - 2.0 * b
+    up = xbar > c + w / 6.0
+    lo = jnp.where(up, x0, lo)
+    n_lo = jnp.where(up, 0.0, n_lo)
+    n_hi = jnp.where(up, 2.0 / jnp.maximum(b - x0, _TINY), n_hi)
+
+    # Ramp falling to zero at x1 from the bottom edge
+    x1 = 3.0 * xbar - 2.0 * a
+    dn = xbar < c - w / 6.0
+    hi = jnp.where(dn, x1, hi)
+    n_lo = jnp.where(dn, 2.0 / jnp.maximum(x1 - a, _TINY), n_lo)
+    n_hi = jnp.where(dn, 0.0, n_hi)
+
+    # Near-delta when the ramp degenerates (xbar at or beyond an edge)
+    d = _NARROW * w
+    narrow = (xbar >= b - d) | (xbar <= a + d)
+    lo = jnp.where(narrow, xbar - d, lo)
+    hi = jnp.where(narrow, xbar + d, hi)
+    n_lo = jnp.where(narrow, 0.5 / d, n_lo)
+    n_hi = jnp.where(narrow, 0.5 / d, n_hi)
+
+    return lo, hi, n_lo, n_hi
+
+
+def _partial_moments(lo, hi, n_lo, n_hi, t):
+    """Zeroth and first moments of the linear density over [lo, t].
+
+    t must already lie in [lo, hi].
+    """
+    slope = (n_hi - n_lo) / jnp.maximum(hi - lo, _TINY)
+    n_t = n_lo + slope * (t - lo)
+    span = t - lo
+    num = 0.5 * (n_lo + n_t) * span
+    # x * n(x) is quadratic, so Simpson's rule is exact
+    mom = span / 6.0 * (lo * (2.0 * n_lo + n_t) + t * (n_lo + 2.0 * n_t))
+    return num, mom
 
 
 def calc_coagulation_rates_linear_scatter(

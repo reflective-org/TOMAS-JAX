@@ -158,16 +158,29 @@ non-finite entries.
   bins. Both schemes give identical budgets: 6e-9 (40 bins) to 5e-8 (320 bins) in
   the constant-kernel case, ≤ 2e-9 in the Brownian case.
 - **Reverse-mode NaN in the gradient** (pre-existing, unchanged by the rewrite).
-  `jax.grad` of the linear rates has NaN entries on ordinary states (e.g. 43 of 80
-  bins for a bimodal lognormal): `jax_debug_nans` points at
+  `jax.grad` of the linear rates has NaN entries for every bin whose xbar is at or
+  outside a bin edge (the reconstruction's narrow branch; e.g. 50 of 80 entries of
+  d/dN for the 80-bin lognormal state in `tests/test_coagulation_rates_linear_fast.py`,
+  which has 50 such bins). `jax_debug_nans` points at
   `2.0 / jnp.maximum(x1 - a, _TINY)` in `linear_subbin_reconstruction`, the 0 × inf
-  of an unselected where-branch. Forward mode (`jvp`, `jacfwd`) is finite. Not fixed
-  here; the reference has exactly the same NaN entries.
+  of an unselected where-branch. With every xbar inside its bin (full-bin or ramp
+  profile) the gradient is finite, and forward mode (`jvp`, `jacfwd`) is always
+  finite. Not fixed here; the reference has exactly the same NaN entries.
+  `make_step(ad_mode='reverse')` gradients at 80/160 bins are finite on the states in
+  `tests/test_reverse_mode.py` (`test_coagulation_jacrev_matches_jacfwd_linear_scheme`,
+  `test_grad_matches_jacfwd_80bins`).
 - **Overflow rate is round-off dominated when little mass leaves the grid**
   (pre-existing). `dM_overflow` collects `R * (xbar - mu_lo)` from pairs that barely
   reach the top boundary, so it carries round-off of order 1e-16 of the gross mass
   transfer; relative to its own size it can change by 1e-5 between eager and `jit`.
   The mass budget closes to the gross scale.
+- **Fewer NaN entries than the reference for a NaN input.** With a NaN in Mk or in
+  the kernel, the reference also spread it through the pairs j < i (zero collision
+  rate times a NaN mass fraction), which the rewrite no longer evaluates, so dNdt has
+  fewer NaN bins (e.g. 3 vs 59 at 80 bins for one NaN in Mk). The outputs are still
+  non-finite, so a model step still fails (`TestNonFiniteInputs`). For finite inputs
+  (including inf or huge N, negative N or M, an inf kernel) the non-finite entries
+  are identical.
 - **GPU-fast model** (`gpu-fast` branch, not on dev). `fast/coagulation.py` calls
   `calc_coagulation_rates` and gets the dispatch on merge. The fused Pallas kernel
   (`fast/coagulation_pallas.py`) hard-codes TFL and a base-2 MNFIX, so it stays

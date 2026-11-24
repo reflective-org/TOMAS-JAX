@@ -19,6 +19,9 @@ Every timing is a jitted lax.scan of REPS calls whose input depends on the
 previous call's output (a 1e-300-scaled feedback), so XLA cannot hoist the
 work out of the loop; the median of 5 runs is reported.
 
+Run from the repository root with -m (it imports tests.reference and
+sensitivities.dunne_nuc):
+
     python -m benchmarks.python.coag_rates_profile                 # 40, 80, 160 bins
     python -m benchmarks.python.coag_rates_profile --grids 80 --trace
 
@@ -43,8 +46,7 @@ from tomas_jax.core.config import ICOMP, XK0, make_grid
 from tomas_jax.core.mnfix_jax import mnfix_jax
 from tomas_jax.physics import coagulation_rates_linear as linear_mod
 from tomas_jax.physics.coagulation_kernel import calc_coagulation_kernel
-from tomas_jax.physics.coagulation_rates import (
-    calc_coagulation_rates, calc_coagulation_rates_tfl)
+from tomas_jax.physics.coagulation_rates import calc_coagulation_rates_tfl
 from tomas_jax.physics.coagulation_rates_linear import calc_coagulation_rates_linear
 from tomas_jax.physics.properties import calc_particle_properties
 from tomas_jax.solvers.condensation import make_step
@@ -186,10 +188,10 @@ def profile(nbins, trace):
 
     if trace:
         for impl, fn in (('scatter reference', old), ('library', new)):
-            ops, _ = top_ops(lambda N, M: fn(N, M, kij, xk), Nk, Mk)
+            ops, reps = top_ops(lambda N, M: fn(N, M, kij, xk), Nk, Mk)
             print(f"  most expensive XLA ops, {impl} (µs per call):")
             for name, t in ops:
-                print(f"    {t / 200:8.2f}  {name}")
+                print(f"    {t / reps:8.2f}  {name}")
 
 
 def main():

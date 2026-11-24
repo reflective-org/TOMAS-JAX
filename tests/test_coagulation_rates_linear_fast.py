@@ -402,3 +402,43 @@ class TestVmap:
         for b in range(2):
             _assert_close([o[b] for o in out], reference(N[b], M[b], K[b], xks[b]),
                           _gross_scales(N[b], M[b], K[b], xks[b]), what=b)
+
+
+# =========================================================================
+# Non-finite inputs
+# =========================================================================
+
+class TestNonFiniteInputs:
+    """A NaN anywhere in the inputs must still reach the outputs.
+
+    With finite inputs the non-finite entries equal the reference's
+    (TestEquivalence). With a NaN in Mk or in the kernel there are fewer NaN
+    entries than in the reference: the reference also evaluated the pairs
+    j < i, whose zero collision rate times a NaN mass fraction spread the
+    NaN, and the library skips those pairs. The result is still non-finite
+    (a model step still fails), which is what this test checks.
+    """
+
+    @pytest.mark.parametrize("where", ['Nk', 'Mk', 'kij_lower', 'kij_upper', 'kij_both'])
+    @pytest.mark.parametrize("grid_name", ['80', 'nongeo60'])
+    def test_nan_input_gives_nan_output(self, grid_name, where):
+        xk = GRIDS[grid_name]()
+        N, M = _state('lognormal', xk, seed=11)
+        kij = _kernel(xk, N, M, 'brownian')
+        N, M, kij = np.array(N), np.array(M), np.array(kij)
+        nb = N.shape[0]
+        a, b = nb // 2, nb // 8
+        if where == 'Nk':
+            N[a] = np.nan
+        elif where == 'Mk':
+            M[a // 2, 0] = np.nan
+        else:
+            if where in ('kij_lower', 'kij_both'):
+                kij[a, b] = np.nan
+            if where in ('kij_upper', 'kij_both'):
+                kij[b, a] = np.nan
+        args = (jnp.asarray(N), jnp.asarray(M), jnp.asarray(kij), xk)
+        for fn in (calc_coagulation_rates_linear, jax.jit(calc_coagulation_rates_linear)):
+            dNdt, dMdt, _ = fn(*args)
+            assert not np.all(np.isfinite(np.asarray(dNdt))), where
+            assert not np.all(np.isfinite(np.asarray(dMdt))), where
