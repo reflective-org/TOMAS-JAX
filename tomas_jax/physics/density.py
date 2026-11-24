@@ -14,7 +14,7 @@ from typing import NamedTuple
 
 # Import indices from state (assuming standard TOMAS configuration)
 # You can also pass these as arguments if they vary dynamically
-from ..core.config import SRTSO4, SRTNH4, SRTH2O, SRTORG1, SRTORGLAST #, SRTNACL
+from ..core.config import SRTSO4, SRTNH4, SRTH2O, SRTORG1, SRTORGLAST, HAS_ORG #, SRTNACL
 
 # Molecular Weights [g/mol] -> used as ratios, so units cancel or matter relatively
 MWSO4 = 96.0
@@ -46,7 +46,9 @@ def calc_density(Mk: jnp.ndarray, empty_density: float = 1000.0) -> jnp.ndarray:
     # 1. Extract Species Mass
     # Slicing Mk is efficient (view, not copy)
     # FORTRAN: aerodens(Mk(k,srtso4)+orgmass, ...) lumps organics with sulfate
-    mso4 = Mk[:, SRTSO4] + jnp.sum(Mk[:, SRTORG1:SRTORGLAST+1], axis=1)
+    mso4 = Mk[:, SRTSO4]
+    if HAS_ORG:  # static: no organic slice in the reduced layout
+        mso4 = mso4 + jnp.sum(Mk[:, SRTORG1:SRTORGLAST+1], axis=1)
     mnh4 = Mk[:, SRTNH4]
     mh2o = Mk[:, SRTH2O]
     mnacl = 0.0

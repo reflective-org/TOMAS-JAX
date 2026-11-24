@@ -27,7 +27,7 @@ import jax
 import jax.numpy as jnp
 from typing import Tuple
 
-from ..core.config import SRTSO4, SRTNH4, MW_NH3, MW_NH4, MW_SO4
+from ..core.config import SRTSO4, SRTNH4, MW_NH3, MW_NH4, MW_SO4, require_organics
 
 
 def eznh3eqm(
@@ -48,6 +48,7 @@ def eznh3eqm(
         Gc_new: Updated gas concentrations
         Mk_new: Updated mass concentrations
     """
+    require_organics('eznh3eqm (NH3/NH4 equilibrium)')
     nbins = Mk.shape[0]
 
     # Total kmoles of NH3 (gas as NH3/17 + particle as NH4/18)

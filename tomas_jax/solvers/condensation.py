@@ -56,7 +56,8 @@ from typing import Tuple
 from functools import partial
 
 from ..core.config import (
-    SRTSO4, SRTSO2, SRTNH4, SRTH2O, ICOMP_NODIAG,
+    SRTSO4, SRTSO2, SRTNH4, SRTH2O, ICOMP_NODIAG, HAS_ORG, ICOMP,
+    N_GAS_SPECIES, SPECIES_LAYOUT,
     MW_H2SO4, SV_H2SO4, CS_EPS,
 )
 from ..physics.so2_chemistry import (
@@ -225,7 +226,8 @@ def condensation_step(
     # =========================================================
     Gc_jax = jnp.array(Gc_np)
     Mk_jax = jnp.array(Mk_np)
-    Gc_jax, Mk_jax = eznh3eqm(Gc_jax, Mk_jax)
+    if HAS_ORG:  # NH3 unsupported in the reduced layout
+        Gc_jax, Mk_jax = eznh3eqm(Gc_jax, Mk_jax)
     Gc_np = np.array(Gc_jax)
     Mk_np = np.array(Mk_jax)
 
@@ -306,7 +308,8 @@ def _condensation_step_core(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
     Gc = jnp.where(should_dump, Gc_dump, Gc_new)
 
     # 3. NH3 equilibrium
-    Gc, Mk = eznh3eqm(Gc, Mk)
+    if HAS_ORG:  # NH3 unsupported in the reduced layout
+        Gc, Mk = eznh3eqm(Gc, Mk)
 
     # 4. Water equilibrium
     Mk = equilibrate_water(Mk, rh, temp, water_scheme)
@@ -1074,6 +1077,10 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
         raise ValueError(f"Unknown nucl_scheme '{nucl_scheme}'. Valid: {sorted(valid_schemes)}")
 
     use_zhao = nucl_scheme == 'zhao2024'
+    if not HAS_ORG and use_zhao:
+        raise NotImplementedError(
+            "nucl_scheme='zhao2024' needs organic/NH3/HNO3 species; "
+            f"unsupported with TOMAS_SPECIES={SPECIES_LAYOUT}")
     if dunne_form not in DUNNE_FORMS:
         raise ValueError(f"Unknown dunne_form '{dunne_form}'. Valid: {DUNNE_FORMS}")
     if use_zhao and dunne_form != 'double_exp':
@@ -1439,6 +1446,19 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
         return Nk, Mk, Gc, info
 
     def step_fn(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt, **kwargs):
+        if not HAS_ORG:
+            if Mk.shape[-1] != ICOMP or Gc.shape[-1] != N_GAS_SPECIES:
+                raise ValueError(
+                    f"Mk/Gc must have {ICOMP}/{N_GAS_SPECIES} columns for "
+                    f"TOMAS_SPECIES={SPECIES_LAYOUT}, got {Mk.shape}/{Gc.shape}")
+            for _k in ('org_conc', 'nh3_conc', 'hno3', 'ulvoc', 'dma', 'hio3'):
+                _v = kwargs.get(_k, 0.0)
+                if not isinstance(_v, jax.core.Tracer) and np.any(np.asarray(_v) != 0.0):
+                    raise ValueError(
+                        f"{_k}={_v!r} needs organic/NH3/HNO3 species; "
+                        f"unsupported with TOMAS_SPECIES={SPECIES_LAYOUT}")
+            if (kwargs.get('icomp_nodiag', ICOMP_NODIAG) != ICOMP_NODIAG):
+                raise ValueError("icomp_nodiag must equal config ICOMP_NODIAG")
         unknown = set(kwargs) - _VALID_MAKE_STEP_KWARGS
         if unknown:
             warnings.warn(
