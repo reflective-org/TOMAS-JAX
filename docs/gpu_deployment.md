@@ -145,8 +145,35 @@ k1(T,P,RH)*[OH]*[SO2] (Spearman 0.95) far better than with T (0.22). With a 0.1 
 50 cells at 1e3, T-sorted chunks cost 7x the SO2-sorted ones (730 s against 104 s for 165,888 cells);
 with a uniform 1e3 field k*OH*SO2 sorting is ~1.7x faster than T sorting (oracle ~3.4x). Sort chunks by
 k*OH*SO2 (or SO2 where it varies), not by T, when SO2 differs between cells. The replay is not yet
-confirmed on the GPU; a full-domain test (all 70 levels, 0.1 ppbv background, levels 43-45 at 1e2,
-three orderings) is outlined in `PROGRESS.md` 2026-11-23. Details: `PROGRESS.md` 2026-11-23.
+confirmed on the GPU as below. Details: `PROGRESS.md` 2026-11-23, 2026-11-24.
+
+GPU test of the orderings (`benchmarks/python/heun_sort_gpu.py`, 2026-11-24; sulfate layout,
+`mnfix_trim=True`, `heun_adaptive` + adaptive gas sub-steps, 6 h, dt = 360 s, 40 bins, chunks of 4096, GPU 0
+of the shared node, host CPU shared and loaded; timings are summed chunk run times, compile excluded).
+Cells: the 24 levels PR 20 simulates (CESM levels 27-50, 1.2-143 hPa, 1,327,104 cells) with per-cell
+T, P, RH, OH and the file's own SO2 as background (p50 0.003-0.04 ppbv); SO2 is replaced by one uniform
+value in levels 43-45 (165,888 cells) only. Lockstep waste = sum of chunk-max sub-steps / total
+sub-steps (1.0 = perfect packing).
+
+| ordering | 100 ppbv: s | vs T | waste | 1 ppbv: s | vs T | waste |
+|---|---|---|---|---|---|---|
+| columns (levels mixed per chunk) | 1102 | 0.66x | 20.1 | 61.6 | 0.82x | 2.54 |
+| T | 733 | 1.0x | 12.7 | 50.6 | 1.0x | 2.10 |
+| lonlat (level-major) | 173 | 4.2x | 2.87 | 24.7 | 2.05x | 1.22 |
+| SO2 | 177 | 4.1x | 2.88 | 28.7 | 1.76x | 1.26 |
+| k1*OH*SO2 | 103 | 7.1x | 1.88 | 21.8 | 2.32x | 1.15 |
+| k1*OH*SO2 tiers, T within tier | 91 | 8.0x | 1.52 | 20.0 | 2.53x | 1.07 |
+| oracle (measured sub-steps; bound) | 72 | 10.1x | 1.10 | 19.8 | 2.55x | 1.01 |
+| bucketed (512-cell chunks for hot cells) | 437 | 1.7x | 1.76 | 58.1 | 0.87x | 1.12 |
+
+Sorting by T is the worst usable key when SO2 differs between levels (it scatters the hot band over
+every chunk); k1*OH*SO2 with half-decade tiers and T inside a tier reaches ~80% of the oracle's speed.
+Per-cell final N is identical in every ordering (pure permutation, max relative difference 0), no NaN,
+no binding cap. Limits: SO2 is uniform inside levels 43-45, so the hot cells are a whole band, not a
+localized plume; `bucketed` (hot = k1*OH*SO2 >= 10x the median, which picked 354,902 cells, twice the
+elevated ones) lost to under-filled 512-cell chunks, so a tighter cut is untested; 1e3 ppbv was not run
+(too slow and not realistic); PR 20 itself runs 6 x 60 s without `gas_substep`, so absolute times are
+the benchmark's, not PR 20's.
 
 ## JIT Stability Tips
 

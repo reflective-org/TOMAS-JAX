@@ -123,6 +123,7 @@ benchmarks/
   python/benchmark_dilution.py — Dilution benchmark (3 cases × 24h, all processes + SO2 + dilution, 6 figures)
   python/gas_substep_convergence.py — Adaptive gas sub-steps vs fixed-dt reference, 40 bins, T × SO2 grid (--smoke, --part/--merge)
   python/heun_cesm_gpu.py, heun_cesm_gpu_batch.py, heun_chunk_replay.py — GPU timing of heun_adaptive on CESM cells (single column, vmapped chunks, offline chunk-ordering replay); run via `source ~/gpu_env.sh`
+  python/heun_sort_gpu.py — GPU timing of chunk orderings (T, SO2, k1*OH*SO2, tiers, oracle) for vmapped heun_adaptive, sulfate layout, SO2 elevated only in levels 43-45 (results in docs/gpu_deployment.md)
   python/gas_substep_psd80.py — Test of record for adaptive gas sub-steps: 80 bins, AFGL tropical altitudes × SO2 (--all, --check)
   pycham/                     — AAAR box model vs PyCHAM (independent check): config.py (single source of truth),
                                 ours.py (run + record via driver.run(observer=...)), jvalues.py (our J -> PyCHAM J.xlsx),

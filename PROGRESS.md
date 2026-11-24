@@ -4,6 +4,15 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-11-24 (Tue) PST — Chunk ordering for vmapped `heun_adaptive`: GPU test of H2SO4-production sorting (sulfate layout)
+
+- **Added:** `benchmarks/python/heun_sort_gpu.py`: times orderings of the same cells into vmap chunks (lonlat, columns, T, SO2, k1*OH*SO2, tiers+T, bucketed, oracle, T repeated). Asserts `TOMAS_SPECIES=sulfate` and `mnfix_trim=True`; checks batched vs single-cell N and per-cell agreement across orderings; fails on NaN or a binding cap.
+- **Measured** (GPU 0 of the shared node, idle at launch, host CPU shared and loaded; 1,327,104 cells at CESM levels 27-50, file SO2 as background, uniform SO2 in levels 43-45 only; 6 h, dt = 360 s, 40 bins, chunks of 4096): at 100 ppbv, T sort 733 s, k1*OH*SO2 103 s (7.1x), tiers+T 91 s (8.0x), oracle 72 s (10.1x); at 1 ppbv, T 50.6 s, k1*OH*SO2 21.8 s (2.3x), tiers+T 20.0 s (2.5x), oracle 19.8 s. Table in `docs/gpu_deployment.md`. T baseline repeated: 733 vs 734 s. Per-cell N identical across orderings; batched vs single-cell 5.5e-15.
+- **Known:** SO2 is uniform within the elevated band (not a localized plume), so the benefit for a real plume is not measured; `bucketed` as defined (hot >= 10x median production) selected twice the elevated cells and lost; 1e3 ppbv not run (too slow, not realistic); a column-wise memory layout (levels mixed per chunk) is slower than T sorting; PR 20 itself calls make_step at 6 x 60 s without gas_substep.
+- **Next:** try a tighter hot cut for `bucketed`; use the previous coupling step's sub-step count as the sort key (the realistic oracle); apply in AIDE-SAI-link PR 20's chunk loop (`run_microphysics_full`) after asking.
+
+---
+
 ## 2026-11-24 (Tue) PST — `TOMAS_SPECIES=sulfate` reduced layout: pure-sulfate clusters required (`org_frac == 0`)
 
 - **Added:** `TOMAS_SPECIES=sulfate` (read once at import, `core/config.py`): `ICOMP=3` (SO4, NH4 placeholder, H2O), no organic/nitrate/SOA slots; organics, NH3, SOA and the box model raise. Default layout unchanged and bit-identical.
