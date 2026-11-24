@@ -661,7 +661,12 @@ def zhao2024_nucleation_step(
         Mk_new = Mk_new.at[0, SRTORGLAST].add(jnp.where(has_nuc, dM_org_final, 0.0))
     else:
         # No organic slot: fold the organic share into SO4 (density/dry mass
-        # count organics as sulfate anyway).
+        # count organics as sulfate anyway). Gas depletion stays dM_so4 only,
+        # exactly as in the default layout, where the organic share is also
+        # added to Mk without a Gc loss. This is only consistent because
+        # org_conc/nh3_conc/nucl_params are rejected in the reduced layout
+        # (make_step, checked before jit), so no organic vapour is ever
+        # supplied; the share is the fixed org_frac of the inorganic rate.
         Mk_new = Mk.at[0, SRTSO4].add(
             jnp.where(has_nuc, dM_so4_final + dM_org_final, 0.0))
     Gc_new = Gc.at[SRTSO4].add(-jnp.where(has_nuc, gas_depleted_final, 0.0))
@@ -820,7 +825,12 @@ def nucleation_step(
         Mk_new = Mk_new.at[0, SRTORGLAST].add(jnp.where(has_nuc, dM_org_final, 0.0))
     else:
         # No organic slot: fold the organic share into SO4 (density/dry mass
-        # count organics as sulfate anyway).
+        # count organics as sulfate anyway). Gas depletion stays dM_so4 only,
+        # exactly as in the default layout, where the organic share is also
+        # added to Mk without a Gc loss. This is only consistent because
+        # org_conc/nh3_conc/nucl_params are rejected in the reduced layout
+        # (make_step, checked before jit), so no organic vapour is ever
+        # supplied; the share is the fixed org_frac of the inorganic rate.
         Mk_new = Mk.at[0, SRTSO4].add(
             jnp.where(has_nuc, dM_so4_final + dM_org_final, 0.0))
     Gc_new = Gc.at[SRTSO4].add(-jnp.where(has_nuc, gas_depleted_final, 0.0))

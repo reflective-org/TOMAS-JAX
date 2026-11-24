@@ -1445,18 +1445,41 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                     knuc_dt_max=knuc_dt_max, coag_dt_left=coag_dt_left)
         return Nk, Mk, Gc, info
 
+    def _check_reduced_kwargs(kwargs, strict_tracers=True):
+        """Reduced layout: reject organic/NH3/HNO3 inputs and organic-share
+        controls. Concrete values are checked by value. A Tracer (user-side
+        jit/vmap) cannot be checked, so it raises rather than passing."""
+        for _k in ('org_conc', 'nh3_conc', 'hno3', 'ulvoc', 'dma', 'hio3'):
+            _v = kwargs.get(_k, 0.0)
+            if isinstance(_v, jax.core.Tracer):
+                raise ValueError(
+                    f"{_k} is traced and cannot be verified zero; "
+                    f"unsupported with TOMAS_SPECIES={SPECIES_LAYOUT} "
+                    f"(omit it)")
+            if np.any(np.asarray(_v) != 0.0):
+                raise ValueError(
+                    f"{_k}={_v!r} needs organic/NH3/HNO3 species; "
+                    f"unsupported with TOMAS_SPECIES={SPECIES_LAYOUT}")
+        if kwargs.get('nucl_params') is not None:
+            raise ValueError(
+                f"nucl_params is unsupported with TOMAS_SPECIES="
+                f"{SPECIES_LAYOUT} (it can change the organic nucleation share)")
+        for _k in ('enable_organic', 'enable_inorganic'):
+            _v = kwargs.get(_k, 1.0)
+            if isinstance(_v, jax.core.Tracer):
+                continue   # validated by the concrete check before jit
+            if not np.all((np.asarray(_v) == 0.0) | (np.asarray(_v) == 1.0)):
+                raise ValueError(
+                    f"{_k}={_v!r} must be 0 or 1 with "
+                    f"TOMAS_SPECIES={SPECIES_LAYOUT}")
+
     def step_fn(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt, **kwargs):
         if not HAS_ORG:
             if Mk.shape[-1] != ICOMP or Gc.shape[-1] != N_GAS_SPECIES:
                 raise ValueError(
                     f"Mk/Gc must have {ICOMP}/{N_GAS_SPECIES} columns for "
                     f"TOMAS_SPECIES={SPECIES_LAYOUT}, got {Mk.shape}/{Gc.shape}")
-            for _k in ('org_conc', 'nh3_conc', 'hno3', 'ulvoc', 'dma', 'hio3'):
-                _v = kwargs.get(_k, 0.0)
-                if not isinstance(_v, jax.core.Tracer) and np.any(np.asarray(_v) != 0.0):
-                    raise ValueError(
-                        f"{_k}={_v!r} needs organic/NH3/HNO3 species; "
-                        f"unsupported with TOMAS_SPECIES={SPECIES_LAYOUT}")
+            _check_reduced_kwargs(kwargs)
             if (kwargs.get('icomp_nodiag', ICOMP_NODIAG) != ICOMP_NODIAG):
                 raise ValueError("icomp_nodiag must equal config ICOMP_NODIAG")
         unknown = set(kwargs) - _VALID_MAKE_STEP_KWARGS
@@ -1492,11 +1515,23 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
     if not jit:
         return step_fn
     jitted = jax.jit(step_fn)
-    if dunne_form == 'double_exp':
+    if dunne_form == 'double_exp' and HAS_ORG:
         return jitted
+
+    def _pre(kwargs):
+        # jit traces every kwarg, so validate concrete values before tracing
+        # and drop verified-zero gases (step_fn defaults them to 0).
+        if not HAS_ORG:
+            _check_reduced_kwargs(kwargs)
+            kwargs = {k: v for k, v in kwargs.items()
+                      if k not in ('org_conc', 'nh3_conc', 'hno3', 'ulvoc',
+                                   'dma', 'hio3')}
+        return kwargs
 
     # Inside jit nucl_params is traced, so check its values before tracing.
     def checked_step_fn(*args, **kwargs):
-        check_dunne_params(kwargs.get('nucl_params'), dunne_form)
+        kwargs = _pre(kwargs)
+        if dunne_form != 'double_exp':
+            check_dunne_params(kwargs.get('nucl_params'), dunne_form)
         return jitted(*args, **kwargs)
     return checked_step_fn

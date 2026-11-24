@@ -110,3 +110,22 @@ def test_sulfate_matches_default(tmp_path, name):
         # Plume cell water: organic share (~1/11 of nucleated mass) is treated as
         # sulfate in sulfate mode; effect is confined to the new-particle bin.
         assert _close(d["h2o"][PLUME:], s["h2o"][PLUME:], 2e-2), (name, diffs)
+
+
+def test_reduced_layout_rejects_unsupported_kwargs_under_jit():
+    """jit traces every kwarg; the guard must still fire (default jit=True)."""
+    import os
+    import pytest
+    if os.environ.get("TOMAS_SPECIES", "default") != "sulfate":
+        pytest.skip("reduced layout only")
+    import jax.numpy as jnp
+    from tomas_jax.solvers.condensation import make_step
+    for jit in (True, False):
+        st = make_step(['so2_chemistry', 'nucleation', 'coagulation',
+                        'condensation'], coag_solver='heun_adaptive', jit=jit)
+        args = (jnp.ones(40), jnp.ones((40, 3)), jnp.ones(3), jnp.ones(41),
+                270., 1e5, 1e9, .5, 1., 10.)
+        for kw in (dict(org_conc=1e6), dict(nh3_conc=1e9), dict(ulvoc=1.0),
+                   dict(nucl_params=object()), dict(enable_organic=0.5)):
+            with pytest.raises(ValueError):
+                st(*args, **kw)
