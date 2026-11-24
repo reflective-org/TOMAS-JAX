@@ -4,6 +4,29 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-11-23 (Mon) 16:30 PST — Batched GPU timing of `heun_adaptive` at CESM stratospheric cells; `make_step(cap_warnings=...)`
+
+- **Added:** `make_step(cap_warnings=True)` (`solvers/condensation.py`): `False` drops the gas and coagulation cap-warning `jax.debug.callback`s, which JAX unrolls per batch member under `vmap` (8192 cells: compile 217 s against 9 s, step 5.3 s against 0.06 s). Default unchanged and bit-identical; with `False` the caller reads `info['hit_cap']` / `info['coag_dt_left']`. Test: `test_cap_warnings_false_is_silent_and_values_unchanged` (`tests/test_gas_substep.py`); `test_gas_substep.py` + `test_coag_adaptive.py` 28 passed (CPU).
+- **Added:** `benchmarks/python/heun_cesm_gpu.py` (single-column, GPU guard + memory cap) and `benchmarks/python/heun_cesm_gpu_batch.py` (all cells of CESM levels 43-45 from `/data/training_sims/run`, hour 24 of the 1991-06-02 h1 file, each cell's own T, P, RELHUM, OH; fion 10, study lognormal background; vmap in chunks; refuses to run off an idle GPU; `--verify`, calibration, `--chunk-stride`, `--max-wall-minutes`). Batched against single-cell final N: 4.9e-15 relative (8 cells x 3 SO2).
+- **Measured (full band, GPU 0 of the shared node, idle at launch (0% util), 35 GiB cap, host CPU shared and loaded; 6 h, dt = 360 s, 40 bins, `mnfix_trim=True`, all 165,888 cells at levels 43-45, chunks of 4096 sorted by T; no NaN, no binding cap; peak 0.64 GiB):**
+
+  | SO2 (ppbv) | cells/s | est. 3.87M cells | worst-cell n_sub/step | median-cell mean |
+  |---|---|---|---|---|
+  | 1e-2 | 20,860 | 3.1 min | 1 | 1.0 |
+  | 1e-1 | 18,985 | 3.4 min | 1 | 1.0 |
+  | 1 | 4,302 | 15 min | 8 | 1.0 |
+  | 10 | 1,004 | 64 min | 48 | 1.6 |
+  | 100 | 248 | 4.3 h | 249 | 10.0 |
+  | 1e3 | 54 | 19.9 h | 1486 | 45.0 |
+
+  The 8th-chunk pilot (22,528 cells) agreed within 8%. 1e4 and 1e5 ppbv were skipped (calibration: 1e4 is ~10x the 1e3 time per chunk). Per-cell n_sub and final N were saved (`--save-cells`: `benchmarks/results/heun_cesm_batch/full_*_cells.npz`, cell table `full_cells.npz`).
+- **Added:** `benchmarks/python/heun_chunk_replay.py`, an offline replay of chunk orderings on the saved per-cell n_sub_sum (chunk cost = chunk size x max cell cost, a lower bound on the lockstep cost). Spearman rank correlation of the 1e3 sub-step cost with k1(T,P,RH)*OH is 0.95 (0.97 with T added), with T alone 0.22. Background 0.1 ppbv plus hot cells at 1e3, time for 165,888 cells (T-sorted / SO2-sorted / k*OH*SO2-sorted / oracle): 2 hot cells 41 / 38 / 38 / 38 s; 50 hot 730 / 104 / 104 / 104 s; 5,000 hot 2,640 / 265 / 207 / 179 s. Uniform 1e3: 3,075 s T-sorted, ~1,760 s k*OH*SO2-sorted, ~1,465 s with half-decade k*OH*SO2 tiers plus T, ~900 s oracle. So sorting by T scatters hot cells across chunks (7x with 50 hot cells); the 4M-cell estimates above are for T-sorted chunks at uniform SO2 and overstate a clean domain with a few plumes.
+- **Findings:** `mnfix_trim=True` is 6-8x faster than `False` under vmap on the GPU (opposite of the CLAUDE.md advice, not yet changed there); vmap batch of exactly 1 aborts XLA (`hlo_dataflow_analysis.cc`); memory ~153 KiB per cell, time linear in cells above ~1k; lockstep waste is large at high SO2 (1e3: median cell 50 gas sub-steps per step, max 1321). Details in `docs/gpu_deployment.md`.
+- **Known issues:** CESM `RELHUM` and RH from Q differ by up to 0.5 (median 0.01) and RELHUM reaches the 0.99 clip in some cells; the CESM files have no ion rate, so fion is the constant 10; the background aerosol is the study lognormal, not CESM's CARMA bins; 43-62 hPa cells are not representative of the whole 70-level grid; the batch was timed on one idle GPU of a shared node.
+- **Next (idea, not run):** a full-domain test of chunk ordering. Load all 70 levels at the same snapshot (3.87M cells; `--levels` already accepts them), set a uniform background of 0.1 ppbv SO2 everywhere and overwrite levels 43-45 to 1e2 ppbv (optionally also 2 / 50 / 5,000 random cells at 1e3), and time three orderings on the GPU: T, k1*OH*SO2, and half-decade k1*OH*SO2 tiers plus T. Needs a per-cell SO2 field (`so2_kg_cells` already takes one) and an `--order` option in `heun_cesm_gpu_batch.py`; save per-chunk times and per-cell n_sub (`--save-cells`) to check `heun_chunk_replay.py` against the measurement. Estimated 30-40 min of GPU time for three orderings at 1e2 (1e3 in the band would be ~50 min each); the background levels' cost is unmeasured (tropospheric T, P, OH differ from 43-62 hPa) and could be much higher. Check the GPU is idle first (`source ~/gpu_env.sh`). Also open: a mixed-chunk GPU check of the lower-bound replay model; previous-step n_sub as an ordering key, plume spreading and state history are not modelled; 1e4 and 1e5 ppbv only if wanted (hours to days).
+
+---
+
 ## 2026-11-20 (Fri) PST — `make_step(coag_solver='heun_adaptive')`: error-controlled Heun coagulation
 
 - **Added:** `heun_step` (`solvers/euler.py`), `coag_solver='heun_adaptive'` with `coag_heun_rtol`/`coag_heun_atol` in `make_step`; the coagulation cap warning covers it; reverse mode via the bounded loop. Opt-in, defaults unchanged. `test_heun_adaptive` in `tests/test_coag_adaptive.py` (9 pass). Benchmark kind `ha_f0.1_360` in `gas_substep_euler_adaptive.py`.

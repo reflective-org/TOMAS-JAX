@@ -862,7 +862,7 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
               split_chemistry=False,
               coag_n_floor=None, coag_heun_rtol=3e-3, coag_heun_atol=1e-6,
               ad_mode='forward', ppm_max_substeps=64, ppm_tangent='exact',
-              mnfix_trim=None, jit=True):
+              mnfix_trim=None, jit=True, cap_warnings=True):
     """Build a step function from an ordered list of process names.
 
     The returned function has signature:
@@ -987,6 +987,16 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
             columns: the trimmed while_loop runs until the slowest column is
             done, ~5x slower than the full loop under vmap.
             Callers no longer need to wrap manually. Double-JIT is a no-op.
+        cap_warnings: True (default): a binding gas_max_substeps or
+            coag_max_substeps emits GasSubstepCapWarning / CoagSubstepCapWarning
+            from a jax.debug.callback inside the step. False: no callbacks,
+            nothing is reported by the step itself, so the caller must read
+            info['hit_cap'] and info['coag_dt_left'] (return_substep_info=True)
+            and treat a binding cap as a failure. For vmapped ensembles only:
+            JAX unrolls a debug callback once per batch element, so with the
+            callbacks on, compile time and step time grow linearly with the
+            batch (8192 cells: compile 217 s against 9 s and a step 5.3 s
+            against 0.06 s, 2026-11-23).
 
     Returns:
         A callable step function (JIT-compiled by default).
@@ -1240,8 +1250,9 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
         return Nk, Mk, Gc, coag_left
 
     def warn_coag_cap(coag_dt_left, dt):
-        # Always on, like the gas cap: the dropped time gets no coagulation
-        if coag_solver in ('euler_adaptive', 'heun_adaptive') and 'coagulation' in processes:
+        # On by default, like the gas cap: the dropped time gets no coagulation
+        if (cap_warnings and coag_solver in ('euler_adaptive', 'heun_adaptive')
+                and 'coagulation' in processes):
             jax.debug.callback(_warn_coag_cap, coag_dt_left, dt,
                                coag_max_substeps, ad_mode)
 
@@ -1415,10 +1426,12 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                                    init, gas_max_substeps)
         dt_min, n_floor, knuc_dt_max, dt_capped, coag_dt_left = diag
         hit_cap = dt_capped > 0.0
-        # Always on: a binding cap gives NaN or a wrong answer, and the info
+        # On by default: a binding cap gives NaN or a wrong answer, and the info
         # dict is only returned on request. Runs on the host, after the step.
-        jax.debug.callback(_warn_gas_cap, hit_cap, dt_capped, knuc_dt_max, dt,
-                           gas_max_substeps)
+        # cap_warnings=False (vmapped ensembles): the caller reads info.
+        if cap_warnings:
+            jax.debug.callback(_warn_gas_cap, hit_cap, dt_capped, knuc_dt_max,
+                               dt, gas_max_substeps)
         warn_coag_cap(coag_dt_left, dt)
         info = dict(n_sub=n_sub, n_coag=n_coag, dt_min=dt_min,
                     hit_cap=hit_cap, dt_capped=dt_capped, n_floor=n_floor,

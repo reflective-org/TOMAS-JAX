@@ -121,6 +121,34 @@ def test_cap_warning_under_vmap(xk):
         jax.block_until_ready(f(low))
 
 
+@pytest.mark.parametrize('coag_solver', ['euler_fixed', 'heun_adaptive'])
+def test_cap_warnings_false_is_silent_and_values_unchanged(xk, coag_solver):
+    """cap_warnings=False drops the debug callbacks (they unroll per batch
+    member under vmap): no warning even when the cap binds, the same values,
+    and info still says so. The default still warns and has the callbacks."""
+    import warnings
+    state = c.lognormal_state(xk, so2=c.ppbv_to_molec(1e5, 217.0, PRES))
+    args = (xk, 217.0, PRES, c.BOXVOL, RH, ALPHA, 60.0)
+    kw = dict(gas_substep='adaptive', gas_max_substeps=64, coag_solver=coag_solver,
+              return_substep_info=True, **STUDY)
+    loud = make_step(PROCS, **kw)
+    quiet = make_step(PROCS, cap_warnings=False, **kw)
+    with pytest.warns(GasSubstepCapWarning):
+        *a, info_a = loud(*state, *args, **KW)
+        jax.block_until_ready(info_a)
+    with warnings.catch_warnings():
+        warnings.simplefilter('error')
+        *b, info_b = quiet(*state, *args, **KW)
+        jax.block_until_ready(info_b)
+        jax.effects_barrier()
+    assert bool(info_b['hit_cap']) and float(info_b['dt_capped']) > 0.0
+    for x, y in zip(a, b):
+        np.testing.assert_array_equal(np.asarray(x), np.asarray(y))
+    f = lambda step: str(jax.make_jaxpr(lambda s: step(*s, *args, **KW))(state))
+    assert 'debug_callback' in f(make_step(PROCS, jit=False, **kw))
+    assert 'debug_callback' not in f(make_step(PROCS, jit=False, cap_warnings=False, **kw))
+
+
 def test_split_chemistry_fixed_dt(xk):
     """Fixed dt, chemistry split around nucleation: sulfur conserved, and
     nucleation sees less H2SO4 than with all the chemistry before it."""

@@ -102,6 +102,52 @@ Nk_out, Mk_out, Gc_out = batched_step(
 
 **Important**: `vmap` requires all batched arrays to have the same leading dimension. Scalar parameters (temp, pres, etc.) are broadcast automatically via `in_axes=None`.
 
+## Large vmapped ensembles (adaptive gas sub-steps, heun_adaptive)
+
+Measured 2026-11-23 on one H200 (JAX 0.6.2): `benchmarks/python/heun_cesm_gpu_batch.py` runs every
+CESM cell at levels 43-45 (~43-62 hPa, 165,888 cells, one snapshot hour) as a `jax.vmap` batch in
+chunks, for a sweep of SO2, with `make_step(coag_solver='heun_adaptive', gas_substep='adaptive')`.
+
+- **`cap_warnings=False` is required.** The gas and coagulation cap warnings are `jax.debug.callback`s,
+  and JAX unrolls a callback once per batch member: 8192 cells took 217 s to compile and 5.3 s per
+  360 s step with them, 9 s and 0.06 s without. With `cap_warnings=False` the step reports nothing by
+  itself: read `info['hit_cap']` and `info['coag_dt_left']` per cell (`return_substep_info=True`)
+  and treat a binding cap as a failure, as the benchmark does.
+- **A vmap of batch size exactly 1 aborts XLA** (`hlo_dataflow_analysis.cc` check failure). Sizes of 2 and up
+  compile. Pad chunks to at least 2 cells.
+- **`mnfix_trim=True` was 6-8x faster than `False` under vmap** here (4096 cells spanning the T range, 1 h
+  of simulated time: 5.7 s against 33.7 s at 1e2 ppbv SO2, 129 s against 1030 s at 1e4 ppbv). This is
+  the opposite of the older advice to pass `mnfix_trim=False` for vmapped ensembles; time both for a
+  new workload (`--mnfix-trim`, the benchmark's calibration does).
+- **Memory is not the limit, time is.** ~153 KiB per cell (peak, 40 bins), so ~130k cells fit in 35 GiB; the
+  run time grows linearly with the number of cells above ~1k cells (the GPU is saturated), so a chunk of
+  4096 loses nothing against a larger one and loses less to lockstep (a batched `while_loop` runs
+  to its slowest cell: at 1000 ppbv the median cell takes 50 gas sub-steps per outer step, the worst 1321).
+- Set `XLA_PYTHON_CLIENT_PREALLOCATE=false` and `XLA_PYTHON_CLIENT_MEM_FRACTION` before importing JAX
+  to cap what the process may take on a shared GPU.
+
+Results (one H200, GPU shared node, 6 h, dt = 360 s, 40 bins, cells sorted by temperature, chunks of
+4096, uniform SO2 in all 165,888 cells; the time for 3.87M cells is the measured cells/s extrapolated
+linearly):
+
+| SO2 (ppbv) | cells/s | est. 3.87M cells | worst-cell n_sub/step | median-cell mean |
+|---|---|---|---|---|
+| 1e-2 | 20,860 | 3.1 min | 1 | 1.0 |
+| 1e-1 | 18,985 | 3.4 min | 1 | 1.0 |
+| 1 | 4,302 | 15 min | 8 | 1.0 |
+| 10 | 1,004 | 64 min | 48 | 1.6 |
+| 100 | 248 | 4.3 h | 249 | 10.0 |
+| 1e3 | 54 | 19.9 h | 1486 | 45.0 |
+
+Chunk ordering matters because of lockstep. Offline replay on the saved per-cell counts
+(`benchmarks/python/heun_chunk_replay.py`, a lower-bound cost model): the 1e3 sub-step cost correlates with
+k1(T,P,RH)*[OH]*[SO2] (Spearman 0.95) far better than with T (0.22). With a 0.1 ppbv background and
+50 cells at 1e3, T-sorted chunks cost 7x the SO2-sorted ones (730 s against 104 s for 165,888 cells);
+with a uniform 1e3 field k*OH*SO2 sorting is ~1.7x faster than T sorting (oracle ~3.4x). Sort chunks by
+k*OH*SO2 (or SO2 where it varies), not by T, when SO2 differs between cells. The replay is not yet
+confirmed on the GPU; a full-domain test (all 70 levels, 0.1 ppbv background, levels 43-45 at 1e2,
+three orderings) is outlined in `PROGRESS.md` 2026-11-23. Details: `PROGRESS.md` 2026-11-23.
+
 ## JIT Stability Tips
 
 1. **Always pass the same set of kwargs** to `make_step` step functions across calls. Changing which kwargs are present triggers recompilation.
