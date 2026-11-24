@@ -192,3 +192,56 @@ def test_grad_matches_central_fd(xk):
     fd = (float(fr(P._replace(u_bn=P.u_bn + h)))
           - float(fr(P._replace(u_bn=P.u_bn - h)))) / (2 * h)
     np.testing.assert_allclose(g, fd, rtol=1e-3)
+
+
+# Non-doubling grids: calc_coagulation_rates dispatches to the linear sub-bin
+# scheme (physics/coagulation_rates_linear.py) instead of TFL.
+
+def _coag_only_model(xk, mode, solver, nsteps=3):
+    from tomas_jax.core.config import ICOMP, N_GAS_SPECIES
+    step = make_step(['coagulation'], ad_mode=mode, coag_solver=solver, jit=False)
+    if mode == 'reverse':
+        step = jax.checkpoint(step)
+    xm = np.sqrt(np.asarray(xk[:-1] * xk[1:]))
+    dp = (6.0 * xm / (1770.0 * np.pi)) ** (1.0 / 3.0)
+    Nk = (1e10 * np.exp(-0.5 * (np.log(dp / 5e-9) / 0.4) ** 2)
+          + 1e8 * np.exp(-0.5 * (np.log(dp / 8e-8) / 0.5) ** 2) + 1e-3)
+    Mk = np.zeros((xm.size, ICOMP))
+    Mk[:, 0] = Nk * xm * 1.02
+    Nk, Mk, Gc = jnp.asarray(Nk), jnp.asarray(Mk), jnp.zeros(N_GAS_SPECIES)
+
+    def f(s):
+        def body(carry, _):
+            return step(*carry, xk, 217.0, 5500.0, 1.0e6, 0.02, 1.0, 60.0), None
+        (N, M, _), _ = jax.lax.scan(body, (Nk * s[0], Mk * s[1], Gc), None,
+                                    length=nsteps)
+        return jnp.stack([jnp.log(jnp.sum(N)), jnp.log(jnp.sum(N[N.shape[0] // 4:] ** 2)),
+                          jnp.log(jnp.sum(M[:, 0]))])
+    return f
+
+
+@pytest.mark.parametrize('nbins', [80, 160])
+@pytest.mark.parametrize('solver', ['euler_fixed', 'euler_adaptive'])
+def test_coagulation_jacrev_matches_jacfwd_linear_scheme(nbins, solver):
+    """make_step(['coagulation']) on 80/160 bins (linear coagulation scheme):
+    jacrev of the reverse-mode model = jacfwd of the forward-mode model."""
+    xk = make_grid(nbins, XK0, 2.0 ** (40.0 / nbins))
+    s0 = jnp.array([1.0, 1.0])
+    ff = _coag_only_model(xk, 'forward', solver)
+    fr = _coag_only_model(xk, 'reverse', solver)
+    np.testing.assert_allclose(np.asarray(jax.jit(fr)(s0)),
+                               np.asarray(jax.jit(ff)(s0)), rtol=1e-12)
+    Jf = np.asarray(jax.jit(jax.jacfwd(ff))(s0))
+    Jr = np.asarray(jax.jit(jax.jacrev(fr))(s0))
+    assert np.all(np.isfinite(Jr)) and np.all(np.isfinite(Jf))
+    np.testing.assert_allclose(Jr, Jf, rtol=1e-8, atol=1e-10 * np.max(np.abs(Jf)))
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize('so2_ppbv,nsteps,step_kw', [
+    (1e3, 10, dict(gas_substep='adaptive')),
+    (1e5, 3, dict(gas_substep='adaptive', coag_solver='euler_adaptive')),
+])
+def test_grad_matches_jacfwd_80bins(so2_ppbv, nsteps, step_kw):
+    """test_grad_matches_jacfwd on the 80-bin grid (linear coagulation)."""
+    test_grad_matches_jacfwd(make_grid(80, XK0, 2.0 ** 0.5), so2_ppbv, nsteps, step_kw)

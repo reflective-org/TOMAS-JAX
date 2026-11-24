@@ -91,11 +91,61 @@ Tests: `tests/test_coagulation_bin_ratio.py` covers the reconstruction, conserva
 analytic convergence, dispatch, and a Brownian regression that fails if TFL is forced
 at 80/160 bins.
 
+## Cost
+
+`calc_coagulation_rates_linear` runs once per coagulation sub-step (10 per step with
+`make_step`'s default `euler_fixed`), so on 80/160-bin grids it is most of a
+coagulation step. Measured with `python -m benchmarks.python.coag_rates_profile`
+(CPU, Apple M-series, jax 0.9.1; µs per call inside a dependent `lax.scan`; 40/80
+bins: `sai_plume` at 6 h, 160 bins: bimodal lognormal):
+
+| bins | linear, before | linear, now | TFL (same grid) | kernel | `make_step(['coagulation'])` step, before → now |
+|------|----------------|-------------|-----------------|--------|--------------------------------------------------|
+| 40   | 40             | 26          | 18              | 3      | TFL is used at 40 bins                           |
+| 80   | 186            | 93          | 51              | 10     | 1912 → 954                                       |
+| 160  | 650            | 275         | 143             | 38     | 6555 → 2771                                      |
+
+What changed (the scatter-add original is kept as
+`tests/reference/coagulation_rates_linear_scatter.py`):
+
+- **Only pairs i ≤ j.** R[j, i] is zero above the diagonal, so the pair arrays are
+  built for the n(n+1)/2 lower-triangle pairs (`np.tril_indices`, fixed by the array
+  shape) instead of all n². The zero contributions it skips added exactly 0.0.
+- **Closed-form destination bin.** `jnp.searchsorted` (a `while` loop of gathers,
+  ~65 µs at 80 bins) is replaced on geometric grids by
+  `floor(log(x/xk[0]) / log(p))` plus a ±1 comparison with the two neighbouring
+  edges (`_destination_bin_geometric`). It equals `searchsorted(xk, x, 'right') - 1`
+  clipped to [0, nbins] for every x (edges, below/above the grid, 0, negative,
+  ±inf, NaN) whenever every edge satisfies |log_p(xk[k]/xk[0]) − k| < 0.25; any other
+  grid takes `searchsorted` through a `lax.cond` on xk alone (a select under `vmap`
+  only if xk itself is batched). The index carries no tangent, as before.
+- **One windowed scatter per array.** A and B are each accumulated by one scatter of
+  the pair's (d0, d0 + 1) shares as a length-2 window at row d0, then the two planes
+  are added one row apart. Dense one-hot formulations (`where`/`einsum` over
+  (nbins+2) × n × n, `segment_sum`) were tried and were 2–5× slower than the scatter
+  on CPU at 80 bins; the matrix products `A @ frac + B @ mbar` are kept as two dots
+  (merging them changes round-off by ~5e-12 of max|dMdt|, see below).
+- **Reconstruction computed once.** XLA CPU fuses the per-bin reconstruction (a
+  where-chain with divisions) into the pair gather and re-evaluates it per pair
+  (~20 µs at 80 bins); `_materialize` (a cumulative sum over a length-2 axis, exact)
+  stops that. `lax.optimization_barrier` does not: XLA CPU removes it before fusion.
+
+**Equivalence.** Eager, the new function equals the reference to ≤ 2e-16 of each
+output's largest value on the plume states. Under `jit` the two differ by up to
+~4e-11 of max|dMdt| — but so does the reference against itself between eager and
+`jit` (2e-11 of max|dMdt|, 1e-5 of max|dM_overflow| on the plume states): XLA
+contracts `gain - loss * mbar` into an FMA under `jit`, and gain and loss nearly
+cancel. Measured against the gross loss rates instead, all differences are
+≤ 1e-12 (`tests/test_coagulation_rates_linear_fast.py`, `_gross_scales`). Tangents
+(`jvp`, `jacfwd`, `grad`) agree within 50× the change of the reference's own tangents
+under one-ulp input perturbations or eager vs `jit` (observed ≤ 30×), with the same
+non-finite entries.
+
 ## Known limitations
 
-- **Cost.** The linear scheme takes about 1.4× TFL's wall time (CPU, 24 h coag-only:
-  2.2 s vs 1.6 s at 80 bins, 6.9 s vs 4.6 s at 160). Destination bins come from
-  `jnp.searchsorted`; a closed-form log index for geometric grids would be faster.
+- **Cost.** See the Cost section. After the 2026-11-24 rewrite the linear rates take
+  about 1.5× TFL's time at 40 bins and 1.8–1.9× at 80/160 bins (per call; before:
+  2.3×, 3.6×, 4.6×).
 - **Partner treated at its mean mass.** The scheme is first order in the partner bin
   width, which is negligible for fine grids. At p = 2 it is still 10× more accurate
   than TFL on the constant-kernel test, but 40 bins stays on TFL for Fortran parity.
@@ -107,6 +157,30 @@ at 80/160 bins.
   clamp, so `M(t) + overflow` drifts upward in proportion to the number of empty
   bins. Both schemes give identical budgets: 6e-9 (40 bins) to 5e-8 (320 bins) in
   the constant-kernel case, ≤ 2e-9 in the Brownian case.
+- **Reverse-mode NaN in the gradient** (pre-existing, unchanged by the rewrite).
+  `jax.grad` of the linear rates has NaN entries for every bin whose xbar is at or
+  outside a bin edge (the reconstruction's narrow branch; e.g. 50 of 80 entries of
+  d/dN for the 80-bin lognormal state in `tests/test_coagulation_rates_linear_fast.py`,
+  which has 50 such bins). `jax_debug_nans` points at
+  `2.0 / jnp.maximum(x1 - a, _TINY)` in `linear_subbin_reconstruction`, the 0 × inf
+  of an unselected where-branch. With every xbar inside its bin (full-bin or ramp
+  profile) the gradient is finite, and forward mode (`jvp`, `jacfwd`) is always
+  finite. Not fixed here; the reference has exactly the same NaN entries.
+  `make_step(ad_mode='reverse')` gradients at 80/160 bins are finite on the states in
+  `tests/test_reverse_mode.py` (`test_coagulation_jacrev_matches_jacfwd_linear_scheme`,
+  `test_grad_matches_jacfwd_80bins`).
+- **Overflow rate is round-off dominated when little mass leaves the grid**
+  (pre-existing). `dM_overflow` collects `R * (xbar - mu_lo)` from pairs that barely
+  reach the top boundary, so it carries round-off of order 1e-16 of the gross mass
+  transfer; relative to its own size it can change by 1e-5 between eager and `jit`.
+  The mass budget closes to the gross scale.
+- **Fewer NaN entries than the reference for a NaN input.** With a NaN in Mk or in
+  the kernel, the reference also spread it through the pairs j < i (zero collision
+  rate times a NaN mass fraction), which the rewrite no longer evaluates, so dNdt has
+  fewer NaN bins (e.g. 3 vs 59 at 80 bins for one NaN in Mk). The outputs are still
+  non-finite, so a model step still fails (`TestNonFiniteInputs`). For finite inputs
+  (including inf or huge N, negative N or M, an inf kernel) the non-finite entries
+  are identical.
 - **GPU-fast model** (`gpu-fast` branch, not on dev). `fast/coagulation.py` calls
   `calc_coagulation_rates` and gets the dispatch on merge. The fused Pallas kernel
   (`fast/coagulation_pallas.py`) hard-codes TFL and a base-2 MNFIX, so it stays

@@ -4,6 +4,27 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-11-24 (Tue) 14:40 PST — Review fixes for the linear coagulation rewrite (PR #50)
+
+- **Tests added:** `tests/test_reverse_mode.py` now runs the linear scheme in reverse mode: `make_step(['coagulation'])` jacrev vs jacfwd at 80/160 bins with `euler_fixed` and `euler_adaptive`, and `test_grad_matches_jacfwd` on the 80-bin grid (full model, slow). Until now every model test there used the 40-bin TFL grid. `tests/test_coagulation_rates_linear_fast.py::TestNonFiniteInputs` checks that a NaN in Nk, Mk or the kernel still reaches dNdt and dMdt. With a NaN in Mk or kij the new function has fewer NaN entries than the reference (3 vs 59 dNdt bins at 80 bins), because it no longer evaluates the pairs j < i; this is now documented in `docs/coagulation_bin_ratio.md`.
+- **Reference frozen:** `tests/reference/coagulation_rates_linear_scatter.py` now carries its own copies of `linear_subbin_reconstruction` and `_partial_moments`, so a later library fix (the reverse-mode double-where) does not change it. Its docstring now describes the shipped rewrite (lower-triangle pairs, windowed scatters), not a dense masked reduction.
+- **Docs:** `docs/future_features.md` now says that `euler_adaptive` recomputes the kernel every sub-step (+~5% of `euler_step`) and that Tsit5 evaluates the rates ≥ 6 times per kernel. The reverse-mode NaN limitation now names its trigger: it appears only for bins whose xbar is at or outside a bin edge. The previous entry's time stamp was corrected to its commit time.
+- **Benchmark:** `coag_rates_profile.py` lost an unused import, and `--trace` now divides by the `reps` it actually ran.
+
+---
+
+## 2026-11-24 (Tue) 14:17 PST — Linear sub-bin coagulation rates 2–2.4× faster (80/160 bins)
+
+- **Why:** on 80 bins `calc_coagulation_rates_linear` was ~97% of a coagulation step (10 calls per step); `jnp.searchsorted` and the four all-pairs scatter-adds were most of it.
+- **Changed:** `tomas_jax/physics/coagulation_rates_linear.py` — only the n(n+1)/2 pairs i ≤ j are evaluated; the destination bin is closed form on geometric grids (`floor(log_p(x/xk[0]))` with a ±1 edge correction, exact; `searchsorted` fallback through a `lax.cond` on xk for other grids); A and B are each built by one length-2-window scatter; the per-bin reconstruction is computed once (`_materialize`, because XLA CPU re-evaluated it per pair inside the gather). Dense one-hot (`where`/`einsum`), `segment_sum`, flat 1-D scatters, merged dots and `optimization_barrier` were tried and were slower or changed round-off.
+- **Added:** `tests/reference/coagulation_rates_linear_scatter.py` (the original, verbatim), `tests/test_coagulation_rates_linear_fast.py` (124 tests: destination bin vs searchsorted incl. edges/inf/NaN and a non-geometric grid; values, jvp/jacfwd/grad, vmap vs the reference on 6 state families × 5 grids; plume states marked slow), `benchmarks/python/coag_rates_profile.py`. Docs: `docs/coagulation_bin_ratio.md` (new Cost section, limitations), `docs/future_features.md` (the kernel does not dominate coagulation time with the Euler solvers), `CLAUDE.md`.
+- **Timings (CPU, µs per call, sai_plume 6 h / 160-bin bimodal):** linear rates 40 → 26 (40 bins), 186 → 93 (80), 650 → 275 (160); `make_step(['coagulation'])` step 1912 → 954 (80), 6555 → 2771 (160); `profile_step --scenario sai_plume --dt 2 --hours 6`, 80 bins: full step 1951 → 1009, jvp 4597 → 2269, jacfwd(25) 11951 → 8483; 40 bins unchanged (TFL).
+- **Equivalence:** eager identical to ≤ 2e-16 of each output; under `jit` ≤ 1e-12 of the gross loss rates. Relative to max|dMdt| the jitted difference reaches 4e-11, but the old function alone differs by 2e-11 (dMdt) and 1e-5 (dM_overflow) between eager and `jit` (FMA contraction of gain − loss). `coag_bin_ratio_convergence` reproduces the documented table exactly.
+- **Known issues (pre-existing, unchanged):** `jax.grad` of the linear rates has NaN entries for bins whose xbar is at or outside a bin edge (0 × inf in an unselected where-branch of `linear_subbin_reconstruction`, `2.0 / jnp.maximum(x1 - a, _TINY)`); `dM_overflow` is round-off dominated when little mass leaves the grid.
+- **Next:** fix the reverse-mode NaN (double-where in the reconstruction) and check `ad_mode='reverse'` at 80 bins; MNFIX is now comparable in cost to the rates per sub-step at 80 bins.
+
+---
+
 ## 2026-11-18 (Wed) PST — Long outer dt and `euler_adaptive` coagulation with adaptive gas sub-steps
 
 - On the AFGL tropical grid (13–25 km × SO2 0.01 ppbv–100 ppmv, 40 bins, 24 h), `benchmarks/python/gas_substep_dt360.py` and `gas_substep_euler_adaptive.py` show that adaptive gas sub-steps (f = 0.1) pass hour-mean L1 ≤ 0.05 in all 48 cells at an outer dt of 360 s, just as at 60 s and for about the same total wall time, whereas constant dt = 60 s and 360 s pass only 20/48 and 6/48 (failing from 10 ppbv up, NaN at the highest SO2); `coag_solver='euler_adaptive'` removes those NaNs but not the error, and inside the adaptive gas sub-steps it gives the same accuracy in about half the wall time (about 6× less at 80 bins), with one `CoagSubstepCapWarning` at 100 ppmv.

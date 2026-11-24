@@ -28,7 +28,9 @@ References:
     with other methods", Atmos. Res., 61, 135-148.
     Tzivion, Feingold, and Levin (1987), J. Atmos. Sci., 44, 3139-3149.
 """
+import jax
 import jax.numpy as jnp
+import numpy as np
 # float64 enforced by core/config.py
 from typing import Tuple
 
@@ -39,6 +41,9 @@ from .coagulation_rates import _preprocess_concentrations
 # outside) a bin edge, as a fraction of the bin width.
 _NARROW = 1.0e-6
 _TINY = 1.0e-300
+# Largest |log_p(xk[k]/xk[0]) - k| for which the closed-form destination bin
+# is used; one +-1 correction then makes it exact (see _destination_bin).
+_GEOMETRIC_TOL = 0.25
 
 
 def linear_subbin_reconstruction(
@@ -108,6 +113,60 @@ def _partial_moments(lo, hi, n_lo, n_hi, t):
     return num, mom
 
 
+def _destination_bin_geometric(xk, x):
+    """searchsorted(xk, x, side='right') - 1 clipped to [0, nbins], closed form.
+
+    Exact when every edge satisfies |log_p(xk[k]/xk[0]) - k| < _GEOMETRIC_TOL
+    with p = xk[1]/xk[0]: the computed log_p(x/xk[0]) then lies within 1.25
+    bins of the true index, floor() is off by at most one, and comparing x
+    with the two neighbouring edges corrects it. Non-positive x goes below
+    the grid and NaN above it, as searchsorted does.
+    """
+    nbins = xk.shape[0] - 1
+    r = jnp.log(jnp.maximum(x, 0.0) / xk[0]) / jnp.log(xk[1] / xk[0])
+    c = jnp.where(jnp.isnan(r), float(nbins), jnp.clip(jnp.floor(r), -1.0, float(nbins)))
+    c = c.astype(jnp.int32)
+    xk_pad = jnp.concatenate([jnp.array([-jnp.inf]), xk, jnp.array([jnp.inf])])
+    c = (c + (xk_pad[c + 2] <= x).astype(jnp.int32)
+         - (xk_pad[c + 1] > x).astype(jnp.int32))
+    return jnp.clip(c, 0, nbins)
+
+
+def _destination_bin_search(xk, x):
+    nbins = xk.shape[0] - 1
+    return jnp.clip(jnp.searchsorted(xk, x, side='right') - 1, 0, nbins).astype(jnp.int32)
+
+
+def _destination_bin(xk, x):
+    """Bin holding mass x (nbins = above the grid), exact for any grid.
+
+    The closed form is about 5x cheaper than jnp.searchsorted at 80 bins; a
+    grid that is not geometric within _GEOMETRIC_TOL takes searchsorted. The
+    choice depends on xk only, so it stays a real branch under vmap unless xk
+    itself is batched.
+    """
+    x = jax.lax.stop_gradient(x)
+    k = jnp.arange(xk.shape[0], dtype=xk.dtype)
+    log_ratio = jnp.log(xk / xk[0]) / jnp.log(xk[1] / xk[0])
+    geometric = jnp.all(jnp.abs(log_ratio - k) < _GEOMETRIC_TOL)
+    return jax.lax.cond(geometric, _destination_bin_geometric,
+                        _destination_bin_search, xk, x)
+
+
+def _materialize(x):
+    """Return x unchanged, computed once into its own buffer.
+
+    XLA CPU fuses an elementwise producer into a gather and re-evaluates it
+    for every gathered element, so gathering the per-bin reconstruction for
+    the n(n+1)/2 pairs would redo its where-chain per pair (~20% of the call
+    at 80 bins). A cumulative sum is not fused into the gather; its first
+    element is x exactly (no arithmetic), and its tangent and transpose are
+    the identity. lax.optimization_barrier does not work here: XLA CPU
+    removes it before fusion.
+    """
+    return jax.lax.cumsum(jnp.stack([x, jnp.zeros_like(x)]), axis=0)[0]
+
+
 def calc_coagulation_rates_linear(
     Nk: jnp.ndarray,
     Mk: jnp.ndarray,
@@ -120,6 +179,13 @@ def calc_coagulation_rates_linear(
     Same interface and return values as calc_coagulation_rates. Requires
     bin widths that do not decrease with size (true for any constant mass
     ratio grid), which bounds each pair's products to two destination bins.
+    On a geometric grid the destination bin is found in closed form, on any
+    other grid by jnp.searchsorted (same result, see _destination_bin).
+
+    Only the pairs i <= j are evaluated and each array is accumulated with
+    one windowed scatter; the original all-pairs scatter-add version is kept
+    in tests/reference/coagulation_rates_linear_scatter.py, and the two agree
+    to round-off (docs/coagulation_bin_ratio.md, Cost).
 
     Args:
         Nk: Number concentration [#/grid cell], shape (ibins,)
@@ -147,35 +213,43 @@ def calc_coagulation_rates_linear(
     pair_w = jnp.tril(jnp.ones((nbins, nbins)), k=-1) + 0.5 * jnp.eye(nbins)
     R = kij * Nk_s[:, None] * Nk_s[None, :] * pair_w
 
-    # Products of (j, i): bin j's support shifted up by xbar_i
+    loss_N = jnp.sum(R, axis=1) + jnp.sum(R, axis=0)
+
+    # Products of (j, i): bin j's support shifted up by xbar_i. R is zero
+    # above the diagonal, so only the n(n+1)/2 pairs i <= j are evaluated
+    # (index arrays fixed by the array shape).
     lo, hi, n_lo, n_hi = linear_subbin_reconstruction(xbar, xk)
-    y = xbar[None, :]
-    start = lo[:, None] + y
+    jp, ip = np.tril_indices(nbins)
+    per_j = _materialize(jnp.stack([lo, hi, n_lo, n_hi, xbar], axis=-1))[jp]
+    lo_p, hi_p, n_lo_p, n_hi_p, xbar_j = (per_j[:, q] for q in range(5))
+    y = xbar[ip]
+    R_p = R.reshape(-1)[jp * nbins + ip]
     # d0 = bin holding the lowest product; nbins means "above the grid"
-    d0 = jnp.clip(jnp.searchsorted(xk, start, side='right') - 1, 0, nbins)
+    d0 = _destination_bin(xk, lo_p + y)
     xk_ext = jnp.concatenate([xk, jnp.array([jnp.inf])])
-    t = jnp.clip(xk_ext[d0 + 1] - y, lo[:, None], hi[:, None])
+    t = jnp.clip(xk_ext[d0 + 1] - y, lo_p, hi_p)
 
     # Fraction of each collision's number and bin-j mass going to d0;
     # the remainder goes to d0 + 1 (complements keep conservation exact).
-    nu_lo, mu_lo = _partial_moments(
-        lo[:, None], hi[:, None], n_lo[:, None], n_hi[:, None], t)
+    nu_lo, mu_lo = _partial_moments(lo_p, hi_p, n_lo_p, n_hi_p, t)
     nu_hi = 1.0 - nu_lo
-    mu_hi = xbar[:, None] - mu_lo
+    mu_hi = xbar_j - mu_lo
 
-    # Scatter into nbins + 2 destinations (last two collect overflow).
-    jj = jnp.broadcast_to(jnp.arange(nbins)[:, None], (nbins, nbins))
-    ii = jnp.broadcast_to(jnp.arange(nbins)[None, :], (nbins, nbins))
-    A = (jnp.zeros((nbins + 2, nbins))
-         .at[d0, jj].add(R * mu_lo)
-         .at[d0 + 1, jj].add(R * mu_hi))  # bin-j mass reaching each dest
-    B = (jnp.zeros((nbins + 2, nbins))
-         .at[d0, ii].add(R * nu_lo)
-         .at[d0 + 1, ii].add(R * nu_hi))  # partner count reaching each dest
+    # Accumulate into nbins + 2 destinations (last two collect overflow):
+    # A[d, j] = bin-j mass reaching d, B[d, i] = partner count reaching d.
+    # One scatter per array adds each pair's (d0, d0 + 1) shares as a
+    # length-2 window at row d0; the two planes are then offset by a row.
+    A2 = jnp.zeros((nbins + 1, nbins, 2)).at[d0, jp].add(
+        jnp.stack([R_p * mu_lo, R_p * mu_hi], axis=-1), mode='promise_in_bounds')
+    B2 = jnp.zeros((nbins + 1, nbins, 2)).at[d0, ip].add(
+        jnp.stack([R_p * nu_lo, R_p * nu_hi], axis=-1), mode='promise_in_bounds')
+    zero_row = jnp.zeros((1, nbins))
+    A = (jnp.concatenate([A2[..., 0], zero_row])
+         + jnp.concatenate([zero_row, A2[..., 1]]))
+    B = (jnp.concatenate([B2[..., 0], zero_row])
+         + jnp.concatenate([zero_row, B2[..., 1]]))
     gain_N = jnp.sum(B, axis=1)
     gain_M = A @ frac + B @ mbar
-
-    loss_N = jnp.sum(R, axis=1) + jnp.sum(R, axis=0)
 
     dNdt = gain_N[:nbins] - loss_N
     dMdt_nodiag = gain_M[:nbins] - loss_N[:, None] * mbar
