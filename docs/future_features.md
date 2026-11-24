@@ -70,7 +70,7 @@ This document tracks features that are not currently needed but would unlock sig
 **What:** Replace the O(N^2) Brownian coagulation kernel computation with a neural network surrogate trained on forward-simulation data.
 
 **Unlocks:**
-- **Dramatic speedup** for the coagulation step — the kernel matrix computation dominates wall time for Tsit5 adaptive solves
+- **Speedup** for the coagulation step — with the forward Euler solvers the kernel matrix is computed once per step and is a small part of coagulation wall time (per step on CPU: kernel 3/10/38 µs at 40/80/160 bins vs 170/950/2800 µs for a `make_step(['coagulation'])` step, `benchmarks/python/coag_rates_profile.py`); the rates and MNFIX, called every sub-step, dominate. The kernel matters more for Tsit5 adaptive solves (`diffrax_step`), where it is still computed once per step
 - **Amortized cost** — a learned kernel that generalizes across temperature/pressure conditions avoids recomputing the full matrix each step
 - **Foundation for online learning** — update the surrogate during simulation based on residuals
 
