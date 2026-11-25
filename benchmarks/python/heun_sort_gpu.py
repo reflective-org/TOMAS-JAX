@@ -44,8 +44,22 @@ ALL_ORDERINGS = ['lonlat', 'columns', 'T', 'SO2', 'prod', 'tier+T', 'bucketed', 
 
 def parse():
     p = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
+    p.add_argument('--scenario', choices=('uniform', 'injection', 'advected'), default='uniform',
+                   help='uniform: --so2 in every cell of --elevated-levels; injection: --so2 in a few '
+                        'adjacent cells (--inj-*), background elsewhere; advected: --so2 at the centre of '
+                        'a latitude band patch with a Gaussian taper (--patch-*), background elsewhere')
     p.add_argument('--so2', type=float, nargs='+', default=[1.0, 1e2, 1e3],
-                   help='SO2 [ppbv] in the elevated levels (one pass set per value)')
+                   help='SO2 [ppbv]: uniform value / injection cells / patch peak (one pass set per value)')
+    p.add_argument('--inj-ncells', type=int, default=8, help='adjacent cells in longitude')
+    p.add_argument('--inj-level', type=int, default=44, help='CESM level (44 = 51.7 hPa ~ INJ_HPA 55)')
+    p.add_argument('--inj-lat', type=float, default=30.0)
+    p.add_argument('--inj-lon', type=float, default=180.0)
+    p.add_argument('--patch-levels', type=int, nargs='+', default=[43, 44, 45])
+    p.add_argument('--patch-lat', type=float, default=30.0, help='band centre, mirrored to -lat')
+    p.add_argument('--patch-sigma', type=float, default=7.0, help='Gaussian taper width [deg lat]')
+    p.add_argument('--patch-halfwidth', type=float, default=15.0, help='band cut-off [deg lat]')
+    p.add_argument('--hot-ref', choices=('median', 'p99'), default='median',
+                   help='bucketed: hot = production >= hot_factor x this statistic of all cells')
     p.add_argument('--levels', type=int, nargs='+', default=list(range(27, 51)))
     p.add_argument('--elevated-levels', type=int, nargs='+', default=[43, 44, 45])
     p.add_argument('--orderings', nargs='+', default=ALL_ORDERINGS, choices=ALL_ORDERINGS)
@@ -98,6 +112,32 @@ def so2_background_ppbv(path, levels, time_index):
     return so2
 
 
+def build_so2(cells, bg, elev, value, a):
+    """Per-cell SO2 [ppbv] for the scenario and a one-line description."""
+    lev, lat, lon = cells['level'], cells['lat'], cells['lon']
+    if a.scenario == 'uniform':
+        return np.where(elev, value, bg), f"{value:g} ppbv in every cell of levels {a.elevated_levels}"
+    so2 = bg.copy()
+    if a.scenario == 'injection':
+        in_lev = np.where(lev == a.inj_level)[0]
+        if in_lev.size == 0:
+            raise SystemExit(f"--inj-level {a.inj_level} is not in --levels")
+        lats, lons = np.unique(lat[in_lev]), np.unique(lon[in_lev])
+        j0 = int(np.argmin(np.abs(lats - a.inj_lat)))
+        i0 = int(np.argmin(np.abs(lons - a.inj_lon)))
+        sel_lon = lons[[(i0 + d) % lons.size for d in range(a.inj_ncells)]]
+        m = (lev == a.inj_level) & (lat == lats[j0]) & np.isin(lon, sel_lon)
+        so2[m] = value
+        return so2, (f"{value:g} ppbv in {int(m.sum())} adjacent cells at level {a.inj_level}, lat "
+                     f"{lats[j0]:.2f}, lon {sel_lon[0]:.1f}..{sel_lon[-1]:.1f}; background elsewhere")
+    d = np.minimum(np.abs(lat - a.patch_lat), np.abs(lat + a.patch_lat))
+    w = np.exp(-0.5 * (d / a.patch_sigma) ** 2)
+    m = np.isin(lev, a.patch_levels) & (d <= a.patch_halfwidth)
+    so2[m] = np.maximum(bg[m], value * w[m])
+    return so2, (f"patch: peak {value:g} ppbv at lat +-{a.patch_lat:g} (Gaussian sigma {a.patch_sigma:g} deg, cut at "
+                 f"+-{a.patch_halfwidth:g}) in levels {a.patch_levels}: {int(m.sum())} cells; background elsewhere")
+
+
 def make_orderings(cells, so2, prod, a, n_sub_sum=None):
     """name -> list of index arrays (chunks), the cost key being prod."""
     n = so2.size
@@ -118,7 +158,8 @@ def make_orderings(cells, so2, prod, a, n_sub_sum=None):
     out['prod'] = split(o_prod, chunk)
     tier = np.floor(np.log10(prod + 1e-30) * 2)
     out['tier+T'] = split(np.lexsort((T, -tier)), chunk)
-    hot = prod[o_prod] >= a.hot_factor * np.median(prod)
+    ref = np.median(prod) if a.hot_ref == 'median' else np.percentile(prod, 99)
+    hot = prod[o_prod] >= a.hot_factor * ref
     n_hot = int(hot.sum())
     out['bucketed'] = split(o_prod[:n_hot], hot_chunk) + split(o_prod[n_hot:], chunk)
     out['T_again'] = out['T']
@@ -177,11 +218,11 @@ class Runner:
             fails['coag_cap'] += int((out['coag_left'] > 0.0).sum())
             mx.append(float(out['n_sub_sum'].max()))
             mean_ratio.append(float(out['n_sub_sum'].max() / max(out['n_sub_sum'].mean(), 1e-30)))
-            waste_num += size * out['n_sub_sum'].max()
+            waste_num += float(size) * float(out['n_sub_sum'].max())
             done += c.size
         t_run = float(np.sum(t_chunks))
         res = dict(ordering=name, n_cells=int(done), n_cells_total=int(n), complete=complete,
-                   n_chunks=len(t_chunks), t_run_s=t_run, cells_per_s=done / max(t_run, 1e-30),
+                   n_chunks=len(t_chunks), n_sub_sum_max_over_cells=float(nsub.max()), t_run_s=t_run, cells_per_s=done / max(t_run, 1e-30),
                    lockstep_waste=float(waste_num / max(nsub.sum(), 1e-30)),
                    chunk_max_nsub_p50_p99=[float(np.percentile(mx, 50)), float(np.percentile(mx, 99))],
                    chunk_max_over_mean_mean=float(np.mean(mean_ratio)),
@@ -192,11 +233,11 @@ class Runner:
 
 def check_batched_vs_single(runner, cells, so2_val, a):
     """A few hot and cold cells: batched final N against the same cell run alone."""
-    hot = np.where(cells['so2'] >= so2_val)[0]
-    cold = np.where(cells['so2'] < so2_val)[0]
+    so2 = cells['so2']
+    hot = np.argsort(-so2, kind='stable')[:4]                      # the hottest cells
+    cold = np.where(so2 <= np.percentile(so2, 50))[0]
     rng = np.random.default_rng(0)
-    idx = np.concatenate([rng.choice(hot, 4, replace=False) if hot.size >= 4 else hot,
-                          rng.choice(cold, 4, replace=False)])
+    idx = np.concatenate([hot, rng.choice(cold, 4, replace=False)])
     size = a.chunk
     runner.get(size, cells)
     _, bat = runner.run(size, cells, idx, idx.size)
@@ -248,16 +289,16 @@ def main():
     trim = True
     failed = []
     for so2_val in a.so2:
-        fn = os.path.join(OUTDIR, f"{a.tag}so2_{so2_val:g}.json")
+        fn = os.path.join(OUTDIR, f"{a.tag}{'' if a.scenario == 'uniform' else a.scenario + '_'}so2_{so2_val:g}.json")
         if os.path.exists(fn) and not a.force:
             print(f"SO2={so2_val:g}: {fn} exists, skipped (--force)", flush=True)
             continue
-        so2 = np.where(elev, so2_val, bg)
+        so2, desc = build_so2(cells, bg, elev, so2_val, a)
         cells['so2'] = so2
         k1 = np.asarray(calc_k1_so2_oh(jnp.asarray(cells['temp']), jnp.asarray(cells['pres']),
                                        jnp.asarray(cells['rh'])))
         prod = k1 * cells['oh_conc'] * so2
-        print(f"\nSO2 = {so2_val:g} ppbv in levels {a.elevated_levels}; production k1*OH*SO2 "
+        print(f"\n[{a.scenario}] {desc}; production k1*OH*SO2 "
               f"p50/p99/max {np.percentile(prod, 50):.3g}/{np.percentile(prod, 99):.3g}/{prod.max():.3g}; "
               f"cells above 1/10/100 ppbv: " + '/'.join(str(int((so2 > x).sum())) for x in (1, 10, 100)),
               flush=True)
@@ -300,7 +341,8 @@ def main():
         if base:
             for r in results.values():
                 r['speedup_vs_T'] = base['t_run_s'] / r['t_run_s']
-        json.dump(dict(so2_ppbv=so2_val, elevated_levels=a.elevated_levels, levels=a.levels,
+        json.dump(dict(scenario=a.scenario, description=desc, so2_ppbv=so2_val, hot_ref=a.hot_ref,
+                       elevated_levels=a.elevated_levels, levels=a.levels,
                        n_cells=int(so2.size), hours=a.hours, dt=a.dt, chunk=a.chunk,
                        hot_chunk=a.hot_chunk, hot_factor=a.hot_factor, mnfix_trim=trim,
                        species_layout=SPECIES_LAYOUT, gpu=str(dev), gpu_index=gpu_idx,

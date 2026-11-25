@@ -175,6 +175,34 @@ elevated ones) lost to under-filled 512-cell chunks, so a tighter cut is unteste
 (too slow and not realistic); PR 20 itself runs 6 x 60 s without `gas_substep`, so absolute times are
 the benchmark's, not PR 20's.
 
+Two further scenarios (`heun_sort_gpu.py --scenario injection|advected`; same cells, layout, MNFIX trim,
+step settings and GPU 1 of the shared node, idle at launch, host CPU shared and loaded; 6 h; summed chunk run times):
+
+*Advected patch*: SO2 peaks at 100 ppbv at +-30 deg lat with a Gaussian taper (sigma 7 deg, cut at +-15 deg) in
+levels 43-45 (55,296 cells, 10-100 ppbv), the file's background elsewhere. Hot cells reach 10,287 sub-steps.
+
+| ordering | time (s) | vs T | waste |
+|---|---|---|---|
+| T | 442 | 1.0x | 16.1 |
+| columns | 373 | 1.2x | 13.4 |
+| SO2 | 94 | 4.7x | 3.35 |
+| lonlat | 90 | 4.9x | 3.07 |
+| k1*OH*SO2 | 42.6 | 10.4x | 1.48 |
+| tiers+T | 41.3 | 10.7x | 1.43 |
+| oracle | 36.5 | 12.1x | 1.21 |
+
+(`bucketed` with a hot cut of 10x the p99 production selected 0 cells, because the patch is 4% of all cells and the
+p99 lies inside it, so it equals the production sort, 42.8 s.)
+
+*Injection*: 100 ppmv in 8 adjacent cells (level 44, lat 29.7, lon 335-344, sunlit, OH 3e6 /cm3), background elsewhere.
+One chunk holds the hot cells and costs 711 s of the 730 s for grid order and for the production sort; T sorting
+spreads them over about three chunks (1968 s). 16-cell chunks for the 27 cells above the hot cut (the 8 plus 19
+background cells) take 467 s (hot chunk 450 s): isolating the cells gives 1.6x on the hot chunk, so the cells' own
+sub-step chain dominates and chunking cannot remove it. The `waste` column of this run is invalid (int32 overflow in
+the script, fixed afterwards; times are unaffected). The same 100 ppmv cells at lon 180 (night, OH ~400 /cm3, fixed
+per cell in this benchmark) needed ~2 sub-steps per step and the domain took 3 s for 1 h: where a plume sits relative to
+the terminator decides its cost, so injection cost here depends on the snapshot's OH.
+
 ## JIT Stability Tips
 
 1. **Always pass the same set of kwargs** to `make_step` step functions across calls. Changing which kwargs are present triggers recompilation.

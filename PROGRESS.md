@@ -4,6 +4,17 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-11-25 (Wed) PST — Chunk orderings under injection and advected-plume SO2 fields (GPU 1)
+
+- **Added:** `heun_sort_gpu.py --scenario injection|advected` (injection: `--inj-ncells/level/lat/lon` cells at `--so2`; advected: latitude-band patch with Gaussian taper, `--patch-*`), `--hot-ref median|p99` for the bucketed cut, `n_sub_sum_max_over_cells` in the JSON; fixed an int32 overflow in the lockstep-waste sum (the log of the injection run, which used the unfixed script, has invalid waste values for T, lonlat and prod).
+- **Advected patch** (100 ppbv peak, 55,296 cells, 6 h): T 442 s, k1*OH*SO2 42.6 s (10.4x), tiers+T 41.3 s (10.7x), oracle 36.5 s; grid order 4.9x; `columns` 1.2x. `bucketed` selected no cells (p99 cut inside the patch) and equals the production sort.
+- **Injection** (8 cells at 100 ppmv, sunlit lon 335, level 44): T 1968 s, grid order and production sort 730 s (hot chunk 711 s), 16-cell hot chunks 467 s (hot chunk 450 s). The hot cells' own sub-step chain dominates; chunking cannot remove it.
+- **Found:** the first injection pilot at lon 180 was nearly free (night, OH ~400 /cm3 in the snapshot, ~2 sub-steps per step); cost depends on where the plume sits relative to the terminator, since this benchmark holds each cell's OH fixed from one snapshot.
+- **Known:** no NaN or cap hit; per-cell N identical across orderings (batched vs single-cell 2.1e-12 injection, 3.0e-15 advected); timings are noisy (shared host CPU).
+- **Next:** for the injection case the lever is the stiff cells' own algorithm (caps, tolerance, shorter hot period), not chunking; apply the production-tier sort in AIDE-SAI-link PR 20 after asking.
+
+---
+
 ## 2026-11-24 (Tue) PST — Chunk ordering for vmapped `heun_adaptive`: GPU test of H2SO4-production sorting (sulfate layout)
 
 - **Added:** `benchmarks/python/heun_sort_gpu.py`: times orderings of the same cells into vmap chunks (lonlat, columns, T, SO2, k1*OH*SO2, tiers+T, bucketed, oracle, T repeated). Asserts `TOMAS_SPECIES=sulfate` and `mnfix_trim=True`; checks batched vs single-cell N and per-cell agreement across orderings; fails on NaN or a binding cap.
