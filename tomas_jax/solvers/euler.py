@@ -17,6 +17,7 @@ For production use, prefer diffrax.py (Tsit5 adaptive RK) which is:
 import jax
 # float64 enforced by core/config.py
 import jax.numpy as jnp
+import numpy as np
 from functools import partial
 from typing import Tuple, Optional
 
@@ -27,6 +28,18 @@ from ..core.mnfix_jax import mnfix_jax
 from ..core.mnfix_fortran import mnfix_fortran
 from ..core.bounded_loop import loop_while
 from ..core.config import ICOMP_NODIAG, TINY_N, TINY_M
+
+
+def check_coag_kernel_scale(coag_kernel_scale):
+    """Raise ValueError for a concrete coag_kernel_scale that is < 0 or
+    not finite. A traced value (inside jit/vmap) cannot be checked and is
+    passed through, so the check never breaks tracing."""
+    if isinstance(coag_kernel_scale, jax.core.Tracer):
+        return
+    v = np.asarray(coag_kernel_scale)
+    if not np.all(np.isfinite(v) & (v >= 0.0)):
+        raise ValueError(
+            f"coag_kernel_scale must be finite and >= 0, got {coag_kernel_scale!r}")
 
 
 def _compute_adaptive_dt(
@@ -99,6 +112,7 @@ def euler_step(
     mnfix_trim: bool = False,
     return_dt_left: bool = False,
     n_floor=None,
+    coag_kernel_scale=1.0,
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Forward Euler integration of coagulation over timestep dt.
 
@@ -139,6 +153,11 @@ def euler_step(
         return_dt_left: Static; if True, also return the time [s] left
             uncovered when max_substeps bound (0 otherwise). That part of
             dt gets no coagulation.
+        coag_kernel_scale: Multiplier on the Brownian coagulation kernel
+            (sensitivity knob, default 1.0 = unscaled and bit-identical),
+            applied to the initial kernel and to every recomputed one. A
+            scalar or 0-d array, may be traced (no recompile on a new value);
+            a concrete value < 0 or non-finite raises ValueError.
 
     Returns:
         Nk_final: Updated number concentration
@@ -151,9 +170,11 @@ def euler_step(
     mnfix_fn = (mnfix_fortran if use_fortran_mnfix
                 else partial(mnfix_jax, trim=mnfix_trim))
 
+    check_coag_kernel_scale(coag_kernel_scale)
+
     # Initial kernel computation
     Dpk, Dk, ck = calc_particle_properties(Nk, Mk, temp, pres, sparse_density)
-    kij = calc_coagulation_kernel(Dpk, Dk, ck, boxvol)
+    kij = calc_coagulation_kernel(Dpk, Dk, ck, boxvol) * coag_kernel_scale
 
     # State for while_loop: (Nk, Mk, kij, time_elapsed, substep_count)
     def cond_fn(state):
@@ -167,7 +188,8 @@ def euler_step(
         def recompute():
             Dpk_new, Dk_new, ck_new = calc_particle_properties(
                 Nk_s, Mk_s, temp, pres, sparse_density)
-            return calc_coagulation_kernel(Dpk_new, Dk_new, ck_new, boxvol)
+            return (calc_coagulation_kernel(Dpk_new, Dk_new, ck_new, boxvol)
+                    * coag_kernel_scale)
 
         kij_use = jax.lax.cond(
             recompute_kernel & (n_steps > 0),
@@ -232,6 +254,7 @@ def heun_step(
     h0=None,
     safety: float = 0.9,
     fac_max: float = 5.0,
+    coag_kernel_scale=1.0,
 ):
     """Error-controlled Heun (explicit trapezoid) coagulation over dt.
 
@@ -253,10 +276,15 @@ def heun_step(
     h0: first trial step [s]; None (default) = dt, so a short interval is
     covered by one step. (h0 = 1 s needed 3 iterations on a 12 s interval,
     1 s then 5 s then the rest: docs/gas_substep.md.)
+    coag_kernel_scale: multiplier on the kernel computed every iteration
+    (default 1.0, bit-identical; may be traced; concrete < 0 raises). The
+    controller sees the scaled rates, so it takes ~1/scale times the steps.
     """
+    check_coag_kernel_scale(coag_kernel_scale)
+
     def kernel(N, M):
         Dpk, Dk, ck = calc_particle_properties(N, M, temp, pres, sparse_density)
-        return calc_coagulation_kernel(Dpk, Dk, ck, boxvol)
+        return calc_coagulation_kernel(Dpk, Dk, ck, boxvol) * coag_kernel_scale
 
     def cond_fn(state):
         t, n_it = state[2], state[5]
