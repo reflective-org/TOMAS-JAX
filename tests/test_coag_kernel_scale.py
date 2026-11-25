@@ -12,6 +12,7 @@ import numpy as np
 import pytest
 
 from tomas_jax.core.config import NBINS, ICOMP, N_GAS_SPECIES, SRTSO4, SRTH2O
+from tomas_jax.core.mnfix_jax import mnfix_jax
 from tomas_jax.solvers.condensation import make_step
 from tomas_jax.solvers.diffrax import coag_euler_step
 from tomas_jax.solvers.euler import euler_step, heun_step
@@ -181,10 +182,23 @@ def test_scale_one_bit_identical_in_both_layouts(tmp_path, layout):
 
 @pytest.mark.parametrize('solver', SOLVERS)
 def test_scale_zero_switches_coagulation_off(xk, solver):
-    Nk, Mk, Gc = _state(xk, MODES)
+    """Scale 0 gives zero coagulation rates; MNFIX still runs after the
+    (zero) update. So Nk, Mk come back unchanged only when every bin's mean
+    mass is inside its bin, and are MNFIX(input) otherwise."""
+    Nk, Mk, Gc = _state(xk, MODES)          # every bin at its geometric mean
     out = _coag(solver)(Nk, Mk, Gc, xk, *ENV, coag_kernel_scale=0.0)
     np.testing.assert_array_equal(np.asarray(out[0]), np.asarray(Nk))
     np.testing.assert_array_equal(np.asarray(out[1]), np.asarray(Mk))
+    # even bins at 2.6 x their lower edge (out of bounds): MNFIX moves them
+    i = np.arange(NBINS)
+    Nk = jnp.asarray(np.maximum(1e4 * BOXVOL * np.exp(-0.5 * ((i - 6) / 3.0) ** 2), 1e-3))
+    Mk = jnp.zeros((NBINS, ICOMP)).at[:, SRTSO4].set(
+        Nk * xk[:-1] * np.where(i % 2 == 0, 2.6, 1.0))
+    N_fix, M_fix = mnfix_jax(Nk, Mk, xk)
+    out = _coag(solver)(Nk, Mk, Gc, xk, *ENV, coag_kernel_scale=0.0)
+    assert not np.array_equal(np.asarray(N_fix), np.asarray(Nk))
+    np.testing.assert_array_equal(np.asarray(out[0]), np.asarray(N_fix))
+    np.testing.assert_array_equal(np.asarray(out[1]), np.asarray(M_fix))
 
 
 # ---------------------------------------------------------- c. time rescaling
@@ -293,8 +307,10 @@ def test_new_value_does_not_retrace(xk, solver):
     step = _coag(solver)
     for s in (0.5, 2.0, 3.0):
         step(Nk, Mk, Gc, xk, *ENV, coag_kernel_scale=s)
-    if hasattr(step, '_cache_size'):
-        assert step._cache_size() == 1
+    # (the sulfate layout and dunne_form='single_exp' wrap the jit in a
+    # kwarg-checking function that exposes it as ._jitted)
+    jitted = getattr(step, '_jitted', step)
+    assert jitted._cache_size() == 1
 
 
 def test_vmap_per_cell_scale(xk):
@@ -320,6 +336,35 @@ def test_vmap_per_cell_scale(xk):
     N = np.asarray(jnp.sum(batched[0], axis=1))
     # 0 < 0.5 < 1 < 2 in coagulation strength -> N decreasing
     assert N[3] > N[0] > N[1] > N[2], N
+
+
+def test_large_scale_production_config(xk):
+    """Scale 10 in the production configuration (heun_adaptive + adaptive
+    gas sub-steps, 360 s steps): no cap hit, no time left uncoagulated, a
+    finite state with fewer particles than at scale 1."""
+    step = make_step(PROCS, coag_solver='heun_adaptive', gas_substep='adaptive',
+                     jit=False, cap_warnings=False, return_substep_info=True,
+                     **STUDY)
+    temp, pres = 217.0, c.STRAT['pres']
+    state = c.lognormal_state(xk, so2=c.ppbv_to_molec(100.0, temp, pres))
+
+    @jax.jit
+    def run(s):
+        def body(carry, _):
+            *st, info = step(*carry, xk, temp, pres, c.BOXVOL, c.STRAT['rh'],
+                             c.STRAT['alpha'], 360.0, coag_kernel_scale=s, **KW)
+            return tuple(st), (info['hit_cap'], info['coag_dt_left'])
+        return jax.lax.scan(body, tuple(state), None, length=3)
+
+    N = {}
+    for s in (1.0, 10.0):
+        (Nk, Mk, Gc), (hit, left) = run(s)
+        assert not np.any(np.asarray(hit)), s
+        assert np.all(np.asarray(left) == 0.0), s
+        for x in (Nk, Mk, Gc):
+            assert np.all(np.isfinite(np.asarray(x))), s
+        N[s] = float(jnp.sum(Nk))
+    assert N[10.0] < N[1.0]
 
 
 # ------------------------------------------------------------- argument check

@@ -1567,4 +1567,6 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
         if dunne_form != 'double_exp':
             check_dunne_params(kwargs.get('nucl_params'), dunne_form)
         return jitted(*args, **kwargs)
+    # the inner jit, so callers and tests can inspect its compile cache
+    checked_step_fn._jitted = jitted
     return checked_step_fn
