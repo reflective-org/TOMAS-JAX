@@ -4,6 +4,88 @@ This file tracks all significant changes to the TOMAS-JAX codebase. Entries are 
 
 ---
 
+## 2026-11-25 (Wed) 12:35 PST — `coag_kernel_scale`: coagulation-kernel multiplier in all three coag solvers
+
+- **Added:** runtime kwarg `coag_kernel_scale` of the `make_step` step function (`_VALID_MAKE_STEP_KWARGS`, coagulation group), passed to `coag_euler_step` (`euler_fixed`), `euler_step` (`euler_adaptive`: initial and every recomputed kernel) and `heun_step` (`heun_adaptive`: kernel of every iteration), each of which multiplies `calc_coagulation_kernel(...)` by it. Default 1.0. Same name and `coag_euler_step` signature as Ali's 39535ea (PR #33, `feat/dev-sai-coupling`), so the two merge trivially. For coagulation sensitivity runs of AIDE-SAI's `cesm_adaptive_substep` preset (the fast engine's `FAST_COAG_SCALE` counterpart).
+- **Checks:** `euler.check_coag_kernel_scale`: a concrete value < 0 or non-finite raises ValueError (solver functions, `make_step(jit=False)`, sulfate-layout step via its pre-jit guard); traced values pass unchecked. `_check_reduced_kwargs` does not touch it.
+- **Audit:** no other coagulation kernel or rate on the `make_step` path (gas sub-step criterion CS + n_eff·k_nuc, nucleation schemes, condensation sink); coagulation intervals follow the scaled loss. Legacy multi-process helpers, `diffrax_step`, `coagulation_jax`, `utils/diagnostics.py` and the AAAR box model are not scaled.
+- **Verified (CPU):** `tests/test_coag_kernel_scale.py` (32 tests): 1.0 bit-identical to omitting it for each solver (jit and not), in the production configuration (heun_adaptive + gas_substep='adaptive', traced and constant) and in both species layouts (subprocesses); 0 gives zero coagulation rates (MNFIX still runs: Nk, Mk unchanged for an in-bin state, MNFIX(input) otherwise); scale s over dt = scale 1 over s·dt to <= 1e-15 (asserted 1e-12 fixed, 1e-10 adaptive); N decreases monotonically with s, dry mass closes as for s = 1; no retrace on a new value; per-cell scale under vmap matches single-cell runs. Existing suites pass (coag_adaptive, gas_substep, sulfate_only, smoke, coagulation_logic, and 9 more files importing the touched modules); new file also passes with `TOMAS_SPECIES=sulfate`.
+- **Known:** `euler_adaptive`'s Fortran sub-step floor (1e-10 s, absolute) does not scale, so the time-rescaling identity fails where it binds (near-empty bin next to a full one; 1e-6 in total N). The jitted default-layout step cannot check a negative value (it arrives traced). Python float and float64 array values trace once each.
+- **Review fixes:** make_step's kwarg-checking wrapper (sulfate layout, `dunne_form='single_exp'`) exposes its inner jit as `._jitted`, so the no-retrace test now asserts `_cache_size() == 1` in the sulfate layout too (it was skipped there); scale 0 documented and tested as zero rates + MNFIX (an out-of-bin state comes back as MNFIX(input)); `euler_adaptive` cap at large scales documented (use `heun_adaptive`); new `test_large_scale_production_config` (s = 10, 3 x 360 s: no cap, coag_dt_left 0, finite). Required set 72 passed, 1 skipped; sulfate layout 36 passed (CPU).
+- **Next:** AIDE-SAI wiring of the knob for the `cesm_adaptive_substep` preset (an env knob passed as `coag_kernel_scale=`); push to PR #49 after review.
+
+---
+
+## 2026-11-25 (Wed) PST — Chunk orderings under injection and advected-plume SO2 fields (GPU 1)
+
+- **Added:** `heun_sort_gpu.py --scenario injection|advected` (injection: `--inj-ncells/level/lat/lon` cells at `--so2`; advected: latitude-band patch with Gaussian taper, `--patch-*`), `--hot-ref median|p99` for the bucketed cut, `n_sub_sum_max_over_cells` in the JSON; fixed an int32 overflow in the lockstep-waste sum (the log of the injection run, which used the unfixed script, has invalid waste values for T, lonlat and prod).
+- **Advected patch** (100 ppbv peak, 55,296 cells, 6 h): T 442 s, k1*OH*SO2 42.6 s (10.4x), tiers+T 41.3 s (10.7x), oracle 36.5 s; grid order 4.9x; `columns` 1.2x. `bucketed` selected no cells (p99 cut inside the patch) and equals the production sort.
+- **Injection** (8 cells at 100 ppmv, sunlit lon 335, level 44): T 1968 s, grid order and production sort 730 s (hot chunk 711 s), 16-cell hot chunks 467 s (hot chunk 450 s). The hot cells' own sub-step chain dominates; chunking cannot remove it.
+- **Found:** the first injection pilot at lon 180 was nearly free (night, OH ~400 /cm3 in the snapshot, ~2 sub-steps per step); cost depends on where the plume sits relative to the terminator, since this benchmark holds each cell's OH fixed from one snapshot.
+- **Known:** no NaN or cap hit; per-cell N identical across orderings (batched vs single-cell 2.1e-12 injection, 3.0e-15 advected); timings are noisy (shared host CPU).
+- **Next:** for the injection case the lever is the stiff cells' own algorithm (caps, tolerance, shorter hot period), not chunking; apply the production-tier sort in AIDE-SAI-link PR 20 after asking.
+
+---
+
+## 2026-11-24 (Tue) PST — Chunk ordering for vmapped `heun_adaptive`: GPU test of H2SO4-production sorting (sulfate layout)
+
+- **Added:** `benchmarks/python/heun_sort_gpu.py`: times orderings of the same cells into vmap chunks (lonlat, columns, T, SO2, k1*OH*SO2, tiers+T, bucketed, oracle, T repeated). Asserts `TOMAS_SPECIES=sulfate` and `mnfix_trim=True`; checks batched vs single-cell N and per-cell agreement across orderings; fails on NaN or a binding cap.
+- **Measured** (GPU 0 of the shared node, idle at launch, host CPU shared and loaded; 1,327,104 cells at CESM levels 27-50, file SO2 as background, uniform SO2 in levels 43-45 only; 6 h, dt = 360 s, 40 bins, chunks of 4096): at 100 ppbv, T sort 733 s, k1*OH*SO2 103 s (7.1x), tiers+T 91 s (8.0x), oracle 72 s (10.1x); at 1 ppbv, T 50.6 s, k1*OH*SO2 21.8 s (2.3x), tiers+T 20.0 s (2.5x), oracle 19.8 s. Table in `docs/gpu_deployment.md`. T baseline repeated: 733 vs 734 s. Per-cell N identical across orderings; batched vs single-cell 5.5e-15.
+- **Known:** SO2 is uniform within the elevated band (not a localized plume), so the benefit for a real plume is not measured; `bucketed` as defined (hot >= 10x median production) selected twice the elevated cells and lost; 1e3 ppbv not run (too slow, not realistic); a column-wise memory layout (levels mixed per chunk) is slower than T sorting; PR 20 itself calls make_step at 6 x 60 s without gas_substep.
+- **Next:** try a tighter hot cut for `bucketed`; use the previous coupling step's sub-step count as the sort key (the realistic oracle); apply in AIDE-SAI-link PR 20's chunk loop (`run_microphysics_full`) after asking.
+
+---
+
+## 2026-11-24 (Tue) PST — `TOMAS_SPECIES=sulfate` reduced layout: pure-sulfate clusters required (`org_frac == 0`)
+
+- **Added:** `TOMAS_SPECIES=sulfate` (read once at import, `core/config.py`): `ICOMP=3` (SO4, NH4 placeholder, H2O), no organic/nitrate/SOA slots; organics, NH3, SOA and the box model raise. Default layout unchanged and bit-identical.
+- **Rule:** in the sulfate layout `make_step` with `'nucleation'` requires `nucl_params` with `org_frac == 0` (e.g. `DEFAULT_NUCLEATION_PARAMS._replace(org_frac=0.0)`); `None` (library default 0.1) or `org_frac != 0` raises ValueError, checked on concrete values before jit. Why: the default layout adds the organic share of new clusters to `Mk` without removing any gas; with no organic column that mass would be folded into SO4 from nothing.
+- **Verified (CPU):** `tests/test_sulfate_only.py` runs both layouts with `org_frac = 0` on 6 stratospheric cells incl. a 5 kg SO2 plume cell, 40 bins, `heun_adaptive`: full chain, coag only, cond only. Nk, SO4, SO2, H2SO4 bit-identical; water at most 2.2e-16 relative. Default-layout nucleation, coag_adaptive and smoke tests pass.
+- **Known:** 10 `test_aaar_*` files cannot be collected in the Python 3.10 venv (`tomllib`); `test_aaar_nitrate_gate::test_level3_leaves_no_band_below_the_mode` fails at 5aeacd5 already.
+- **Next:** GPU timing of 44-column vs sulfate-only `heun_adaptive` on CESM cells; H2SO4-production-sorted chunking.
+
+---
+
+## 2026-11-23 (Mon) 16:30 PST — Batched GPU timing of `heun_adaptive` at CESM stratospheric cells; `make_step(cap_warnings=...)`
+
+- **Added:** `make_step(cap_warnings=True)` (`solvers/condensation.py`): `False` drops the gas and coagulation cap-warning `jax.debug.callback`s, which JAX unrolls per batch member under `vmap` (8192 cells: compile 217 s against 9 s, step 5.3 s against 0.06 s). Default unchanged and bit-identical; with `False` the caller reads `info['hit_cap']` / `info['coag_dt_left']`. Test: `test_cap_warnings_false_is_silent_and_values_unchanged` (`tests/test_gas_substep.py`); `test_gas_substep.py` + `test_coag_adaptive.py` 28 passed (CPU).
+- **Added:** `benchmarks/python/heun_cesm_gpu.py` (single-column, GPU guard + memory cap) and `benchmarks/python/heun_cesm_gpu_batch.py` (all cells of CESM levels 43-45 from `/data/training_sims/run`, hour 24 of the 1991-06-02 h1 file, each cell's own T, P, RELHUM, OH; fion 10, study lognormal background; vmap in chunks; refuses to run off an idle GPU; `--verify`, calibration, `--chunk-stride`, `--max-wall-minutes`). Batched against single-cell final N: 4.9e-15 relative (8 cells x 3 SO2).
+- **Measured (full band, GPU 0 of the shared node, idle at launch (0% util), 35 GiB cap, host CPU shared and loaded; 6 h, dt = 360 s, 40 bins, `mnfix_trim=True`, all 165,888 cells at levels 43-45, chunks of 4096 sorted by T; no NaN, no binding cap; peak 0.64 GiB):**
+
+  | SO2 (ppbv) | cells/s | est. 3.87M cells | worst-cell n_sub/step | median-cell mean |
+  |---|---|---|---|---|
+  | 1e-2 | 20,860 | 3.1 min | 1 | 1.0 |
+  | 1e-1 | 18,985 | 3.4 min | 1 | 1.0 |
+  | 1 | 4,302 | 15 min | 8 | 1.0 |
+  | 10 | 1,004 | 64 min | 48 | 1.6 |
+  | 100 | 248 | 4.3 h | 249 | 10.0 |
+  | 1e3 | 54 | 19.9 h | 1486 | 45.0 |
+
+  The 8th-chunk pilot (22,528 cells) agreed within 8%. 1e4 and 1e5 ppbv were skipped (calibration: 1e4 is ~10x the 1e3 time per chunk). Per-cell n_sub and final N were saved (`--save-cells`: `benchmarks/results/heun_cesm_batch/full_*_cells.npz`, cell table `full_cells.npz`).
+- **Added:** `benchmarks/python/heun_chunk_replay.py`, an offline replay of chunk orderings on the saved per-cell n_sub_sum (chunk cost = chunk size x max cell cost, a lower bound on the lockstep cost). Spearman rank correlation of the 1e3 sub-step cost with k1(T,P,RH)*OH is 0.95 (0.97 with T added), with T alone 0.22. Background 0.1 ppbv plus hot cells at 1e3, time for 165,888 cells (T-sorted / SO2-sorted / k*OH*SO2-sorted / oracle): 2 hot cells 41 / 38 / 38 / 38 s; 50 hot 730 / 104 / 104 / 104 s; 5,000 hot 2,640 / 265 / 207 / 179 s. Uniform 1e3: 3,075 s T-sorted, ~1,760 s k*OH*SO2-sorted, ~1,465 s with half-decade k*OH*SO2 tiers plus T, ~900 s oracle. So sorting by T scatters hot cells across chunks (7x with 50 hot cells); the 4M-cell estimates above are for T-sorted chunks at uniform SO2 and overstate a clean domain with a few plumes.
+- **Findings:** `mnfix_trim=True` is 6-8x faster than `False` under vmap on the GPU (opposite of the CLAUDE.md advice, not yet changed there); vmap batch of exactly 1 aborts XLA (`hlo_dataflow_analysis.cc`); memory ~153 KiB per cell, time linear in cells above ~1k; lockstep waste is large at high SO2 (1e3: median cell 50 gas sub-steps per step, max 1321). Details in `docs/gpu_deployment.md`.
+- **Known issues:** CESM `RELHUM` and RH from Q differ by up to 0.5 (median 0.01) and RELHUM reaches the 0.99 clip in some cells; the CESM files have no ion rate, so fion is the constant 10; the background aerosol is the study lognormal, not CESM's CARMA bins; 43-62 hPa cells are not representative of the whole 70-level grid; the batch was timed on one idle GPU of a shared node.
+- **Next (idea, not run):** a full-domain test of chunk ordering. Load all 70 levels at the same snapshot (3.87M cells; `--levels` already accepts them), set a uniform background of 0.1 ppbv SO2 everywhere and overwrite levels 43-45 to 1e2 ppbv (optionally also 2 / 50 / 5,000 random cells at 1e3), and time three orderings on the GPU: T, k1*OH*SO2, and half-decade k1*OH*SO2 tiers plus T. Needs a per-cell SO2 field (`so2_kg_cells` already takes one) and an `--order` option in `heun_cesm_gpu_batch.py`; save per-chunk times and per-cell n_sub (`--save-cells`) to check `heun_chunk_replay.py` against the measurement. Estimated 30-40 min of GPU time for three orderings at 1e2 (1e3 in the band would be ~50 min each); the background levels' cost is unmeasured (tropospheric T, P, OH differ from 43-62 hPa) and could be much higher. Check the GPU is idle first (`source ~/gpu_env.sh`). Also open: a mixed-chunk GPU check of the lower-bound replay model; previous-step n_sub as an ordering key, plume spreading and state history are not modelled; 1e4 and 1e5 ppbv only if wanted (hours to days).
+
+---
+
+## 2026-11-20 (Fri) PST — `make_step(coag_solver='heun_adaptive')`: error-controlled Heun coagulation
+
+- **Added:** `heun_step` (`solvers/euler.py`), `coag_solver='heun_adaptive'` with `coag_heun_rtol`/`coag_heun_atol` in `make_step`; the coagulation cap warning covers it; reverse mode via the bounded loop. Opt-in, defaults unchanged. `test_heun_adaptive` in `tests/test_coag_adaptive.py` (9 pass). Benchmark kind `ha_f0.1_360` in `gas_substep_euler_adaptive.py`.
+- **Documented:** `docs/gas_substep.md` (algorithm, why the Fortran limit and the floor fail, grid results).
+- **Known issues:** about half the L1 N of `euler_adaptive` on the tropical grid at 40 and 80 bins, but 1.1–2.5× the time except where `euler_adaptive` hits its cap; rtol 1e-2 gives the same time and error as 3e-3 on the grid (no cost lever); not Fortran-parity.
+- **Next:** count Heun iterations per coagulation interval; if it is ~1, the cost is the per-step price (kernel + two rate evaluations), and the lever is a cheaper second stage or longer intervals.
+
+---
+
+## 2026-11-20 (Fri) PST — `make_step(coag_n_floor=...)`: floor on the `euler_adaptive` number limit
+
+- **Added:** `coag_n_floor` (default `None`) in `make_step`, `n_floor` in `euler_step` and `_compute_adaptive_dt`: bins with N at or below the floor are left out of the number sub-step limit. Needs `coag_solver='euler_adaptive'` and a value ≥ 0 (`ValueError`). `build(coag_n_floor=...)` in `gas_substep_convergence.py`, kinds `nf0.01`/`nf0.001` in `gas_substep_coag_interval.py`, `benchmarks/python/coag_speed_eval.py` (config timing/L1 screen). Docs: `docs/gas_substep.md`, `CLAUDE.md`.
+- **Checked:** off is bit-identical to HEAD (24 arrays); `tests/test_coag_adaptive.py` (two new tests) and `test_gas_substep.py` pass (25); coagulation-only dry mass budget ≤ 1e-9.
+- **Known issue:** not validated on 80 bins; stays opt-in.
+
+---
+
 ## 2026-11-15 21:10 PST — Tests: reverse mode with default arguments, `coag_euler_step` against the sequential MNFIX
 
 - **Why (review):** the first check in `test_default_is_fixed_euler` takes the same path twice, so it only pins the default. Nothing tested `jax.grad` through `coag_euler_step`, the error from the forward-only `trim=True`, or a whole coagulation trajectory against `tests/reference/mnfix_sequential.py`.
@@ -2937,3 +3019,7 @@ The PPM closure step (`M_cs = M_dry_integral - M_noncond`) systematically lost ~
 
 ### Validation
 - Mass conservation < 1e-13 relative error for coagulation
+
+## 2026-11-21 (Sat) PST — heun_adaptive h0 = dt
+
+`heun_step` initial step is dt instead of 1 s (`h0=None`). Reran the tropical grid at 40 and 80 bins: total time 848 s / 4001 s (was 863 s / 4116 s), max L1 N 24 h 0.016 / 0.018, valid 48/48 and 47/48. rtol 1e-2 gives no change. Next: cheaper second rates evaluation at 80 bins.

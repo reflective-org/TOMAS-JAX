@@ -59,6 +59,7 @@ import numpy as np
 
 from vbs_jax import DEFAULT_VBS_CONFIG, ParticleState, vbs_partition_step
 
+from ..core.config import require_organics
 from ..core.config import (
     ICOMP_NODIAG, SRTORG1, SRTORGLAST, SRTSOA1, N_SOA_CLASSES, SRTNIT,
     SRTH2O,
@@ -126,6 +127,7 @@ def soa_partition_step(Nk, Mk, Gc, xk, temp, pres, boxvol, dt,
         (Nk, Mk, Gc, diag): updated state (Gc changes only in the class
         slots) and vbs_jax.VBSDiagnostics (per-m^3 / SI units).
     """
+    require_organics('SOA partitioning')
     if bin_transfer not in BIN_TRANSFERS:
         raise ValueError(
             f"bin_transfer={bin_transfer!r}; valid: {BIN_TRANSFERS}")

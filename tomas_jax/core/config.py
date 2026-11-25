@@ -20,11 +20,41 @@ jax.config.update("jax_enable_x64", True)
 # jax.config.update("jax_debug_nans", True)
 
 # =========================================================================
-# 2. Model Dimensions (TOMAS Standard)
+# 2. Species layout (TOMAS_SPECIES, read once at import)
+# =========================================================================
+# 'default'  : 44 columns (SO4, 41 organic slots, NH4, H2O); bit-identical to
+#              the historical layout.
+# 'sulfate'  : reduced 3-column layout (SO4, NH4 placeholder, H2O) for the
+#              so2_chemistry + nucleation + coagulation + condensation path.
+#              Organics, nitrate, SOA and NH3 are unsupported and raise.
+# Modules bind these constants with 'from .config import X', so the variable
+# must be set before the first tomas_jax import; it cannot switch at runtime.
+SPECIES_LAYOUT = os.environ.get("TOMAS_SPECIES", "default").strip().lower() or "default"
+if SPECIES_LAYOUT not in ("default", "sulfate"):
+    raise ValueError(
+        f"TOMAS_SPECIES={os.environ.get('TOMAS_SPECIES')!r} is invalid; "
+        "use 'default' or 'sulfate'")
+HAS_ORG = SPECIES_LAYOUT == "default"   # static flag: organic slots exist
+
+
+def require_organics(what):
+    """Raise if the active species layout has no organic/nitrate/SOA slots."""
+    if not HAS_ORG:
+        raise NotImplementedError(
+            f"{what} is unsupported with TOMAS_SPECIES={SPECIES_LAYOUT} "
+            "(reduced layout has no organic, nitrate, SOA or NH3 species)")
+
+
+# =========================================================================
+# 2b. Model Dimensions (TOMAS Standard)
 # =========================================================================
 NBINS = 40          # Number of size bins (1.7nm start, mass-doubling)
-ICOMP = 44          # Total number of mass tracking components (species)
-IDIAG = 2           # Number of diagnostic species (usually at the end)
+if HAS_ORG:
+    ICOMP = 44          # Total number of mass tracking components (species)
+    IDIAG = 2           # Number of diagnostic species (usually at the end)
+else:
+    ICOMP = 3           # SO4, NH4 (placeholder), H2O
+    IDIAG = 2           # NH4 and H2O are diagnostic
 
 # Derived counts
 # Number of prognostic species (mass moves, coagulates, condenses)
@@ -36,24 +66,41 @@ ICOMP_NODIAG = ICOMP - IDIAG
 # These map the 'icomp' dimension to physical chemical species.
 # Adjust these if you change the TOMAS species list.
 
-SRTSO4 = 0          # Sulfate [SO4]
-SRTORG1 = 1         # First Organic Aerosol
-SRTORGLAST = 41     # Last Organic Aerosol
-SRTNH4 = 42         # Ammonium [NH4]
-SRTH2O = 43         # Water [H2O]
-SRTSO2 = 43         # SO2 in gas array Gc (index 43, the new 44th element)
-# SRTNACL = 41        # Sea Salt (Assuming slot 41 based on previous context)
+if HAS_ORG:
+    SRTSO4 = 0          # Sulfate [SO4]
+    SRTORG1 = 1         # First Organic Aerosol
+    SRTORGLAST = 41     # Last Organic Aerosol
+    SRTNH4 = 42         # Ammonium [NH4]
+    SRTH2O = 43         # Water [H2O]
+    SRTSO2 = 43         # SO2 in gas array Gc (index 43, the new 44th element)
+    # SRTNACL = 41        # Sea Salt (Assuming slot 41 based on previous context)
 
-# AAAR tutorial carve of the organic block 1-41 (docs/aaar/). Gc and Mk
-# share these indices: Gc holds the vapour, Mk the particle phase.
-SRTSOA1 = 1         # First SOA volatility (c*) class slot
-N_SOA_CLASSES = 15  # SOA c*-class slots SRTSOA1 .. SRTSOA1+14 (1-15)
-SRTNIT = 40         # Particle nitrate, stored as NO3 mass (MW_NO3)
-SRTORG_NUC = 41     # Organic mass of nucleated clusters (nucleation.py)
+    # AAAR tutorial carve of the organic block 1-41 (docs/aaar/). Gc and Mk
+    # share these indices: Gc holds the vapour, Mk the particle phase.
+    SRTSOA1 = 1         # First SOA volatility (c*) class slot
+    N_SOA_CLASSES = 15  # SOA c*-class slots SRTSOA1 .. SRTSOA1+14 (1-15)
+    SRTNIT = 40         # Particle nitrate, stored as NO3 mass (MW_NO3)
+    SRTORG_NUC = 41     # Organic mass of nucleated clusters (nucleation.py)
 
-assert SRTORG1 <= SRTSOA1
-assert SRTSOA1 + N_SOA_CLASSES - 1 < SRTNIT < SRTORG_NUC
-assert SRTORG_NUC == SRTORGLAST   # nucleation.py writes SRTORGLAST
+    assert SRTORG1 <= SRTSOA1
+    assert SRTSOA1 + N_SOA_CLASSES - 1 < SRTNIT < SRTORG_NUC
+    assert SRTORG_NUC == SRTORGLAST   # nucleation.py writes SRTORGLAST
+else:
+    SRTSO4 = 0
+    SRTNH4 = 1          # placeholder, must stay 0
+    SRTH2O = 2
+    SRTSO2 = 2          # SO2 in Gc (Gc = [H2SO4, NH3 placeholder, SO2])
+    SRTORG1 = 1
+    # Empty organic slice SRTORG1:SRTORGLAST+1 == 1:1. 0 aliases SRTSO4, so
+    # NEVER write to column SRTORGLAST; guard writes with HAS_ORG.
+    SRTORGLAST = SRTORG1 - 1
+    # None fails loudly (TypeError) instead of silently clamping/dropping.
+    SRTSOA1 = SRTNIT = SRTORG_NUC = None
+    N_SOA_CLASSES = 0
+
+    assert ICOMP_NODIAG == 1
+    assert SRTSO4 < ICOMP_NODIAG <= SRTNH4 < SRTH2O < ICOMP
+    assert SRTORGLAST == SRTORG1 - 1
 
 # =========================================================================
 # 4. Physical Constants
@@ -69,8 +116,10 @@ MOLAR_MASS_AIR = 0.0289647  # kg/mol (Standard Atmosphere)
 # =========================================================================
 # 5. Condensation Parameters
 # =========================================================================
-IORG = 41                       # Number of organic species (indices 1-41)
+IORG = 41 if HAS_ORG else 0     # Number of organic species (indices 1-41)
 N_GAS_SPECIES = ICOMP           # 44 — Gc dimension (species 0-42 + SO2 at index 43)
+if not HAS_ORG:
+    assert SRTSO2 < N_GAS_SPECIES and SRTSO2 != SRTSO4
 
 # Molecular weights [g/mol]
 MW_H2SO4 = 98.0

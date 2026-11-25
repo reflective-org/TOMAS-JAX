@@ -77,6 +77,15 @@ class TomasState(NamedTuple):
                 f"Mk bins {Mk_arr.shape[0]} != Nk bins {Nk_arr.shape[0]}"
             )
 
+        if Mk_arr.ndim != 2 or Mk_arr.shape[1] != ICOMP:
+            raise ValueError(
+                f"Mk must have shape (nbins, {ICOMP}) for this species layout "
+                f"(TOMAS_SPECIES), got {Mk_arr.shape}")
+        if Gc_arr.shape != (N_GAS_SPECIES,):
+            raise ValueError(
+                f"Gc must have shape ({N_GAS_SPECIES},) for this species layout "
+                f"(TOMAS_SPECIES), got {Gc_arr.shape}")
+
         return cls(
             Nk=Nk_arr,
             Mk=Mk_arr,

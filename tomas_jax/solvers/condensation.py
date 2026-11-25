@@ -56,7 +56,8 @@ from typing import Tuple
 from functools import partial
 
 from ..core.config import (
-    SRTSO4, SRTSO2, SRTNH4, SRTH2O, ICOMP_NODIAG,
+    SRTSO4, SRTSO2, SRTNH4, SRTH2O, ICOMP_NODIAG, HAS_ORG, ICOMP,
+    N_GAS_SPECIES, SPECIES_LAYOUT,
     MW_H2SO4, SV_H2SO4, CS_EPS,
 )
 from ..physics.so2_chemistry import (
@@ -79,7 +80,7 @@ from ..physics.water_equilibrium import (
 )
 from ..core.mnfix_jax import mnfix_jax
 from ..solvers.diffrax import coag_euler_step
-from ..solvers.euler import euler_step
+from ..solvers.euler import euler_step, heun_step, check_coag_kernel_scale
 from ..solvers.gas_substep import choose_gas_substep
 from ..core.bounded_loop import loop_fori, bounded_while
 
@@ -94,7 +95,7 @@ _VALID_MAKE_STEP_KWARGS = {
     # nucleation (zhao2024)
     'hno3', 'ulvoc', 'dma', 'hio3', 'enable_masks',
     # coagulation
-    'icomp_nodiag',
+    'icomp_nodiag', 'coag_kernel_scale',
     # dilution
     'kdil', 'Nk_bg', 'Mk_bg', 'Gc_bg',
 }
@@ -225,7 +226,8 @@ def condensation_step(
     # =========================================================
     Gc_jax = jnp.array(Gc_np)
     Mk_jax = jnp.array(Mk_np)
-    Gc_jax, Mk_jax = eznh3eqm(Gc_jax, Mk_jax)
+    if HAS_ORG:  # NH3 unsupported in the reduced layout
+        Gc_jax, Mk_jax = eznh3eqm(Gc_jax, Mk_jax)
     Gc_np = np.array(Gc_jax)
     Mk_np = np.array(Mk_jax)
 
@@ -306,7 +308,8 @@ def _condensation_step_core(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt,
     Gc = jnp.where(should_dump, Gc_dump, Gc_new)
 
     # 3. NH3 equilibrium
-    Gc, Mk = eznh3eqm(Gc, Mk)
+    if HAS_ORG:  # NH3 unsupported in the reduced layout
+        Gc, Mk = eznh3eqm(Gc, Mk)
 
     # 4. Water equilibrium
     Mk = equilibrate_water(Mk, rh, temp, water_scheme)
@@ -860,8 +863,9 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
               gas_substep_frac=0.1, gas_max_substeps=16384, gas_min_dt=1e-3,
               coag_interval_frac=0.01, return_substep_info=False,
               split_chemistry=False,
+              coag_n_floor=None, coag_heun_rtol=3e-3, coag_heun_atol=1e-6,
               ad_mode='forward', ppm_max_substeps=64, ppm_tangent='exact',
-              mnfix_trim=None, jit=True):
+              mnfix_trim=None, jit=True, cap_warnings=True):
     """Build a step function from an ordered list of process names.
 
     The returned function has signature:
@@ -902,6 +906,14 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
         coag_max_substeps: Sub-step cap for 'euler_adaptive' (None:
             10000, or 1024 with ad_mode='reverse'). Hitting it truncates
             the coagulation step silently.
+        coag_solver='heun_adaptive': error-controlled Heun (solvers/euler.heun_step,
+            not Fortran; second order, absolute error against total N so near-empty
+            bins cannot collapse the step). coag_heun_rtol / coag_heun_atol (x sum N)
+            set the tolerance; coag_max_substeps bounds iterations (cap warning as
+            euler_adaptive). Opt-in; docs/gas_substep.md.
+        coag_n_floor: 'euler_adaptive' only, opt-in (None = Fortran): bins
+            with N <= coag_n_floor [#/cell] are left out of the number
+            sub-step limit (see euler.euler_step n_floor).
         max_nucleation_frac: Max dN/N_total per nucleation substep (0.5 = 50%)
         max_nuc_substeps: Hard cap on nucleation substeps
         water_scheme: Aerosol water uptake, WATER_SCHEME_BISULFATE (default,
@@ -978,9 +990,35 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
             columns: the trimmed while_loop runs until the slowest column is
             done, ~5x slower than the full loop under vmap.
             Callers no longer need to wrap manually. Double-JIT is a no-op.
+        cap_warnings: True (default): a binding gas_max_substeps or
+            coag_max_substeps emits GasSubstepCapWarning / CoagSubstepCapWarning
+            from a jax.debug.callback inside the step. False: no callbacks,
+            nothing is reported by the step itself, so the caller must read
+            info['hit_cap'] and info['coag_dt_left'] (return_substep_info=True)
+            and treat a binding cap as a failure. For vmapped ensembles only:
+            JAX unrolls a debug callback once per batch element, so with the
+            callbacks on, compile time and step time grow linearly with the
+            batch (8192 cells: compile 217 s against 9 s and a step 5.3 s
+            against 0.06 s, 2026-11-23).
 
     Returns:
         A callable step function (JIT-compiled by default).
+
+    Runtime kwargs of the step function (besides those listed in the
+    examples) include coag_kernel_scale: a multiplier on the Brownian
+    coagulation kernel for sensitivity tests (default 1.0 = unscaled and
+    bit-identical to not passing it). It applies to every kernel the
+    coagulation process computes, in all three coag_solvers (euler_fixed:
+    the per-step kernel; euler_adaptive: the initial and every recomputed
+    kernel; heun_adaptive: the kernel of every iteration). A Python float
+    or 0-d array, per cell under vmap; it is a traced argument, so a new
+    value does not recompile. A concrete value < 0 or non-finite raises
+    ValueError (not checkable once traced: inside a caller's jit/vmap, and
+    in the jitted default-layout step, which receives it traced). Nothing
+    outside coagulation is scaled: nucleation, the condensation sink and
+    the gas sub-step criterion have no coagulation term; the coagulation
+    interval length (gas_substep='adaptive') follows the scaled loss.
+    docs/gas_substep.md.
 
     For JIT stability, always pass the same set of kwargs across calls.
 
@@ -1046,20 +1084,29 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
             UserWarning, stacklevel=2,
         )
 
-    if coag_solver not in ('euler_fixed', 'euler_adaptive'):
+    if coag_solver not in ('euler_fixed', 'euler_adaptive', 'heun_adaptive'):
         raise ValueError(f"Unknown coag_solver '{coag_solver}'. "
-                         f"Valid: ['euler_fixed', 'euler_adaptive']")
+                         f"Valid: ['euler_fixed', 'euler_adaptive', 'heun_adaptive']")
 
     valid_schemes = {'ricco_dunne', 'zhao2024'}
     if nucl_scheme not in valid_schemes:
         raise ValueError(f"Unknown nucl_scheme '{nucl_scheme}'. Valid: {sorted(valid_schemes)}")
 
     use_zhao = nucl_scheme == 'zhao2024'
+    if not HAS_ORG and use_zhao:
+        raise NotImplementedError(
+            "nucl_scheme='zhao2024' needs organic/NH3/HNO3 species; "
+            f"unsupported with TOMAS_SPECIES={SPECIES_LAYOUT}")
     if dunne_form not in DUNNE_FORMS:
         raise ValueError(f"Unknown dunne_form '{dunne_form}'. Valid: {DUNNE_FORMS}")
     if use_zhao and dunne_form != 'double_exp':
         raise ValueError("dunne_form is ricco_dunne only; zhao2024 uses its own "
                          f"Dunne fit (got dunne_form='{dunne_form}')")
+
+    if coag_n_floor is not None and (coag_solver != 'euler_adaptive'
+                                     or not coag_n_floor >= 0.0):
+        raise ValueError("coag_n_floor needs coag_solver='euler_adaptive' "
+                         f"and a value >= 0 (got {coag_n_floor})")
 
     if gas_substep not in (None, 'adaptive'):
         raise ValueError(f"Unknown gas_substep '{gas_substep}'. "
@@ -1172,6 +1219,7 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                 Mk = equilibrate_water(Mk, rh, temp, water_scheme)
 
         elif process == 'coagulation':
+            coag_kernel_scale = kwargs.get('coag_kernel_scale', 1.0)
             if coag_solver == 'euler_adaptive':
                 Nk, Mk, coag_left = euler_step(
                     Nk, Mk, xk, temp, pres, boxvol, dt,
@@ -1182,6 +1230,20 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                     bounded=bounded,
                     mnfix_trim=mnfix_trim,
                     return_dt_left=True,
+                    n_floor=coag_n_floor,
+                    coag_kernel_scale=coag_kernel_scale,
+                )
+            elif coag_solver == 'heun_adaptive':
+                Nk, Mk, coag_left = heun_step(
+                    Nk, Mk, xk, temp, pres, boxvol, dt,
+                    icomp_nodiag=kwargs.get('icomp_nodiag', ICOMP_NODIAG),
+                    rtol=coag_heun_rtol, atol_frac=coag_heun_atol,
+                    max_substeps=coag_max_substeps,
+                    sparse_density=sparse_density,
+                    bounded=bounded,
+                    mnfix_trim=mnfix_trim,
+                    return_dt_left=True,
+                    coag_kernel_scale=coag_kernel_scale,
                 )
             else:
                 Nk, Mk = coag_euler_step(
@@ -1191,6 +1253,7 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                     n_substeps=n_coag_substeps,
                     sparse_density=sparse_density,
                     mnfix_trim=mnfix_trim,
+                    coag_kernel_scale=coag_kernel_scale,
                 )
             if water_every_process:
                 Mk = equilibrate_water(Mk, rh, temp, water_scheme)
@@ -1214,8 +1277,9 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
         return Nk, Mk, Gc, coag_left
 
     def warn_coag_cap(coag_dt_left, dt):
-        # Always on, like the gas cap: the dropped time gets no coagulation
-        if coag_solver == 'euler_adaptive' and 'coagulation' in processes:
+        # On by default, like the gas cap: the dropped time gets no coagulation
+        if (cap_warnings and coag_solver in ('euler_adaptive', 'heun_adaptive')
+                and 'coagulation' in processes):
             jax.debug.callback(_warn_coag_cap, coag_dt_left, dt,
                                coag_max_substeps, ad_mode)
 
@@ -1389,17 +1453,67 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                                    init, gas_max_substeps)
         dt_min, n_floor, knuc_dt_max, dt_capped, coag_dt_left = diag
         hit_cap = dt_capped > 0.0
-        # Always on: a binding cap gives NaN or a wrong answer, and the info
+        # On by default: a binding cap gives NaN or a wrong answer, and the info
         # dict is only returned on request. Runs on the host, after the step.
-        jax.debug.callback(_warn_gas_cap, hit_cap, dt_capped, knuc_dt_max, dt,
-                           gas_max_substeps)
+        # cap_warnings=False (vmapped ensembles): the caller reads info.
+        if cap_warnings:
+            jax.debug.callback(_warn_gas_cap, hit_cap, dt_capped, knuc_dt_max,
+                               dt, gas_max_substeps)
         warn_coag_cap(coag_dt_left, dt)
         info = dict(n_sub=n_sub, n_coag=n_coag, dt_min=dt_min,
                     hit_cap=hit_cap, dt_capped=dt_capped, n_floor=n_floor,
                     knuc_dt_max=knuc_dt_max, coag_dt_left=coag_dt_left)
         return Nk, Mk, Gc, info
 
+    def _check_reduced_kwargs(kwargs, strict_tracers=True):
+        """Reduced layout: reject organic/NH3/HNO3 inputs and organic-share
+        controls. Concrete values are checked by value. A Tracer (user-side
+        jit/vmap) cannot be checked, so it raises rather than passing."""
+        for _k in ('org_conc', 'nh3_conc', 'hno3', 'ulvoc', 'dma', 'hio3'):
+            _v = kwargs.get(_k, 0.0)
+            if isinstance(_v, jax.core.Tracer):
+                raise ValueError(
+                    f"{_k} is traced and cannot be verified zero; "
+                    f"unsupported with TOMAS_SPECIES={SPECIES_LAYOUT} "
+                    f"(omit it)")
+            if np.any(np.asarray(_v) != 0.0):
+                raise ValueError(
+                    f"{_k}={_v!r} needs organic/NH3/HNO3 species; "
+                    f"unsupported with TOMAS_SPECIES={SPECIES_LAYOUT}")
+        if 'nucleation' in processes:
+            # No organic slot: nucleated clusters must be pure sulfate, i.e.
+            # nucl_params.org_frac == 0 (the library default is 0.1, so
+            # nucl_params=None is rejected too). Under jit nucl_params is a
+            # Tracer; that case is checked on concrete values before tracing.
+            _np = kwargs.get('nucl_params')
+            _msg = (f"TOMAS_SPECIES={SPECIES_LAYOUT} requires nucl_params with "
+                    f"org_frac == 0 (pure-sulfate clusters), e.g. "
+                    f"DEFAULT_NUCLEATION_PARAMS._replace(org_frac=0.0); got "
+                    f"nucl_params={'None' if _np is None else type(_np).__name__}")
+            if _np is None or not hasattr(_np, 'org_frac'):
+                raise ValueError(_msg)
+            _of = _np.org_frac
+            if not isinstance(_of, jax.core.Tracer) and np.any(np.asarray(_of) != 0.0):
+                raise ValueError(f"{_msg} (org_frac={_of!r})")
+        for _k in ('enable_organic', 'enable_inorganic'):
+            _v = kwargs.get(_k, 1.0)
+            if isinstance(_v, jax.core.Tracer):
+                continue   # validated by the concrete check before jit
+            if not np.all((np.asarray(_v) == 0.0) | (np.asarray(_v) == 1.0)):
+                raise ValueError(
+                    f"{_k}={_v!r} must be 0 or 1 with "
+                    f"TOMAS_SPECIES={SPECIES_LAYOUT}")
+
     def step_fn(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt, **kwargs):
+        check_coag_kernel_scale(kwargs.get('coag_kernel_scale', 1.0))
+        if not HAS_ORG:
+            if Mk.shape[-1] != ICOMP or Gc.shape[-1] != N_GAS_SPECIES:
+                raise ValueError(
+                    f"Mk/Gc must have {ICOMP}/{N_GAS_SPECIES} columns for "
+                    f"TOMAS_SPECIES={SPECIES_LAYOUT}, got {Mk.shape}/{Gc.shape}")
+            _check_reduced_kwargs(kwargs)
+            if (kwargs.get('icomp_nodiag', ICOMP_NODIAG) != ICOMP_NODIAG):
+                raise ValueError("icomp_nodiag must equal config ICOMP_NODIAG")
         unknown = set(kwargs) - _VALID_MAKE_STEP_KWARGS
         if unknown:
             warnings.warn(
@@ -1433,11 +1547,26 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
     if not jit:
         return step_fn
     jitted = jax.jit(step_fn)
-    if dunne_form == 'double_exp':
+    if dunne_form == 'double_exp' and HAS_ORG:
         return jitted
+
+    def _pre(kwargs):
+        # jit traces every kwarg, so validate concrete values before tracing
+        # and drop verified-zero gases (step_fn defaults them to 0).
+        check_coag_kernel_scale(kwargs.get('coag_kernel_scale', 1.0))
+        if not HAS_ORG:
+            _check_reduced_kwargs(kwargs)
+            kwargs = {k: v for k, v in kwargs.items()
+                      if k not in ('org_conc', 'nh3_conc', 'hno3', 'ulvoc',
+                                   'dma', 'hio3')}
+        return kwargs
 
     # Inside jit nucl_params is traced, so check its values before tracing.
     def checked_step_fn(*args, **kwargs):
-        check_dunne_params(kwargs.get('nucl_params'), dunne_form)
+        kwargs = _pre(kwargs)
+        if dunne_form != 'double_exp':
+            check_dunne_params(kwargs.get('nucl_params'), dunne_form)
         return jitted(*args, **kwargs)
+    # the inner jit, so callers and tests can inspect its compile cache
+    checked_step_fn._jitted = jitted
     return checked_step_fn
