@@ -19,6 +19,7 @@ from ..physics.coagulation_kernel import calc_coagulation_kernel
 from ..physics.coagulation_rates import calc_coagulation_rates
 from ..core.mnfix_jax import mnfix_jax
 from ..core.config import ICOMP_NODIAG
+from .euler import check_coag_kernel_scale
 
 # Optimized Argument Container
 class CoagArgs(NamedTuple):
@@ -148,6 +149,7 @@ def coag_euler_step(
     return_overflow: bool = False,
     sparse_density=None,
     mnfix_trim: bool = False,
+    coag_kernel_scale=1.0,
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Fixed-step forward Euler coagulation solver (scan-fusable).
 
@@ -164,10 +166,15 @@ def coag_euler_step(
             (calc_density's empty-bin fallback). None = 1000 (Fortran).
         mnfix_trim: Static; mnfix_jax(trim=...). True is faster but
             forward-mode AD only.
+        coag_kernel_scale: Multiplier on the whole coagulation kernel, a
+            sensitivity knob (default 1.0 = unscaled, bit-identical). A
+            scalar or 0-d array, may be traced (no recompile on a new value);
+            a concrete value < 0 or non-finite raises ValueError.
     """
+    check_coag_kernel_scale(coag_kernel_scale)
     # Pre-compute coagulation kernel (once per timestep)
     Dpk, Dk, ck = calc_particle_properties(Nk, Mk, temp, pres, sparse_density)
-    kij = calc_coagulation_kernel(Dpk, Dk, ck, boxvol)
+    kij = calc_coagulation_kernel(Dpk, Dk, ck, boxvol) * coag_kernel_scale
 
     dt_sub = dt / n_substeps
 

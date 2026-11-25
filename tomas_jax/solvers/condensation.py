@@ -80,7 +80,7 @@ from ..physics.water_equilibrium import (
 )
 from ..core.mnfix_jax import mnfix_jax
 from ..solvers.diffrax import coag_euler_step
-from ..solvers.euler import euler_step, heun_step
+from ..solvers.euler import euler_step, heun_step, check_coag_kernel_scale
 from ..solvers.gas_substep import choose_gas_substep
 from ..core.bounded_loop import loop_fori, bounded_while
 
@@ -95,7 +95,7 @@ _VALID_MAKE_STEP_KWARGS = {
     # nucleation (zhao2024)
     'hno3', 'ulvoc', 'dma', 'hio3', 'enable_masks',
     # coagulation
-    'icomp_nodiag',
+    'icomp_nodiag', 'coag_kernel_scale',
     # dilution
     'kdil', 'Nk_bg', 'Mk_bg', 'Gc_bg',
 }
@@ -1004,6 +1004,22 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
     Returns:
         A callable step function (JIT-compiled by default).
 
+    Runtime kwargs of the step function (besides those listed in the
+    examples) include coag_kernel_scale: a multiplier on the Brownian
+    coagulation kernel for sensitivity tests (default 1.0 = unscaled and
+    bit-identical to not passing it). It applies to every kernel the
+    coagulation process computes, in all three coag_solvers (euler_fixed:
+    the per-step kernel; euler_adaptive: the initial and every recomputed
+    kernel; heun_adaptive: the kernel of every iteration). A Python float
+    or 0-d array, per cell under vmap; it is a traced argument, so a new
+    value does not recompile. A concrete value < 0 or non-finite raises
+    ValueError (not checkable once traced: inside a caller's jit/vmap, and
+    in the jitted default-layout step, which receives it traced). Nothing
+    outside coagulation is scaled: nucleation, the condensation sink and
+    the gas sub-step criterion have no coagulation term; the coagulation
+    interval length (gas_substep='adaptive') follows the scaled loss.
+    docs/gas_substep.md.
+
     For JIT stability, always pass the same set of kwargs across calls.
 
     Example::
@@ -1203,6 +1219,7 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                 Mk = equilibrate_water(Mk, rh, temp, water_scheme)
 
         elif process == 'coagulation':
+            coag_kernel_scale = kwargs.get('coag_kernel_scale', 1.0)
             if coag_solver == 'euler_adaptive':
                 Nk, Mk, coag_left = euler_step(
                     Nk, Mk, xk, temp, pres, boxvol, dt,
@@ -1214,6 +1231,7 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                     mnfix_trim=mnfix_trim,
                     return_dt_left=True,
                     n_floor=coag_n_floor,
+                    coag_kernel_scale=coag_kernel_scale,
                 )
             elif coag_solver == 'heun_adaptive':
                 Nk, Mk, coag_left = heun_step(
@@ -1225,6 +1243,7 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                     bounded=bounded,
                     mnfix_trim=mnfix_trim,
                     return_dt_left=True,
+                    coag_kernel_scale=coag_kernel_scale,
                 )
             else:
                 Nk, Mk = coag_euler_step(
@@ -1234,6 +1253,7 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                     n_substeps=n_coag_substeps,
                     sparse_density=sparse_density,
                     mnfix_trim=mnfix_trim,
+                    coag_kernel_scale=coag_kernel_scale,
                 )
             if water_every_process:
                 Mk = equilibrate_water(Mk, rh, temp, water_scheme)
@@ -1485,6 +1505,7 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
                     f"TOMAS_SPECIES={SPECIES_LAYOUT}")
 
     def step_fn(Nk, Mk, Gc, xk, temp, pres, boxvol, rh, alpha, dt, **kwargs):
+        check_coag_kernel_scale(kwargs.get('coag_kernel_scale', 1.0))
         if not HAS_ORG:
             if Mk.shape[-1] != ICOMP or Gc.shape[-1] != N_GAS_SPECIES:
                 raise ValueError(
@@ -1532,6 +1553,7 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
     def _pre(kwargs):
         # jit traces every kwarg, so validate concrete values before tracing
         # and drop verified-zero gases (step_fn defaults them to 0).
+        check_coag_kernel_scale(kwargs.get('coag_kernel_scale', 1.0))
         if not HAS_ORG:
             _check_reduced_kwargs(kwargs)
             kwargs = {k: v for k, v in kwargs.items()
@@ -1545,4 +1567,6 @@ def make_step(processes, cond_method='ppm_jit', nucl_scheme='ricco_dunne',
         if dunne_form != 'double_exp':
             check_dunne_params(kwargs.get('nucl_params'), dunne_form)
         return jitted(*args, **kwargs)
+    # the inner jit, so callers and tests can inspect its compile cache
+    checked_step_fn._jitted = jitted
     return checked_step_fn
