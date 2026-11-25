@@ -278,7 +278,8 @@ def heun_step(
     1 s then 5 s then the rest: docs/gas_substep.md.)
     coag_kernel_scale: multiplier on the kernel computed every iteration
     (default 1.0, bit-identical; may be traced; concrete < 0 raises). The
-    controller sees the scaled rates, so it takes ~1/scale times the steps.
+    controller sees the scaled rates, so its steps are ~1/scale as long
+    (~scale times as many for the same interval).
     """
     check_coag_kernel_scale(coag_kernel_scale)
 
